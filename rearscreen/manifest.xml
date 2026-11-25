@@ -24,7 +24,7 @@
     <Rectangle x="0" y="0" w="#view_width" h="#view_height" fillColor="#000000"/>
     <Text x="(0.08 * #view_width)" y="(0.08 * #view_height)" size="25" color="#69E8FF" text="HYPERCAT"/>
     <Text x="(0.08 * #view_width)" y="(0.19 * #view_height)" size="24" color="#FFFFFF" textExp="@petName"/>
-    <Text x="(0.08 * #view_width)" y="(0.29 * #view_height)" size="15" color="#7B91A8" textExp="ifelse(#touchMood==1,'ONLINE  •  HAPPY','ONLINE  •  '+@mood)"/>
+    <Text x="(0.08 * #view_width)" y="(0.29 * #view_height)" size="15" color="#7B91A8" textExp="ifelse(#touchMood==1,'ONLINE  •  HAPPY',@mood)"/>
 
     <!-- Robot pet stays in the lower half, away from the camera cutout. -->
     <Button x="(0.16 * #view_width)" y="(0.39 * #view_height)" w="(0.68 * #view_width)" h="(0.37 * #view_height)" interceptTouch="true">
