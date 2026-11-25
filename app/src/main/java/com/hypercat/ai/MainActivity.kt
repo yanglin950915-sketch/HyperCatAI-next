@@ -542,7 +542,7 @@ private fun ChatPage(
     val filteredRecent = recentPrompts.filter { it.contains(recentQuery, true) }
     val orderedRecent = when (recentSort) { "最早" -> filteredRecent.reversed(); "A-Z" -> filteredRecent.sortedBy { it.lowercase() }; else -> filteredRecent }
     ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = true, drawerContent = {
-        ModalDrawerSheet(drawerContainerColor = Panel, modifier = Modifier.fillMaxSize()) {
+        Surface(modifier = Modifier.fillMaxSize(), color = Panel, shape = RoundedCornerShape(0.dp)) {
             if (drawerSection == "settings") {
                 Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
