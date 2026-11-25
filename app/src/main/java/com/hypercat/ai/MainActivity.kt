@@ -205,7 +205,7 @@ private fun HyperCatApp() {
                     NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
                         icon = { Icon(Icons.Outlined.Forum, contentDescription = "Agent") }, label = { Text("Agent") })
                     NavigationBarItem(selected = page == Page.SETTINGS, onClick = { page = Page.SETTINGS },
-                        icon = { Icon(Icons.Outlined.Settings, contentDescription = "设置") }, label = { Text("模型配置") })
+                        icon = { Icon(Icons.Outlined.Settings, contentDescription = "设置") }, label = { Text("设置") })
                 }
             }
         ) { padding ->
@@ -489,16 +489,24 @@ private fun ChatPage(
     }
     Column(modifier.fillMaxSize().imePadding().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(20.dp))
-        Text("Agent 对话", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("最近", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showRecent = true }.padding(end = 16.dp))
-            Text("查找", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showSearch = true }.padding(end = 16.dp))
-            Text("清屏", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showClear = true }.padding(end = 16.dp))
-            Text("模型：$activeModel", color = Muted, fontSize = 11.sp, modifier = Modifier.clickable { showModelPicker = true }.weight(1f))
-            Text("☎", color = Cyan, fontSize = 19.sp, modifier = Modifier.clickable { showCallInfo = true }.padding(horizontal = 5.dp))
-            Text("▣", color = Cyan, fontSize = 18.sp, modifier = Modifier.clickable { showCallInfo = true }.padding(horizontal = 5.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("消息", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                Text(if (configured) "$petName · $activeModel" else "$petName · 尚未配置模型", color = Muted, fontSize = 11.sp, maxLines = 1)
+            }
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { showRecent = true }) { Box(contentAlignment = Alignment.Center) { Text("☷", color = Cyan, fontSize = 20.sp) } }
+            Spacer(Modifier.width(8.dp))
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { showSearch = true }) { Box(contentAlignment = Alignment.Center) { Text("⌕", color = Cyan, fontSize = 22.sp) } }
+            Spacer(Modifier.width(8.dp))
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { showModelPicker = true }) { Box(contentAlignment = Alignment.Center) { Text("⋯", color = Cyan, fontSize = 22.sp) } }
         }
-        Text(if (configured) "$petName 已读取模型配置" else "先配置模型，才能启用真实 AI 回复", color = Muted, fontSize = 12.sp)
+        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            AssistChip(onClick = { showRecent = true }, label = { Text("最近对话") })
+            AssistChip(onClick = { showClear = true }, label = { Text("清屏") })
+            Spacer(Modifier.weight(1f))
+            Text("语音", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showCallInfo = true })
+            Text("视频", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showCallInfo = true })
+        }
         if (!configured) {
             Spacer(Modifier.height(12.dp))
             Surface(Modifier.fillMaxWidth().clickable(onClick = openSettings), color = Color(0xFF2B2A22), shape = RoundedCornerShape(14.dp)) {
@@ -535,11 +543,21 @@ private fun ChatPage(
                 }
             }
             items(messages.filter { searchQuery.isBlank() || it.text.contains(searchQuery, ignoreCase = true) }) { line ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start) {
-                    Surface(color = if (line.fromUser) Color(0xAA1D7894) else if (appDarkState) Color.White.copy(alpha = .09f) else Color.White.copy(alpha = .78f), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(18.dp)) {
-                        Column(Modifier.widthIn(max = 290.dp).padding(horizontal = 14.dp, vertical = 11.dp)) {
-                            if (line.text.isNotBlank()) Text(line.text, color = Color.White, fontSize = 14.sp)
-                            line.attachments.forEach { name -> Text("📎 $name", color = Cyan, fontSize = 11.sp) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
+                    if (!line.fromUser) {
+                        Box(Modifier.padding(end = 8.dp).size(34.dp).clip(RoundedCornerShape(11.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8C7BFF)))), contentAlignment = Alignment.Center) {
+                            Text(petName.take(1), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Surface(color = if (line.fromUser) Color(0xFF1689C2) else if (appDarkState) Color(0xFF202D40) else Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
+                        Column(Modifier.widthIn(max = 276.dp).padding(horizontal = 14.dp, vertical = 11.dp)) {
+                            if (line.text.isNotBlank()) Text(line.text, color = if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), fontSize = 14.sp, lineHeight = 20.sp)
+                            line.attachments.forEach { name -> Text("📎 $name", color = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan, fontSize = 11.sp) }
+                        }
+                    }
+                    if (line.fromUser) {
+                        Box(Modifier.padding(start = 8.dp).size(34.dp).clip(RoundedCornerShape(11.dp)).background(Color(0xFF397D9D)), contentAlignment = Alignment.Center) {
+                            Text("我", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -579,7 +597,27 @@ private fun ChatPage(
         confirmButton = { TextButton(onClick = { showSearch = false; searchQuery = "" }) { Text("完成") } })
     if (showRemember) AlertDialog(onDismissRequest = { showRemember = false }, title = { Text("记一下") }, text = { Column { OutlinedTextField(value = noteDraft, onValueChange = { noteDraft = it }, label = { Text("要记住的内容") }, minLines = 3); Text("已保存 ${savedNotes.size} 条", color = Muted, fontSize = 11.sp) } }, confirmButton = { TextButton(onClick = { if (noteDraft.isNotBlank()) onSaveNote(noteDraft.trim()); noteDraft=""; showRemember=false }) { Text("保存") } }, dismissButton = { TextButton(onClick = { showRemember=false }) { Text("取消") } })
     if (showRecent) AlertDialog(onDismissRequest = { showRecent = false }, title = { Text("最近对话") },
-        text = { Column { OutlinedTextField(value = recentQuery, onValueChange = { recentQuery=it }, label = { Text("搜索最近对话") }, singleLine = true); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("最新","最早","A-Z").forEach { mode -> FilterChip(selected=recentSort==mode,onClick={recentSort=mode},label={Text(mode)}) } }; val filtered=recentPrompts.filter { it.contains(recentQuery,true) }; val ordered=when(recentSort) { "最早" -> filtered.reversed(); "A-Z" -> filtered.sortedBy { it.lowercase() }; else -> filtered }; if (ordered.isEmpty()) Text("暂无匹配对话",color=Muted) else Column(Modifier.heightIn(max=250.dp).verticalScroll(rememberScrollState())) { ordered.forEach { prompt -> Text(prompt,color=MainText,modifier=Modifier.fillMaxWidth().clickable { onDraft(prompt);showRecent=false }.padding(vertical=9.dp)) } } } },
+        text = { Column {
+            OutlinedTextField(value = recentQuery, onValueChange = { recentQuery=it }, label = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 8.dp)) { listOf("最新","最早","A-Z").forEach { mode -> FilterChip(selected=recentSort==mode,onClick={recentSort=mode},label={Text(mode)}) } }
+            val filtered=recentPrompts.filter { it.contains(recentQuery,true) }
+            val ordered=when(recentSort) { "最早" -> filtered.reversed(); "A-Z" -> filtered.sortedBy { it.lowercase() }; else -> filtered }
+            if (ordered.isEmpty()) Text("暂无匹配对话",color=Muted, modifier=Modifier.padding(18.dp))
+            else Column(Modifier.heightIn(max=340.dp).verticalScroll(rememberScrollState())) {
+                ordered.forEachIndexed { index, prompt ->
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onDraft(prompt); showRecent=false }.padding(vertical=10.dp, horizontal=6.dp), verticalAlignment=Alignment.CenterVertically) {
+                        Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Cyan.copy(alpha=.85f), Color(0xFF8276D9)))), contentAlignment=Alignment.Center) { Text(petName.take(1), color=Color.White, fontWeight=FontWeight.Bold) }
+                        Spacer(Modifier.width(11.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(petName, color=MainText, fontSize=14.sp, fontWeight=FontWeight.SemiBold)
+                            Text(prompt, color=Muted, fontSize=12.sp, maxLines=1)
+                        }
+                        Text(if(index==0) "刚刚" else "${index} 条前", color=Muted, fontSize=10.sp)
+                    }
+                    if(index != ordered.lastIndex) Divider(color=GlassBorder.copy(alpha=.45f))
+                }
+            }
+        } },
         confirmButton = { TextButton(onClick = { showRecent = false }) { Text("关闭") } })
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("清理当前对话") },
         text = { Column {
