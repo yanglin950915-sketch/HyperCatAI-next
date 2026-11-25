@@ -47,11 +47,11 @@ class MainActivity : ComponentActivity() {
             Thread {
                 try {
                     val shell = remoteShell ?: throw IllegalStateException("Shizuku 服务未连接")
-                    // First identify the real external display ID. Never assume it is 1.
-                    val displays = shell.exec("am display list")
+                    // HyperOS does not implement "am display list"; query SurfaceFlinger/DisplayManager diagnostics instead.
+                    val displays = shell.exec("dumpsys display")
                     runOnUiThread {
                         callback?.invoke(
-                            "Shizuku 已连接，已执行显示屏检测。\\n\\n" +
+                            "Shizuku 已连接，已执行 dumpsys display 检测。\\n\\n" +
                                 displays +
                                 "\\n\\n请把完整检测结果发给开发者。确认背屏 display ID 后，再执行定向启动。"
                         )
