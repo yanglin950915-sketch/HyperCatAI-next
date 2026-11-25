@@ -15,8 +15,8 @@ var dead=false,rafFn=root.requestAnimationFrame||function(f){return root.setTime
 function resize(){var r=canvas.getBoundingClientRect?canvas.getBoundingClientRect():{width:canvas.clientWidth||320,height:canvas.clientHeight||240};s.w=Math.max(1,r.width||320);s.h=Math.max(1,r.height||240);s.dpr=Math.min(2,root.devicePixelRatio||1);canvas.width=Math.round(s.w*s.dpr);canvas.height=Math.round(s.h*s.dpr);c.setTransform(s.dpr,0,0,s.dpr,0,0);}
 function setMood(m,d){m=String(m||"idle").toLowerCase();if(!P[m])m="idle";if(m!==s.mood){s.fromMood=s.mood;s.mood=m;s.at=now();s.duration=Math.max(0,Number(d==null?360:d));if(m==="sleep"||m==="sleepy")s.nextBlink=now()+5000;}return m;}
 function setGaze(x,y){s.tx=clamp(Number(x)||0,-1,1);s.ty=clamp(Number(y)||0,-1,1);}
-function eye(x,y,w,h,m,side,gx,gy,blink){
-var p=P[m],eh=h*p.y*(1-blink*.94),ew=w*p.w,tilt=m==="angry"?(side===0?-.1:.1):0;c.save();c.translate(x,y);c.rotate(tilt);
+function eye(x,y,w,h,m,side,gx,gy,blink,override){
+var p=override||P[m],eh=h*p.y*(1-blink*.94),ew=w*p.w,tilt=m==="angry"?(side===0?-.1:.1):0;c.save();c.translate(x,y);c.rotate(tilt);
 c.shadowColor="rgba(36,190,255,.5)";c.shadowBlur=Math.max(8,w*.22);
 var g=c.createLinearGradient(0,-eh*.55,0,eh*.55);g.addColorStop(0,"#e0fbff");g.addColorStop(.2,"#91edff");g.addColorStop(.65,"#36bdec");g.addColorStop(1,"#126dbb");c.fillStyle=g;c.beginPath();c.ellipse(0,0,ew*.5,Math.max(.8,eh*.5),0,0,Math.PI*2);c.fill();c.shadowBlur=0;
 if(p.p>.05&&blink<.72){var ir=Math.min(ew,eh)*.31*p.p,ix=gx*w*.17,iy=gy*h*.12+eh*.045,ig=c.createRadialGradient(ix-ir*.25,iy-ir*.3,ir*.08,ix,iy,ir);ig.addColorStop(0,"#183c59");ig.addColorStop(.75,"#071a30");ig.addColorStop(1,"#020913");c.fillStyle=ig;c.beginPath();c.ellipse(ix,iy,ir*.88,ir,0,0,Math.PI*2);c.fill();c.fillStyle="#fff";c.beginPath();c.arc(ix-ir*.27,iy-ir*.34,Math.max(1.4,ir*.22),0,Math.PI*2);c.fill();c.fillStyle="rgba(255,255,255,.48)";c.beginPath();c.arc(ix+ir*.25,iy+ir*.28,Math.max(.8,ir*.09),0,Math.PI*2);c.fill();}
