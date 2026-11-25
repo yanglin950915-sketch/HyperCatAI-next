@@ -61,13 +61,19 @@ private fun HyperCatApp() {
                 Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("当前选择", color = Color(0xFFB7C5EA), fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
-                    Text(selectedPet.emoji, fontSize = 76.sp)
+                    PetFacePreview(
+                        modifier = Modifier.fillMaxWidth().height(220.dp),
+                        onMoodChange = { mood ->
+                            PetStateStore.update(context, confirmedPet.name, confirmedPet.emoji, mood.uppercase(), "${confirmedPet.name} 现在的心情：$mood")
+                            status = "表情已切换为 $mood，并同步到背屏状态。"
+                        }
+                    )
                     Text(selectedPet.name, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     Text(selectedPet.description, color = Color(0xFFB5BED3), fontSize = 12.sp)
                     Spacer(Modifier.height(16.dp))
                     Button(
                         onClick = {
-                            PetStateStore.update(context, selectedPet.name, selectedPet.emoji, "IDLE", "${selectedPet.name} 已准备好，在背屏等你！")
+                            PetStateStore.update(context, selectedPet.name, selectedPet.emoji, "idle", "${selectedPet.name} 已准备好，在背屏等你！")
                             confirmedPet = selectedPet
                             status = "已确认更换为${selectedPet.name}。背屏模板会自动刷新，请稍等约 1–2 秒。"
                         },
