@@ -778,7 +778,7 @@ private fun ChatPage(
         confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); showClear = false }) { Text("清屏") } },
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
     if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
-    if (showCallInfo) AlertDialog(onDismissRequest = { showCallInfo = false }, title = { Text("$callMode通话") },
+    if (showCallInfo) AlertDialog(onDismissRequest = { showCallInfo = false }, title = { Text("${callMode}通话") },
         text = { Text(if (callMode == "语音") "语音通话入口已恢复。实时双向通话需要接入支持实时音频的模型服务；当前版本暂未连接通话引擎。" else "视频通话入口已恢复。摄像头采集、实时视频传输与视频理解需要接入支持音视频的模型服务；当前版本暂未连接通话引擎。", color = Muted) },
         confirmButton = { TextButton(onClick = { showCallInfo = false }) { Text("知道了") } })
 }
