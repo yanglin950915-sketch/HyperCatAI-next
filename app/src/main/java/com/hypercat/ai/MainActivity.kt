@@ -487,6 +487,34 @@ private fun ChatPage(
         val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         if (!spoken.isNullOrBlank()) onDraft(if (draft.isBlank()) spoken else "$draft $spoken")
     }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+    val filteredRecent = recentPrompts.filter { it.contains(recentQuery, true) }
+    val orderedRecent = when (recentSort) { "最早" -> filteredRecent.reversed(); "A-Z" -> filteredRecent.sortedBy { it.lowercase() }; else -> filteredRecent }
+    ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = true, drawerContent = {
+        ModalDrawerSheet(drawerContainerColor = Panel, modifier = Modifier.fillMaxHeight().widthIn(max = 320.dp)) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                Spacer(Modifier.height(28.dp))
+                Text("最近对话", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("向右滑动打开会话列表", color = Muted, fontSize = 11.sp)
+                Spacer(Modifier.height(14.dp))
+                OutlinedTextField(value = recentQuery, onValueChange = { recentQuery = it }, placeholder = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 10.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 11.sp) }) } }
+                LazyColumn(Modifier.weight(1f)) {
+                    items(orderedRecent) { prompt ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onDraft(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 12.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8276D9)))), contentAlignment = Alignment.Center) { Text(petName.take(1), color = Color.White, fontWeight = FontWeight.Bold) }
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) { Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold); Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 1) }
+                        }
+                        Divider(color = GlassBorder.copy(alpha = .4f))
+                    }
+                }
+                TextButton(onClick = { drawerScope.launch { drawerState.close() }; openSettings() }, modifier = Modifier.fillMaxWidth()) { Text("⚙  设置", color = Cyan, fontWeight = FontWeight.SemiBold) }
+                Spacer(Modifier.height(12.dp))
+            }
+        }
+    }) {
     Column(modifier.fillMaxSize().imePadding().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -494,7 +522,7 @@ private fun ChatPage(
                 Text("消息", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
                 Text(if (configured) "$petName · $activeModel" else "$petName · 尚未配置模型", color = Muted, fontSize = 11.sp, maxLines = 1)
             }
-            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { showRecent = true }) { Box(contentAlignment = Alignment.Center) { Text("☷", color = Cyan, fontSize = 20.sp) } }
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { drawerScope.launch { drawerState.open() } }) { Box(contentAlignment = Alignment.Center) { Text("☰", color = Cyan, fontSize = 18.sp) } }
             Spacer(Modifier.width(8.dp))
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { showSearch = true }) { Box(contentAlignment = Alignment.Center) { Text("⌕", color = Cyan, fontSize = 22.sp) } }
             Spacer(Modifier.width(8.dp))
@@ -592,33 +620,11 @@ private fun ChatPage(
             Button(onClick = { onSend(draft, selectedFiles); selectedFiles = emptyList() }, enabled = draft.isNotBlank() || selectedFiles.isNotEmpty(), shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(horizontal = 15.dp, vertical = 14.dp)) { Text("发送") }
         }
     }
+    }
     if (showSearch) AlertDialog(onDismissRequest = { showSearch = false; searchQuery = "" }, title = { Text("查找对话内容") },
         text = { Column { OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("输入关键词，聊天列表即时筛选") }, singleLine = true); Text("${messages.count { it.text.contains(searchQuery, true) }} 条匹配消息", color = Muted, fontSize = 12.sp) } },
         confirmButton = { TextButton(onClick = { showSearch = false; searchQuery = "" }) { Text("完成") } })
     if (showRemember) AlertDialog(onDismissRequest = { showRemember = false }, title = { Text("记一下") }, text = { Column { OutlinedTextField(value = noteDraft, onValueChange = { noteDraft = it }, label = { Text("要记住的内容") }, minLines = 3); Text("已保存 ${savedNotes.size} 条", color = Muted, fontSize = 11.sp) } }, confirmButton = { TextButton(onClick = { if (noteDraft.isNotBlank()) onSaveNote(noteDraft.trim()); noteDraft=""; showRemember=false }) { Text("保存") } }, dismissButton = { TextButton(onClick = { showRemember=false }) { Text("取消") } })
-    if (showRecent) AlertDialog(onDismissRequest = { showRecent = false }, title = { Text("最近对话") },
-        text = { Column {
-            OutlinedTextField(value = recentQuery, onValueChange = { recentQuery=it }, label = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 8.dp)) { listOf("最新","最早","A-Z").forEach { mode -> FilterChip(selected=recentSort==mode,onClick={recentSort=mode},label={Text(mode)}) } }
-            val filtered=recentPrompts.filter { it.contains(recentQuery,true) }
-            val ordered=when(recentSort) { "最早" -> filtered.reversed(); "A-Z" -> filtered.sortedBy { it.lowercase() }; else -> filtered }
-            if (ordered.isEmpty()) Text("暂无匹配对话",color=Muted, modifier=Modifier.padding(18.dp))
-            else Column(Modifier.heightIn(max=340.dp).verticalScroll(rememberScrollState())) {
-                ordered.forEachIndexed { index, prompt ->
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onDraft(prompt); showRecent=false }.padding(vertical=10.dp, horizontal=6.dp), verticalAlignment=Alignment.CenterVertically) {
-                        Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Cyan.copy(alpha=.85f), Color(0xFF8276D9)))), contentAlignment=Alignment.Center) { Text(petName.take(1), color=Color.White, fontWeight=FontWeight.Bold) }
-                        Spacer(Modifier.width(11.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(petName, color=MainText, fontSize=14.sp, fontWeight=FontWeight.SemiBold)
-                            Text(prompt, color=Muted, fontSize=12.sp, maxLines=1)
-                        }
-                        Text(if(index==0) "刚刚" else "${index} 条前", color=Muted, fontSize=10.sp)
-                    }
-                    if(index != ordered.lastIndex) Divider(color=GlassBorder.copy(alpha=.45f))
-                }
-            }
-        } },
-        confirmButton = { TextButton(onClick = { showRecent = false }) { Text("关闭") } })
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("清理当前对话") },
         text = { Column {
             Text("清除当前聊天消息。", color = Muted)
@@ -691,14 +697,14 @@ private fun SettingsPage(
         Spacer(Modifier.height(22.dp))
         Text("扩展能力", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        SettingsAction("⏰", "定时任务", "创建一次性提醒，到时间通过系统通知提醒") { showTaskDialog = true }
-        SettingsAction("🧩", "插件", if (pluginEnabled) "已启用插件框架" else "管理插件扩展入口") { showPluginDialog = true }
-        SettingsAction("🔌", "MCP 设置", if (mcpEndpoint.isBlank()) "配置 MCP 服务连接" else mcpName.ifBlank { mcpEndpoint }) { showMcpDialog = true }
-        SettingsAction("💬", "帮助与反馈", "使用说明、问题反馈与项目主页") { showHelpDialog = true }
+        SettingsAction("◷", "定时任务", "创建一次性提醒，到时间通过系统通知提醒") { showTaskDialog = true }
+        SettingsAction("◇", "插件", if (pluginEnabled) "已启用插件框架" else "管理插件扩展入口") { showPluginDialog = true }
+        SettingsAction("⌁", "MCP 设置", if (mcpEndpoint.isBlank()) "配置 MCP 服务连接" else mcpName.ifBlank { mcpEndpoint }) { showMcpDialog = true }
+        SettingsAction("✉", "帮助与反馈", "使用说明、问题反馈与项目主页") { showHelpDialog = true }
         Spacer(Modifier.height(18.dp))
         Text("应用与帮助", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        SettingsAction("ⓘ", "版本号", "当前版本 $currentVersion") { }
+        SettingsAction("i", "版本号", "当前版本 $currentVersion") { }
         SettingsAction("↻", "检查更新", updateStatus) { onCheckUpdates() }
         if (latestRelease != null && versionIsNewer(latestRelease.version, currentVersion)) {
             Surface(color = if (appDarkState) Color(0xFF183A43) else Color(0xFFE1F5F4), shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
@@ -798,13 +804,13 @@ private fun SettingsAction(icon: String, title: String, subtitle: String, onClic
         border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
     ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, fontSize = 19.sp)
+            Text(icon, fontSize = 18.sp, color = Cyan, fontWeight = FontWeight.Medium)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text(subtitle, color = Muted, fontSize = 11.sp, maxLines = 2)
             }
-            Text("›", color = Muted, fontSize = 22.sp)
+            Text("›", color = Muted, fontSize = 20.sp, fontWeight = FontWeight.Light)
         }
     }
 }
