@@ -366,61 +366,86 @@ private fun HyperCatApp() {
 private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, petMood: String, onPetNameChange: (String) -> Unit, openChat: () -> Unit, openSettings: () -> Unit) {
     var showNameDialog by remember { mutableStateOf(false) }
     var nameDraft by remember(petName) { mutableStateOf(petName) }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).background(Brush.verticalGradient(listOf(if (appDarkState) Color(0xFF13243A) else Color(0xFFE6F0F8), Bg))).padding(horizontal = 22.dp)) {
-        Spacer(Modifier.height(28.dp))
+    Column(
+        modifier.fillMaxSize()
+            .background(Brush.verticalGradient(listOf(if (appDarkState) Color(0xFF101D30) else Color(0xFFEAF2F8), Bg)))
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 22.dp)
+    ) {
+        Spacer(Modifier.height(22.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("HYPERCAT AI", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.5.sp)
-                Text("你的随身 AI 伙伴", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+                Text("HYPERCAT", color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+                Text("你的 AI 伙伴", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
             }
-            Box(Modifier.size(42.dp).clip(CircleShape).background(Panel2), contentAlignment = Alignment.Center) {
-                Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8C7BFF)))),contentAlignment=Alignment.Center) { Text("✦",color=Color.White,fontWeight=FontWeight.Black,fontSize=17.sp) }
+            Surface(shape = CircleShape, color = Panel2, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+                Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+                    Text("✦", color = Cyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
         Spacer(Modifier.height(18.dp))
-        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(30.dp), color = if (appDarkState) Color.White.copy(alpha = .075f) else Color.White.copy(alpha = .72f), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shadowElevation = 18.dp) {
-            Column(Modifier.fillMaxSize().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Text("MEET YOUR COMPANION  ·  ✦", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
-                Spacer(Modifier.height(8.dp))
-                Box(Modifier.fillMaxWidth().height(220.dp).background(Brush.radialGradient(listOf(Cyan.copy(alpha = if (appDarkState) .18f else .12f), Color.Transparent)))) {
-                    CatFace(Modifier.fillMaxSize(), petMood)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(30.dp),
+            color = if (appDarkState) Color(0xFF14243A) else Color.White,
+            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
+            shadowElevation = 12.dp
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("YOUR COMPANION", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
+                        Text("今天也一起探索吧", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text("在线陪伴", color = if (configured) Color(0xFF65DDAE) else Muted, fontSize = 10.sp)
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
+                Box(Modifier.fillMaxWidth().height(236.dp), contentAlignment = Alignment.Center) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        val center = Offset(size.width / 2f, size.height * .48f)
+                        drawCircle(Cyan.copy(alpha = if (appDarkState) .07f else .10f), size.minDimension * .43f, center)
+                        drawCircle(Cyan.copy(alpha = .12f), size.minDimension * .34f, center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
+                        drawCircle(Color(0xFF8C7BFF).copy(alpha = .12f), size.minDimension * .27f, center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
+                    }
+                    CatFace(Modifier.fillMaxWidth(.92f).fillMaxHeight(.92f), petMood)
+                }
+                Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(petName, color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold, maxLines = 2, softWrap = true)
+                    Text(petName, color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     Spacer(Modifier.width(8.dp))
-                    Text("✎", color = Cyan, fontSize = 17.sp, modifier = Modifier.clip(CircleShape).clickable { nameDraft = petName; showNameDialog = true }.padding(5.dp))
+                    Surface(Modifier.size(30.dp).clickable { nameDraft = petName; showNameDialog = true }, color = Panel2, shape = CircleShape) {
+                        Box(contentAlignment = Alignment.Center) { Text("✎", color = Cyan, fontSize = 14.sp) }
+                    }
                 }
-                Text("轻触表情，和我互动", color = Muted, fontSize = 13.sp)
-                Spacer(Modifier.height(18.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (configured) Color(0xFF6DE3B1) else Color(0xFFFFC46B)))
+                Text("轻触表情，看看我的反应", color = Muted, fontSize = 12.sp)
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (configured) Color(0xFF65DDAE) else Color(0xFFFFC46B)))
                     Spacer(Modifier.width(7.dp))
-                    Text(if (configured) "模型配置已保存" else "尚未配置大模型", color = Muted, fontSize = 11.sp)
+                    Text(if (configured) "模型已就绪" else "连接模型后即可开始使用", color = Muted, fontSize = 11.sp)
                 }
             }
         }
         Spacer(Modifier.height(16.dp))
-        Button(onClick = openChat, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp), shape = RoundedCornerShape(18.dp)) {
-            Spacer(Modifier.width(9.dp))
-            Text("和${petName}开始对话", fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2, softWrap = true)
-        }
-        Spacer(Modifier.height(10.dp))
-        OutlinedButton(onClick = openSettings, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp), shape = RoundedCornerShape(16.dp)) {
+        Button(onClick = openChat, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) {
+            Text("和 $petName 聊一聊", fontSize = 15.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(8.dp))
-            Text("配置本地 / 在线大模型", maxLines = 2, softWrap = true)
+            Text("→", fontSize = 18.sp)
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(9.dp))
+        OutlinedButton(onClick = openSettings, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(17.dp)) {
+            Text("模型与服务设置", fontSize = 13.sp)
+        }
     }
-    if (showNameDialog) {
-        AlertDialog(
-            onDismissRequest = { showNameDialog = false },
-            title = { Text("给萌宠取个名字") },
-            text = { OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) }, singleLine = true, label = { Text("萌宠名称") }) },
-            confirmButton = { TextButton(onClick = { onPetNameChange(nameDraft); showNameDialog = false }) { Text("保存") } },
-            dismissButton = { TextButton(onClick = { showNameDialog = false }) { Text("取消") } }
-        )
-    }
+    if (showNameDialog) AlertDialog(
+        onDismissRequest = { showNameDialog = false },
+        title = { Text("给萌宠取个名字") },
+        text = { OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) }, singleLine = true, label = { Text("萌宠名称") }) },
+        confirmButton = { TextButton(onClick = { onPetNameChange(nameDraft); showNameDialog = false }) { Text("保存") } },
+        dismissButton = { TextButton(onClick = { showNameDialog = false }) { Text("取消") } }
+    )
 }
 
 @Composable
@@ -572,24 +597,28 @@ private fun ChatPage(
             )
         }
     ) {
-    Column(modifier.fillMaxSize().padding(contentPadding).imePadding().padding(horizontal = 16.dp)) {
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Agent", color = MainText, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                Text(if (configured) "$petName · $activeModel" else "$petName · 尚未配置模型", color = Muted, fontSize = 11.sp, maxLines = 1)
+    Column(modifier.fillMaxSize().padding(contentPadding).imePadding().padding(horizontal = 14.dp)) {
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { drawerScope.launch { drawerState.open() } }) {
+                Box(contentAlignment = Alignment.Center) { Text("☰", color = MainText, fontSize = 18.sp) }
             }
-            Surface(shape = RoundedCornerShape(14.dp), color = Panel2, modifier = Modifier.clickable { showModelPicker = true }) {
-                Row(Modifier.padding(horizontal = 11.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.width(11.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Agent", color = MainText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text(if (configured) activeModel else "尚未连接模型", color = Muted, fontSize = 10.sp, maxLines = 1)
+            }
+            Surface(shape = RoundedCornerShape(15.dp), color = Panel2, modifier = Modifier.clickable { showModelPicker = true }) {
+                Row(Modifier.padding(horizontal = 11.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("模型", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(5.dp))
                     Text("⌄", color = Muted, fontSize = 13.sp)
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { showClear = true }) { Box(contentAlignment = Alignment.Center) { Text("⋯", color = Cyan, fontSize = 22.sp) } }
-            Spacer(Modifier.width(6.dp))
-            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { drawerScope.launch { drawerState.open() } }) { Box(contentAlignment = Alignment.Center) { Text("☰", color = Cyan, fontSize = 18.sp) } }
+            Spacer(Modifier.width(7.dp))
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { showClear = true }) {
+                Box(contentAlignment = Alignment.Center) { Text("＋", color = Cyan, fontSize = 22.sp, fontWeight = FontWeight.Light) }
+            }
         }
         if (!configured) {
             Spacer(Modifier.height(12.dp))
@@ -600,23 +629,32 @@ private fun ChatPage(
                 }
             }
         }
-        if (messages.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
-            Text("从一个任务开始", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(
-                    "总结" to "请帮我总结以下内容，提炼重点：",
-                    "翻译" to "请将下面内容准确翻译成中文：",
-                    "润色" to "请帮我润色下面这段文字，保持原意：",
-                    "写作" to "请根据以下要求帮我写一份内容：",
-                    "代码助手" to "请分析下面的代码并给出修复建议：",
-                    "头脑风暴" to "请围绕这个主题进行头脑风暴，给出可执行的创意："
-                ).forEach { (label, prompt) ->
-                    AssistChip(onClick = { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
-                        label = { Text(label, fontSize = 12.sp) },
-                        leadingIcon = { Text("✦", color = Cyan, fontSize = 11.sp) })
+        if (messages.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
+            Text("有什么可以帮你？", color = MainText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text("选择一个常用任务，或直接输入你的想法。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
+            val suggestions = listOf(
+                "总结内容" to "请帮我总结以下内容，提炼重点：",
+                "翻译文本" to "请将下面内容准确翻译成中文：",
+                "润色写作" to "请帮我润色下面这段文字，保持原意：",
+                "代码助手" to "请分析下面的代码并给出修复建议："
+            )
+            suggestions.chunked(2).forEach { rowItems ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    rowItems.forEach { (label, prompt) ->
+                        Surface(
+                            modifier = Modifier.weight(1f).padding(bottom = 8.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
+                            color = Panel, shape = RoundedCornerShape(15.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                        ) {
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+                                Text("✦", color = Cyan, fontSize = 14.sp)
+                                Spacer(Modifier.height(5.dp))
+                                Text(label, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
                 }
             }
-            Text("选择一个常用任务，或直接告诉我你想做什么。", color = Muted, fontSize = 10.sp)
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
@@ -653,11 +691,11 @@ private fun ChatPage(
                 Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedFiles = emptyList() })
             }
         }
-        Column(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Column(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
                 BasicTextField(value = draft, onValueChange = onDraft,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp, max = 132.dp).padding(horizontal = 16.dp, vertical = 15.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp, max = 144.dp).padding(horizontal = 15.dp, vertical = 14.dp),
                     textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
                     decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$petName…", color = Muted, fontSize = 14.sp); inner() })
             }
