@@ -190,6 +190,7 @@ private fun fetchLatestRelease(): ReleaseInfo {
     } finally { connection.disconnect() }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HyperCatApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -641,6 +642,7 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
