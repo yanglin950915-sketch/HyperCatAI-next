@@ -11,7 +11,7 @@ data class RearPetState(
     val updatedAt: Long
 )
 
-/** Local state bridge shared by the main UI and the MAML ContentProvider. */
+/** Shared state bridge for the exported HyperCat rear-screen provider. */
 object PetStateStore {
     private const val PREFS = "hypercat_rear_pet"
     private const val KEY_NAME = "pet_name"
@@ -19,7 +19,7 @@ object PetStateStore {
     private const val KEY_MOOD = "mood"
     private const val KEY_REPLY = "reply"
     private const val KEY_UPDATED = "updated_at"
-    private val PET_URI = Uri.parse("content://uriroute/data?group=hypercat&name=pet-state")
+    val PET_URI: Uri = Uri.parse("content://com.hypercat.ai.rear.provider/pet-state")
 
     fun update(context: Context, name: String, emoji: String, mood: String, reply: String) {
         val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -29,17 +29,17 @@ object PetStateStore {
             .putString(KEY_REPLY, reply.take(100))
             .putLong(KEY_UPDATED, System.currentTimeMillis())
             .commit()
-        // Notify MAML immediately; the one-second MAML refresh remains as a fallback.
-        if (saved) context.contentResolver.notifyChange(PET_URI, null)
+        check(saved) { "无法保存背屏萌宠状态" }
+        context.contentResolver.notifyChange(PET_URI, null)
     }
 
     fun read(context: Context): RearPetState {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         return RearPetState(
             petName = prefs.getString(KEY_NAME, "小橘") ?: "小橘",
-            petEmoji = prefs.getString(KEY_EMOJI, "🐈") ?: "🐈",
+            petEmoji = prefs.getString(KEY_EMOJI, "🤖") ?: "🤖",
             mood = prefs.getString(KEY_MOOD, "IDLE") ?: "IDLE",
-            reply = prefs.getString(KEY_REPLY, "你好！我是你的 AI 萌宠。") ?: "你好！我是你的 AI 萌宠。",
+            reply = prefs.getString(KEY_REPLY, "你好！我是你的机器人萌宠。") ?: "你好！我是你的机器人萌宠。",
             updatedAt = prefs.getLong(KEY_UPDATED, 0L)
         )
     }
