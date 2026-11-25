@@ -133,8 +133,6 @@ private fun HyperCatApp() {
                     modifier = Modifier.padding(padding),
                     messages = messages,
                     draft = draft,
-                    petMood = petMood,
-                    onMood = { mood -> petMood = mood },
                     onDraft = { draft = it },
                     onSend = { value, attachments ->
                         if (value.isNotBlank() || attachments.isNotEmpty()) {
