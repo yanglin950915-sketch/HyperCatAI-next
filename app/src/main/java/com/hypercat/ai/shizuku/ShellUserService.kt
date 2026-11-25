@@ -11,11 +11,7 @@ import java.io.InputStreamReader
  * Runs inside Shizuku's shell-identity UserService process.
  * Only fixed, app-authored commands are sent by the UI.
  */
-class ShellUserService : IRemoteShell.Stub() {
-    @Keep
-    constructor(context: Context) : this()
-
-    constructor() : super()
+class ShellUserService @Keep constructor(@Suppress("UNUSED_PARAMETER") context: Context) : IRemoteShell.Stub() {
 
     @Throws(RemoteException::class)
     override fun exec(command: String): String {
