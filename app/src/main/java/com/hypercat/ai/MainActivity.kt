@@ -75,6 +75,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import com.hypercat.ai.rear.PetStateStore
+import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
 private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF1F5FA)
@@ -477,16 +478,16 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
 
     LaunchedEffect(Unit) {
         while (true) {
-            delay((2300L..4300L).random())
+            delay(Random.nextLong(2300L, 4301L))
             if (System.currentTimeMillis() - lastTouchAt > 3200L) {
-                gazeX = (-0.35f..0.35f).random()
-                gazeY = (-0.18f..0.18f).random()
+                gazeX = Random.nextFloat() * 0.7f - 0.35f
+                gazeY = Random.nextFloat() * 0.36f - 0.18f
             }
             delay(100L)
             blinking = true
             delay(115L)
             blinking = false
-            if ((0..4).random() == 0) {
+            if (Random.nextInt(5) == 0) {
                 delay(150L)
                 blinking = true
                 delay(100L)
