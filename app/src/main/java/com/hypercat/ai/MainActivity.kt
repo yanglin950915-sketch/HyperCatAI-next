@@ -54,6 +54,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -456,20 +457,53 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
     var gazeX by remember { mutableStateOf(0f) }
     var gazeY by remember { mutableStateOf(0f) }
     var blinking by remember { mutableStateOf(false) }
-    val pupilX by animateFloatAsState(gazeX, animationSpec = tween(180), label = "pupilX")
-    val pupilY by animateFloatAsState(gazeY, animationSpec = tween(180), label = "pupilY")
-    val eyelid by animateFloatAsState(if (blinking) 0.10f else 1f, animationSpec = tween(85), label = "eyelid")
+    var lastTouchAt by remember { mutableStateOf(0L) }
+    val pupilX by animateFloatAsState(gazeX, animationSpec = tween(260), label = "pupilX")
+    val pupilY by animateFloatAsState(gazeY, animationSpec = tween(260), label = "pupilY")
+    val eyelid by animateFloatAsState(if (blinking) 0.06f else 1f, animationSpec = tween(105), label = "eyelid")
+    val idle = rememberInfiniteTransition(label = "petIdle")
+    val breathe by idle.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1900), RepeatMode.Reverse), label = "breathe"
+    )
+    val floatY by idle.animateFloat(
+        initialValue = -3.5f, targetValue = 3.5f,
+        animationSpec = infiniteRepeatable(tween(2400), RepeatMode.Reverse), label = "floatY"
+    )
+    val eyeSparkle by idle.animateFloat(
+        initialValue = 0.72f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1300), RepeatMode.Reverse), label = "eyeSparkle"
+    )
 
-    LaunchedEffect(blinking) {
-        if (blinking) {
-            delay(150)
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay((2300L..4300L).random())
+            if (System.currentTimeMillis() - lastTouchAt > 3200L) {
+                gazeX = (-0.35f..0.35f).random()
+                gazeY = (-0.18f..0.18f).random()
+            }
+            delay(100L)
+            blinking = true
+            delay(115L)
             blinking = false
+            if ((0..4).random() == 0) {
+                delay(150L)
+                blinking = true
+                delay(100L)
+                blinking = false
+            }
         }
     }
 
     Canvas(modifier
+        .graphicsLayer {
+            translationY = floatY.dp.toPx()
+            scaleX = 1f + breathe * 0.008f
+            scaleY = 1f - breathe * 0.006f
+        }
         .pointerInput(Unit) {
             detectTapGestures { point ->
+                lastTouchAt = System.currentTimeMillis()
                 val w = size.width.toFloat().coerceAtLeast(1f)
                 val h = size.height.toFloat().coerceAtLeast(1f)
                 gazeX = (((point.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
@@ -480,12 +514,14 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
         .pointerInput(Unit) {
             detectDragGestures(
                 onDragStart = { point ->
+                    lastTouchAt = System.currentTimeMillis()
                     val w = size.width.toFloat().coerceAtLeast(1f)
                     val h = size.height.toFloat().coerceAtLeast(1f)
                     gazeX = (((point.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
                     gazeY = (((point.y / h) - 0.47f) * 2.8f).coerceIn(-1f, 1f)
                 },
                 onDrag = { change, _ ->
+                    lastTouchAt = System.currentTimeMillis()
                     val w = size.width.toFloat().coerceAtLeast(1f)
                     val h = size.height.toFloat().coerceAtLeast(1f)
                     gazeX = (((change.position.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
@@ -501,19 +537,20 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
         val eyeH = size.height * .31f
         val gap = size.width * .17f
         val eyeWhite = Color(0xFFF4F1EA)
-        listOf(cx - gap, cx + gap).forEach { x ->
-            val currentEyeH = eyeH * eyelid
-            // Soft ivory eye whites with compact dark pupils: calmer, friendlier and less neon.
+        listOf(cx - gap, cx + gap).forEachIndexed { index, x ->
+            val wink = if (mood == "happy") 0.82f else 1f
+            val currentEyeH = eyeH * eyelid * wink * (0.985f + breathe * 0.015f)
             drawOval(eyeWhite, Offset(x - eyeW / 2, cy - currentEyeH / 2), Size(eyeW, currentEyeH))
             if (eyelid > .22f) {
                 val px = (pupilX * eyeW * .30f).coerceIn(-eyeW * .30f, eyeW * .30f)
                 val py = (pupilY * eyeH * .22f).coerceIn(-eyeH * .22f, eyeH * .22f)
                 val pupilCenter = Offset(x + px, cy + py)
                 drawCircle(Color(0xFF242424), radius = eyeW * .285f, center = pupilCenter)
-                drawCircle(Color.White, radius = eyeW * .075f, center = Offset(x + px - eyeW * .09f, cy - eyeH * .10f + py))
+                drawCircle(Color.White.copy(alpha = eyeSparkle), radius = eyeW * .075f, center = Offset(x + px - eyeW * .09f, cy - eyeH * .10f + py))
+                drawCircle(Color.White.copy(alpha = .42f), radius = eyeW * .035f, center = Offset(x + px + eyeW * .10f, cy + eyeH * .07f + py))
             }
         }
-        val noseY = cy + eyeH * .72f
+        val noseY = cy + eyeH * .72f + breathe * 1.2f.dp.toPx()
         val nose = Path().apply {
             moveTo(cx - 7.dp.toPx(), noseY)
             quadraticTo(cx, noseY - 8.dp.toPx(), cx + 7.dp.toPx(), noseY)
