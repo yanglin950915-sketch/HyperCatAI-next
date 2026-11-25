@@ -1,24 +1,25 @@
 # HyperCat AI
 
-面向小米 Pro 系列背屏的轻量萌宠应用。
+面向小米 Pro 系列背屏的轻量机器人萌宠应用。
 
 ## 当前版本
-- Android APK：0.4.0
-- 主程序：萌宠选择 + 明确确认同步
-- 背屏：MAML + 内置 ContentProvider 数据桥
+- Android APK：下一构建版本（机器人萌宠同步修复）
+- 主程序：选择萌宠后点击确认同步
+- 背屏：黑色背景、机器人表情、摄像头避让布局
 - 无 Root / 无 Shizuku 依赖
 
-## 背屏模块
-GitHub Actions 会生成两个构建产物：
-- `HyperCatAI-debug-apk`：安装到手机的 APK
-- `rearscreen`：可直接替换的背屏文件夹压缩包，内部为 `rearscreen/manifest.xml`
+## rearscreen 文件夹
+仓库中的 `rearscreen/` 就是完整可替换文件夹，当前包含：
+```
+rearscreen/
+└── manifest.xml
+```
+不再手工制作 rearscreen.zip。可直接打开 [rearscreen/manifest.xml](rearscreen/manifest.xml) 下载原始文件，并放入名为 `rearscreen` 的文件夹中；用整个文件夹替换旧目录。GitHub Actions 的目录构建产物由 GitHub 平台自动封装下载，不是项目额外生成的 ZIP。
 
-解压 `rearscreen` 产物后，用里面的 `rearscreen` 文件夹替换背屏 AI 壁纸目录中的旧文件夹。
-
-## 更换萌宠
-在主程序中点选萌宠，再点击“确认更换萌宠”。只有确认后才写入背屏数据。MAML 模板每秒读取一次状态，右上角刷新按钮也可手动刷新。
-
-数据 URI：`content://uriroute/data?group=hypercat&name=pet-state`。
+## 数据同步
+主程序确认后写入 SharedPreferences；背屏通过本应用独立导出的 ContentProvider 读取：
+`content://com.hypercat.ai.rear.provider/pet-state`
+不再使用通用 `uriroute` authority，避免与系统/第三方 Provider 冲突。MAML 每秒轮询，并支持右上角手动刷新。
 
 ## 当前范围
-当前版本专注于萌宠选择、同步和背屏内触摸反馈。AI Agent、本地模型和在线模型功能尚未接入，不在主界面展示未完成的占位入口。
+当前版本专注于萌宠选择、状态同步和背屏触摸反馈。AI Agent、本地模型和在线模型尚未接入。
