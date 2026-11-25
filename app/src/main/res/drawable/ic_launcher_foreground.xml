@@ -1,7 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M54,18 C43,18 34,25 31,36 L21,27 C18,24 13,26 14,31 L18,47 C15,53 15,61 18,68 C23,81 37,89 54,89 C71,89 85,81 90,68 C93,61 93,53 90,47 L94,31 C95,26 90,24 87,27 L77,36 C74,25 65,18 54,18 Z"/>
-    <path android:fillColor="#FF15243B" android:pathData="M38,48 C42,48 45,53 45,59 C45,65 42,69 38,69 C34,69 31,65 31,59 C31,53 34,48 38,48 Z M70,48 C74,48 77,53 77,59 C77,65 74,69 70,69 C66,69 63,65 63,59 C63,53 66,48 70,48 Z"/>
-    <path android:fillColor="#FF55CFE4" android:pathData="M49,71 Q54,65 59,71 Q54,78 49,71 Z"/>
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Minimal black cat mark: geometric ears and a calm, high-contrast face. -->
+    <path
+        android:fillColor="#FF111111"
+        android:pathData="M54,17 C44,17 36,23 32,33 L18,24 C14,21 10,25 12,30 L19,48 C16,54 16,62 19,69 C24,82 37,90 54,90 C71,90 84,82 89,69 C92,62 92,54 89,48 L96,30 C98,25 94,21 90,24 L76,33 C72,23 64,17 54,17 Z"/>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M37,49 C41,49 44,54 44,60 C44,66 41,70 37,70 C33,70 30,66 30,60 C30,54 33,49 37,49 Z M71,49 C75,49 78,54 78,60 C78,66 75,70 71,70 C67,70 64,66 64,60 C64,54 67,49 71,49 Z"/>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M48,72 Q54,66 60,72 Q54,80 48,72 Z"/>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,77 Q49,84 44,80 M54,77 Q59,84 64,80"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"/>
 </vector>
