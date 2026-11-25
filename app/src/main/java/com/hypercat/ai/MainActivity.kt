@@ -736,7 +736,7 @@ private fun ChatPage(
             if (isListening) Text("正在聆听… 说完后系统会自动返回识别文字", color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
         }
     }
-        AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize(),
+        AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding(),
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()) {
                     Surface(modifier = Modifier.fillMaxSize(), color = Panel, shape = RoundedCornerShape(0.dp)) {
@@ -857,6 +857,9 @@ private fun SettingsPage(
     var showMcpDialog by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
     var showTaskDialog by remember { mutableStateOf(false) }
+    var showSecurityDetail by remember { mutableStateOf(false) }
+    var securityDetailTitle by remember { mutableStateOf("") }
+    var securityDetailText by remember { mutableStateOf("") }
     var taskTitle by remember { mutableStateOf("") }
     var taskDelayMinutes by remember { mutableStateOf("30") }
     var profileName by remember { mutableStateOf("") }
@@ -931,6 +934,41 @@ private fun SettingsPage(
             }
         }
         Spacer(Modifier.height(22.dp))
+        Text("安全防护", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text("管理 HyperCat AI 在应用内可执行的敏感操作授权", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+        val securityItems = listOf(
+            Triple("security_delete_files", "删除本地文件的授权", "允许应用在明确确认后删除其管理的本地文件。不会授予任意目录的系统级删除权限。"),
+            Triple("security_sensitive_dirs", "敏感目录的授权", "管理对用户指定目录的访问。访问 Android 受保护目录仍需通过系统文件选择器单独授权。"),
+            Triple("security_system_protection", "系统安全保护", "限制高风险操作并提示权限变化；不代表获得设备管理员或系统安全中心权限。"),
+            Triple("security_file_protection", "文件安全保护", "对应用管理的文件操作增加确认与保护提示；尚不等同于全盘防病毒或实时监控。"),
+            Triple("security_identity_delegate", "身份委托控制", "控制是否允许应用内功能代表你执行已授权的操作；不会共享系统账号凭据。"),
+            Triple("security_resource_access", "应用和资源访问控制", "管理应用内功能访问文件、附件及其他资源的授权偏好。")
+        )
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 5.dp)) {
+                securityItems.forEach { (key, title, description) ->
+                    var granted by remember(key) { mutableStateOf(prefs.getBoolean(key, false)) }
+                    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(title, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text(if (granted) "应用内已授权" else "尚未授权", color = if (granted) Color(0xFF70C99A) else Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                        }
+                        Switch(checked = granted, onCheckedChange = {
+                            granted = it
+                            prefs.edit().putBoolean(key, it).apply()
+                        })
+                        IconButton(onClick = {
+                            securityDetailTitle = title
+                            securityDetailText = description
+                            showSecurityDetail = true
+                        }) { Text("ⓘ", color = Muted, fontSize = 17.sp) }
+                    }
+                    if (key != securityItems.last().first) Divider(color = GlassBorder.copy(alpha = .45f))
+                }
+            }
+        }
+        Text("说明：这里的开关记录应用内授权意愿，不会绕过 Android 权限机制。系统目录、设备管理等权限仍需系统正式授权。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
+        Spacer(Modifier.height(22.dp))
         Text("扩展能力", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         SettingsAction("◷", "定时任务", "创建一次性提醒，到时间通过系统通知提醒") { showTaskDialog = true }
@@ -953,6 +991,12 @@ private fun SettingsPage(
         }
 
     }
+    if (showSecurityDetail) AlertDialog(
+        onDismissRequest = { showSecurityDetail = false },
+        title = { Text(securityDetailTitle) },
+        text = { Text(securityDetailText + "\\n\\n当前开关仅保存应用内授权状态；涉及系统级文件或设备权限时，仍会通过 Android 系统授权流程单独申请。", color = Muted) },
+        confirmButton = { TextButton(onClick = { showSecurityDetail = false }) { Text("知道了") } }
+    )
     if (showPluginDialog) AlertDialog(
         onDismissRequest = { showPluginDialog = false },
         title = { Text("插件管理") },
