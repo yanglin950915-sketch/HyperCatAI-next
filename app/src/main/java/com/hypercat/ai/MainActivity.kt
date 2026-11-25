@@ -34,12 +34,13 @@ import com.hypercat.ai.pet.PetMood
 class MainActivity : ComponentActivity() {
     private var remoteShell: IRemoteShell? = null
     private var pendingStatus: ((String) -> Unit)? = null
+    private var pendingCommand: String = "dumpsys display"
 
     private val serviceArgs by lazy {
         Shizuku.UserServiceArgs(ComponentName(this, ShellUserService::class.java))
             .daemon(false)
             .processNameSuffix("hypercat")
-            .version(2)
+            .version(3)
     }
 
     private val serviceConnection = object : ServiceConnection {
@@ -50,10 +51,10 @@ class MainActivity : ComponentActivity() {
                 try {
                     val shell = remoteShell ?: throw IllegalStateException("Shizuku 服务未连接")
                     // HyperOS does not implement "am display list"; query SurfaceFlinger/DisplayManager diagnostics instead.
-                    val displays = shell.exec("dumpsys display")
+                    val displays = shell.exec(pendingCommand)
                     runOnUiThread {
                         callback?.invoke(
-                            "Shizuku 已连接，已执行 dumpsys display 检测。\n\n" +
+                            "Shizuku 已连接，已执行命令：$pendingCommand\n\n" +
                                 displays +
                                 "\n\n请把完整检测结果发给开发者。确认背屏 display ID 后，再执行定向启动。"
                         )
@@ -82,6 +83,7 @@ class MainActivity : ComponentActivity() {
     }
 
     fun launchPetOnRearDisplay(onStatus: (String) -> Unit) {
+        pendingCommand = "dumpsys display"
         pendingStatus = onStatus
         try {
             if (!Shizuku.pingBinder()) {
@@ -96,6 +98,25 @@ class MainActivity : ComponentActivity() {
             bindRearShell()
         } catch (e: Exception) {
             onStatus("Shizuku 初始化失败：${e.message ?: "未知错误"}")
+        }
+    }
+
+    fun testLaunchOnRearDisplay(onStatus: (String) -> Unit) {
+        pendingCommand = "am start --display 1 -n com.hypercat.ai/.MainActivity"
+        pendingStatus = onStatus
+        try {
+            if (!Shizuku.pingBinder()) {
+                onStatus("没有检测到 Shizuku 服务。请先打开 Shizuku 并确认状态为运行中。")
+                return
+            }
+            if (Shizuku.checkSelfPermission() != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                Shizuku.requestPermission(1001)
+                onStatus("请在弹出的 Shizuku 窗口中允许 HyperCat AI。")
+                return
+            }
+            bindRearShell()
+        } catch (e: Exception) {
+            onStatus("背屏定向启动测试失败：${e.message ?: "未知错误"}")
         }
     }
 
@@ -205,7 +226,7 @@ private fun HyperCatApp() {
             Surface(color = Color(0xFF202D49), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
                     Text("小米背屏连接（实验功能）", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("HyperOS 不允许普通应用直接绘制背屏。本实验使用 Shizuku 授权执行固定系统命令，将 HyperCat AI 启动到背屏；需要先在 Shizuku 中授权。", color = Color(0xFFB5BED3), fontSize = 11.sp)
+                    Text("已确认系统识别到 904×572 的可信独立背屏。先检测显示设备，再用 Shizuku 尝试将本应用 Activity 定向启动到 Display 1。", color = Color(0xFFB5BED3), fontSize = 11.sp)
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = {
                         (context as? MainActivity)?.launchPetOnRearDisplay {
@@ -213,6 +234,12 @@ private fun HyperCatApp() {
                             if (it.contains("exit=") || it.contains("Display")) showDiagnostics = true
                         }
                     }, modifier = Modifier.fillMaxWidth()) { Text("Shizuku 授权并检测显示屏") }
+                    OutlinedButton(onClick = {
+                        (context as? MainActivity)?.testLaunchOnRearDisplay {
+                            rearStatus = it
+                            showDiagnostics = true
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("测试启动 HyperCat AI 到背屏") }
                     Text(
                         rearStatus.lineSequence().take(3).joinToString("\n"),
                         color = Color(0xFFB5BED3),
