@@ -15,10 +15,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChatBubbleOutline
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -84,11 +80,11 @@ private fun HyperCatApp() {
             bottomBar = {
                 NavigationBar(containerColor = Color(0xFF0D1726), tonalElevation = 0.dp) {
                     NavigationBarItem(selected = page == Page.HOME, onClick = { page = Page.HOME },
-                        icon = { Icon(Icons.Default.Home, null) }, label = { Text("萌宠") })
+                        icon = { Text("⌂", fontSize = 21.sp) }, label = { Text("萌宠") })
                     NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
-                        icon = { Icon(Icons.Default.ChatBubbleOutline, null) }, label = { Text("Agent") })
+                        icon = { Text("◌", fontSize = 21.sp) }, label = { Text("Agent") })
                     NavigationBarItem(selected = page == Page.SETTINGS, onClick = { page = Page.SETTINGS },
-                        icon = { Icon(Icons.Default.Settings, null) }, label = { Text("模型配置") })
+                        icon = { Text("⚙", fontSize = 19.sp) }, label = { Text("模型配置") })
                 }
             }
         ) { padding ->
@@ -170,13 +166,11 @@ private fun HomePage(modifier: Modifier, configured: Boolean, openChat: () -> Un
         }
         Spacer(Modifier.height(16.dp))
         Button(onClick = openChat, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(18.dp)) {
-            Icon(Icons.Default.ChatBubbleOutline, null)
             Spacer(Modifier.width(9.dp))
             Text("和小橘开始对话", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(10.dp))
         OutlinedButton(onClick = openSettings, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp)) {
-            Icon(Icons.Default.Settings, null)
             Spacer(Modifier.width(8.dp))
             Text("配置本地 / 在线大模型")
         }
