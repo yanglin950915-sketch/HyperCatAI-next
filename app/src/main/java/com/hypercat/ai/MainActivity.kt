@@ -1,9 +1,6 @@
 package com.hypercat.ai
 
 import android.os.Bundle
-import android.content.pm.PackageManager
-import rikka.shizuku.Shizuku
-import java.util.concurrent.Executors
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -27,63 +24,27 @@ import com.hypercat.ai.pet.PetCatalog
 import com.hypercat.ai.pet.PetMood
 
 class MainActivity : ComponentActivity() {
-    private val rearExecutor = Executors.newSingleThreadExecutor()
-    private var rearStatus: ((String) -> Unit)? = null
-    private val permissionListener = Shizuku.OnRequestPermissionResultListener { code, result ->
-        if (code == 7301) {
-            if (result == PackageManager.PERMISSION_GRANTED) launchRearCommand()
-            else rearStatus?.invoke("Shizuku 权限未授权")
-        }
-    }
-
     fun launchPetOnRearDisplay(onStatus: (String) -> Unit) {
-        rearStatus = onStatus
-        if (!Shizuku.pingBinder()) {
-            onStatus("未检测到 Shizuku，请先安装并启动 Shizuku。")
-            return
-        }
         try {
-            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) launchRearCommand()
-            else Shizuku.requestPermission(7301)
-        } catch (e: Exception) {
-            onStatus("Shizuku 状态检查失败：${e.message ?: "未知错误"}")
-        }
-    }
-
-    private fun launchRearCommand() {
-        rearExecutor.execute {
-            try {
-                val process = Shizuku.newProcess(
-                    arrayOf("/system/bin/am", "start", "--display", "1", "-n", "$packageName/.MainActivity"),
-                    null,
-                    null
-                )
-                val output = process.inputStream.bufferedReader().use { it.readText() }
-                val error = process.errorStream.bufferedReader().use { it.readText() }
-                val exitCode = process.waitFor()
-                runOnUiThread {
-                    rearStatus?.invoke(
-                        if (exitCode == 0 && !output.contains("Error:") && !error.contains("Error:"))
-                            "已发送背屏启动指令。若未显示，可能是当前 HyperOS 版本限制第三方 Activity。"
-                        else "启动失败：${(error + output).trim().ifBlank { "命令退出码 $exitCode" }}"
-                    )
-                }
-            } catch (e: Exception) {
-                runOnUiThread { rearStatus?.invoke("背屏启动失败：${e.message ?: "未知错误"}") }
+            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
+                onStatus("当前 Android 版本不支持多显示屏启动。")
+                return
             }
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            val options = android.app.ActivityOptions.makeBasic()
+                .setLaunchDisplayId(1)
+            startActivity(intent, options.toBundle())
+            onStatus("已请求在副显示屏启动。若背屏没有显示，说明系统未向第三方应用开放该显示屏。")
+        } catch (e: Exception) {
+            onStatus("副屏启动被系统拒绝或不可用：${e.message ?: "未知错误"}")
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Shizuku.addRequestPermissionResultListener(permissionListener)
         setContent { HyperCatApp() }
-    }
-
-    override fun onDestroy() {
-        Shizuku.removeRequestPermissionResultListener(permissionListener)
-        rearExecutor.shutdown()
-        super.onDestroy()
     }
 }
 
