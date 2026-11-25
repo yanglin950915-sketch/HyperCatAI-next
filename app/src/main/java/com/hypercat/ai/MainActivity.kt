@@ -105,6 +105,7 @@ private fun inferMood(reply: String): String = when {
 private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList())
 private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String)
 private data class SkillProfile(val name: String, val description: String, val instructions: String)
+private data class ThirdPartyPlugin(val name: String, val description: String, val endpoint: String, val method: String, val apiKey: String, val enabled: Boolean = false)
 private data class ReleaseInfo(val version: String, val notes: String, val url: String)
 private fun versionIsNewer(latest: String, current: String): Boolean {
     fun parts(value: String) = value.trim().removePrefix("v").split(".", "-", "+").map { it.toIntOrNull() ?: 0 }
@@ -408,12 +409,6 @@ private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, p
                 }
                 Spacer(Modifier.height(12.dp))
                 Box(Modifier.fillMaxWidth().height(236.dp), contentAlignment = Alignment.Center) {
-                    Canvas(Modifier.fillMaxSize()) {
-                        val center = Offset(size.width / 2f, size.height * .48f)
-                        drawCircle(Cyan.copy(alpha = if (appDarkState) .07f else .10f), size.minDimension * .43f, center)
-                        drawCircle(Cyan.copy(alpha = .12f), size.minDimension * .34f, center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
-                        drawCircle(Color(0xFF8C7BFF).copy(alpha = .12f), size.minDimension * .27f, center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
-                    }
                     CatFace(Modifier.fillMaxWidth(.92f).fillMaxHeight(.92f), petMood)
                 }
                 Spacer(Modifier.height(4.dp))
@@ -541,15 +536,23 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
         listOf(cx - gap, cx + gap).forEachIndexed { index, x ->
             val wink = if (mood == "happy") 0.82f else 1f
             val currentEyeH = eyeH * eyelid * wink * (0.985f + breathe * 0.015f)
-            drawOval(eyeWhite, Offset(x - eyeW / 2, cy - currentEyeH / 2), Size(eyeW, currentEyeH))
+            val eyeTop = cy - currentEyeH / 2
+            drawOval(brush = Brush.verticalGradient(colors = listOf(Color(0xFFFFFFFF), eyeWhite, Color(0xFFE5E1DA)), startY = eyeTop, endY = eyeTop + currentEyeH), topLeft = Offset(x - eyeW / 2, eyeTop), size = Size(eyeW, currentEyeH))
             if (eyelid > .22f) {
                 val px = (pupilX * eyeW * .30f).coerceIn(-eyeW * .30f, eyeW * .30f)
                 val py = (pupilY * eyeH * .22f).coerceIn(-eyeH * .22f, eyeH * .22f)
-                val pupilCenter = Offset(x + px, cy + py)
-                drawCircle(Color(0xFF242424), radius = eyeW * .285f, center = pupilCenter)
-                drawCircle(Color.White.copy(alpha = eyeSparkle), radius = eyeW * .075f, center = Offset(x + px - eyeW * .09f, cy - eyeH * .10f + py))
-                drawCircle(Color.White.copy(alpha = .42f), radius = eyeW * .035f, center = Offset(x + px + eyeW * .10f, cy + eyeH * .07f + py))
+                val irisCenter = Offset(x + px, cy + py)
+                drawCircle(Color(0xFF9B7960), radius = eyeW * .305f, center = irisCenter)
+                drawCircle(Color(0xFF382B25), radius = eyeW * .255f, center = irisCenter)
+                drawCircle(Color(0xFF101010), radius = eyeW * .19f, center = irisCenter)
+                drawCircle(Color.White.copy(alpha = eyeSparkle), radius = eyeW * .085f, center = Offset(x + px - eyeW * .095f, cy - eyeH * .105f + py))
+                drawCircle(Color.White.copy(alpha = .55f), radius = eyeW * .038f, center = Offset(x + px + eyeW * .105f, cy + eyeH * .075f + py))
             }
+            val lash = Path().apply {
+                moveTo(x - eyeW * .49f, cy - currentEyeH * .12f)
+                quadraticTo(x, eyeTop - 2.dp.toPx(), x + eyeW * .49f, cy - currentEyeH * .12f)
+            }
+            drawPath(lash, Color(0xFF403631).copy(alpha = .72f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.7.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
         }
         val noseY = cy + eyeH * .72f + breathe * 1.2f.dp.toPx()
         val nose = Path().apply {
@@ -909,10 +912,32 @@ private fun SettingsPage(
     var taskDelayMinutes by remember { mutableStateOf("30") }
     var profileName by remember { mutableStateOf("") }
     var pluginEnabled by remember { mutableStateOf(false) }
+    var pluginName by remember { mutableStateOf("") }
+    var pluginDescription by remember { mutableStateOf("") }
+    var pluginEndpoint by remember { mutableStateOf("") }
+    var pluginMethod by remember { mutableStateOf("POST") }
+    var pluginApiKey by remember { mutableStateOf("") }
+    var pluginStatus by remember { mutableStateOf("支持导入 JSON 插件清单或手动添加 REST API 插件") }
+    val plugins = remember { mutableStateListOf<ThirdPartyPlugin>() }
     var mcpName by remember { mutableStateOf("") }
     var mcpEndpoint by remember { mutableStateOf("") }
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
+    val pluginImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("无法读取插件清单")
+            val json = JSONObject(raw)
+            val name = json.optString("name").trim()
+            val endpoint = json.optString("endpoint").trim()
+            require(name.isNotBlank() && endpoint.startsWith("https://")) { "插件名称不能为空，且远程地址必须使用 HTTPS" }
+            val method = json.optString("method", "POST").uppercase().let { if (it in listOf("GET", "POST")) it else "POST" }
+            val item = ThirdPartyPlugin(name.take(60), json.optString("description").take(300), endpoint, method, json.optString("apiKey"), false)
+            plugins.removeAll { it.name.equals(item.name, true) }
+            plugins.add(0, item)
+            persistPlugins()
+            pluginStatus = "已导入插件：\${item.name}（默认未启用）"
+        }.onFailure { pluginStatus = "导入失败：\${it.message ?: "文件格式错误"}" }
+    }
     val skillImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("无法读取所选文件")
@@ -933,6 +958,13 @@ private fun SettingsPage(
     }
     LaunchedEffect(Unit) {
         pluginEnabled = prefs.getBoolean("plugins_enabled", false)
+        runCatching {
+            val array = org.json.JSONArray(prefs.getString("third_party_plugins", "[]") ?: "[]")
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                plugins.add(ThirdPartyPlugin(item.optString("name"), item.optString("description"), item.optString("endpoint"), item.optString("method", "POST"), item.optString("apiKey"), item.optBoolean("enabled", false)))
+            }
+        }
         mcpName = prefs.getString("mcp_name", "") ?: ""
         mcpEndpoint = prefs.getString("mcp_endpoint", "") ?: ""
         runCatching {
@@ -947,6 +979,11 @@ private fun SettingsPage(
         val array = org.json.JSONArray()
         skills.forEach { item -> array.put(JSONObject().put("name", item.name).put("description", item.description).put("instructions", item.instructions)) }
         prefs.edit().putString("agent_skills", array.toString()).apply()
+    }
+    fun persistPlugins() {
+        val array = org.json.JSONArray()
+        plugins.forEach { item -> array.put(JSONObject().put("name", item.name).put("description", item.description).put("endpoint", item.endpoint).put("method", item.method).put("apiKey", item.apiKey).put("enabled", item.enabled)) }
+        prefs.edit().putString("third_party_plugins", array.toString()).apply()
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
@@ -1117,14 +1154,57 @@ private fun SettingsPage(
     )
     if (showPluginDialog) AlertDialog(
         onDismissRequest = { showPluginDialog = false },
-        title = { Text("插件管理") },
-        text = { Column {
-            Text("插件扩展入口已建立。当前版本尚未接入第三方插件运行时，开关仅保存管理偏好。", color = Muted, fontSize = 12.sp)
+        title = { Text("第三方插件") },
+        text = { Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState())) {
+            Text("支持接入 HTTPS REST API 插件。可手动登记或导入 JSON 清单；插件默认关闭，启用前请确认服务来源与权限。当前提供插件登记、启停和配置持久化，Agent 自动调用/参数映射将在工具执行层接入后开放。", color = Muted, fontSize = 11.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("启用插件功能", modifier = Modifier.weight(1f), color = MainText)
+                Text("允许启用第三方插件", modifier = Modifier.weight(1f), color = MainText, fontSize = 13.sp)
                 Switch(checked = pluginEnabled, onCheckedChange = { pluginEnabled = it; prefs.edit().putBoolean("plugins_enabled", it).apply() })
             }
-            Text("后续可在此安装、授权和管理工具插件。", color = Muted, fontSize = 11.sp)
+            Divider(color = GlassBorder)
+            Text("添加插件", color = MainText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+            OutlinedTextField(value = pluginName, onValueChange = { pluginName = it.take(60) }, label = { Text("插件名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = pluginDescription, onValueChange = { pluginDescription = it.take(300) }, label = { Text("功能说明") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = pluginEndpoint, onValueChange = { pluginEndpoint = it.take(1000) }, label = { Text("HTTPS API 地址") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(selected = pluginMethod == "GET", onClick = { pluginMethod = "GET" }, label = { Text("GET") })
+                Spacer(Modifier.width(8.dp))
+                FilterChip(selected = pluginMethod == "POST", onClick = { pluginMethod = "POST" }, label = { Text("POST") })
+            }
+            OutlinedTextField(value = pluginApiKey, onValueChange = { pluginApiKey = it.take(500) }, label = { Text("API Key（选填）") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            Button(onClick = {
+                val url = pluginEndpoint.trim()
+                if (pluginName.isNotBlank() && url.startsWith("https://")) {
+                    val item = ThirdPartyPlugin(pluginName.trim(), pluginDescription.trim(), url, pluginMethod, pluginApiKey.trim(), false)
+                    plugins.removeAll { it.name.equals(item.name, true) }
+                    plugins.add(0, item)
+                    persistPlugins()
+                    pluginName = ""; pluginDescription = ""; pluginEndpoint = ""; pluginApiKey = ""
+                    pluginStatus = "插件已添加，默认未启用"
+                } else pluginStatus = "请填写名称，并使用 HTTPS API 地址"
+            }, enabled = pluginName.isNotBlank() && pluginEndpoint.startsWith("https://"), modifier = Modifier.fillMaxWidth()) { Text("添加插件") }
+            OutlinedButton(onClick = { pluginImporter.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) { Text("导入 JSON 插件清单") }
+            Text(pluginStatus, color = Muted, fontSize = 10.sp)
+            Divider(color = GlassBorder)
+            Text("已接入插件 · \${plugins.size}", color = MainText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp))
+            if (plugins.isEmpty()) Text("尚未添加插件。", color = Muted, fontSize = 11.sp)
+            plugins.forEach { item ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(item.name, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("\${item.method} · \${item.endpoint}", color = Muted, fontSize = 9.sp, maxLines = 2)
+                        if (item.description.isNotBlank()) Text(item.description, color = Muted, fontSize = 10.sp, maxLines = 2)
+                    }
+                    Switch(checked = item.enabled, enabled = pluginEnabled, onCheckedChange = { enabled ->
+                        val index = plugins.indexOf(item)
+                        if (index >= 0) plugins[index] = item.copy(enabled = enabled)
+                        persistPlugins()
+                    })
+                    TextButton(onClick = { plugins.remove(item); persistPlugins(); pluginStatus = "已移除：\${item.name}" }) { Text("删除") }
+                }
+                Divider(color = GlassBorder.copy(alpha = .4f))
+            }
+            Text("清单格式：{ name, description, endpoint, method, apiKey }。仅接受 HTTPS 远程地址；导入后默认关闭。不要导入来源不明的 API Key。", color = Muted, fontSize = 10.sp)
         } },
         confirmButton = { TextButton(onClick = { showPluginDialog = false }) { Text("完成") } }
     )
