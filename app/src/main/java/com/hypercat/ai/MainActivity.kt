@@ -101,7 +101,7 @@ private fun HyperCatApp() {
         "light" -> false
         "dark" -> true
         "time" -> {
-            timeRefresh.let { java.time.LocalTime.now().hour }
+            val hour = timeRefresh.let { java.time.LocalTime.now().hour }
             hour < 7 || hour >= 19
         }
         else -> systemDark
