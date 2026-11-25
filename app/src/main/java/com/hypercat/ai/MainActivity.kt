@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +27,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
@@ -45,11 +47,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
 import com.hypercat.ai.rear.PetStateStore
 
-private val Bg = Color(0xFF080D18)
-private val Panel = Color(0xFF111C2D)
-private val Panel2 = Color(0xFF17263B)
-private val Cyan = Color(0xFF78E5F4)
-private val Muted = Color(0xFF91A3BA)
+private var appDarkState by mutableStateOf(true)
+private val Bg get() = if (appDarkState) Color(0xFF080D18) else Color(0xFFF1F5FA)
+private val Panel get() = if (appDarkState) Color(0xFF111C2D) else Color(0xFFFFFFFF)
+private val Panel2 get() = if (appDarkState) Color(0xFF17263B) else Color(0xFFE4EDF6)
+private val Cyan = Color(0xFF55CFE4)
+private val Muted get() = if (appDarkState) Color(0xFF91A3BA) else Color(0xFF65758A)
+private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .18f) else Color(0xFF8AA4BA).copy(alpha = .35f)
+private val MainText get() = if (appDarkState) Color(0xFFF4FAFF) else Color(0xFF142235)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,6 +86,18 @@ private fun HyperCatApp() {
     var draft by remember { mutableStateOf("") }
     var petName by remember { mutableStateOf("小橘") }
     var petMood by remember { mutableStateOf("normal") }
+    var themeMode by remember { mutableStateOf("system") }
+    val systemDark = isSystemInDarkTheme()
+    val darkNow = when (themeMode) {
+        "light" -> false
+        "dark" -> true
+        "time" -> {
+            val hour = java.time.LocalTime.now().hour
+            hour < 7 || hour >= 19
+        }
+        else -> systemDark
+    }
+    SideEffect { appDarkState = darkNow }
     val messages = remember { mutableStateListOf<ChatLine>() }
 
     LaunchedEffect(Unit) {
@@ -91,6 +108,7 @@ private fun HyperCatApp() {
         apiKey = prefs.getString("api_key", "") ?: ""
         saved = endpoint.isNotBlank() && model.isNotBlank()
         petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
+        themeMode = prefs.getString("theme_mode", "system") ?: "system"
     }
 
     LaunchedEffect(petName, petMood) {
@@ -98,14 +116,17 @@ private fun HyperCatApp() {
         PetStateStore.update(context, petName, "🤖", petMood, state.reply)
     }
 
-    MaterialTheme(colorScheme = darkColorScheme(
+    MaterialTheme(colorScheme = if (darkNow) darkColorScheme(
         primary = Cyan, secondary = Color(0xFFB9A4FF), background = Bg, surface = Panel,
         onPrimary = Color(0xFF06131B), onSurface = Color(0xFFEAF4FF)
+    ) else lightColorScheme(
+        primary = Color(0xFF168DA6), secondary = Color(0xFF7461C8), background = Bg, surface = Panel,
+        onPrimary = Color.White, onSurface = Color(0xFF142235)
     )) {
         Scaffold(
             containerColor = Bg,
             bottomBar = {
-                NavigationBar(containerColor = Color(0xFF0D1726), tonalElevation = 0.dp) {
+                NavigationBar(containerColor = if (darkNow) Color(0xCC0D1726) else Color(0xDDF7FAFD), tonalElevation = 0.dp) {
                     NavigationBarItem(selected = page == Page.HOME, onClick = { page = Page.HOME },
                         icon = { Text("⌂", fontSize = 21.sp) }, label = { Text("萌宠") })
                     NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
@@ -162,7 +183,12 @@ private fun HyperCatApp() {
                             .putString("model", model.trim()).putString("api_key", apiKey).apply()
                         saved = endpoint.isNotBlank() && model.isNotBlank()
                     },
-                    saved = saved
+                    saved = saved,
+                    themeMode = themeMode,
+                    onThemeMode = { mode ->
+                        themeMode = mode
+                        context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit().putString("theme_mode", mode).apply()
+                    }
                 )
             }
         }
@@ -178,21 +204,23 @@ private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, p
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("HYPERCAT AI", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.5.sp)
-                Text("你的随身 AI 伙伴", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+                Text("你的随身 AI 伙伴", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
             }
             Box(Modifier.size(42.dp).clip(CircleShape).background(Panel2), contentAlignment = Alignment.Center) {
                 Text("HC", color = Cyan, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(Modifier.height(18.dp))
-        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(30.dp), color = Color(0xFF0A1422), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF21364D))) {
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(30.dp), color = if (appDarkState) Color.White.copy(alpha = .075f) else Color.White.copy(alpha = .72f), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shadowElevation = 18.dp) {
             Column(Modifier.fillMaxSize().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Text("MEET YOUR COMPANION", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+                Text("MEET YOUR COMPANION  ·  ✦", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
                 Spacer(Modifier.height(8.dp))
-                CatFace(Modifier.fillMaxWidth().height(220.dp), petMood)
+                Box(Modifier.fillMaxWidth().height(220.dp).background(Brush.radialGradient(listOf(Cyan.copy(alpha = if (appDarkState) .18f else .12f), Color.Transparent)))) {
+                    CatFace(Modifier.fillMaxSize(), petMood)
+                }
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(petName, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold, maxLines = 2, softWrap = true)
+                    Text(petName, color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold, maxLines = 2, softWrap = true)
                     Spacer(Modifier.width(8.dp))
                     Text("✎", color = Cyan, fontSize = 17.sp, modifier = Modifier.clip(CircleShape).clickable { nameDraft = petName; showNameDialog = true }.padding(5.dp))
                 }
@@ -280,11 +308,15 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
         val eyeBrush = Brush.verticalGradient(listOf(Color(0xFFE7FFFF), Color(0xFF65DFF5), Color(0xFF1489C7)))
         listOf(cx - gap, cx + gap).forEach { x ->
             val currentEyeH = eyeH * eyelid
+            drawCircle(Color(0xFF55DDF5).copy(alpha = .13f), radius = eyeW * 1.02f, center = Offset(x, cy), style = androidx.compose.ui.graphics.drawscope.Fill)
+            drawOval(Color(0xFFB8F6FF).copy(alpha = .28f), Offset(x - eyeW / 2 - 2.dp.toPx(), cy - currentEyeH / 2 - 2.dp.toPx()), Size(eyeW + 4.dp.toPx(), currentEyeH + 4.dp.toPx()), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.4.dp.toPx()))
             drawOval(eyeBrush, Offset(x - eyeW / 2, cy - currentEyeH / 2), Size(eyeW, currentEyeH))
             if (eyelid > 0.22f) {
                 val px = (pupilX * eyeW * .38f).coerceIn(-eyeW * .38f, eyeW * .20f)
                 val py = (pupilY * eyeH * .28f).coerceIn(-eyeH * .28f, eyeH * .16f)
-                drawCircle(Color(0xFF06172A), radius = eyeW * .29f, center = Offset(x + px, cy + eyeH * .05f + py))
+                drawCircle(Color(0xFF2CB6D8).copy(alpha = .55f), radius = eyeW * .34f, center = Offset(x + px, cy + eyeH * .05f + py))
+                drawCircle(Color(0xFF06172A), radius = eyeW * .285f, center = Offset(x + px, cy + eyeH * .05f + py))
+                drawCircle(Color(0xFF163E5B), radius = eyeW * .17f, center = Offset(x + px + eyeW * .025f, cy + eyeH * .07f + py))
                 drawCircle(Color.White, radius = eyeW * .085f, center = Offset(x + px - eyeW * .09f, cy - eyeH * .08f + py))
                 drawCircle(Color(0xFFB8F7FF), radius = eyeW * .035f, center = Offset(x + px + eyeW * .11f, cy + eyeH * .16f + py))
             }
@@ -342,7 +374,25 @@ private fun ChatPage(
                 }
             }
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
+        Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+            Text("常用 Skills", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    "总结" to "请帮我总结以下内容，提炼重点：",
+                    "翻译" to "请将下面内容准确翻译成中文：",
+                    "润色" to "请帮我润色下面这段文字，保持原意：",
+                    "写作" to "请根据以下要求帮我写一份内容：",
+                    "代码助手" to "请分析下面的代码并给出修复建议：",
+                    "头脑风暴" to "请围绕这个主题进行头脑风暴，给出可执行的创意："
+                ).forEach { (label, prompt) ->
+                    AssistChip(onClick = { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
+                        label = { Text(label, fontSize = 12.sp) },
+                        leadingIcon = { Text("✦", color = Cyan, fontSize = 11.sp) })
+                }
+            }
+            Text("快捷技能会填入提示词；模型接入后即可交由 Agent 执行。", color = Muted, fontSize = 10.sp)
+        }
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     CatFace(Modifier.width(220.dp).height(170.dp), petMood)
@@ -352,7 +402,7 @@ private fun ChatPage(
             }
             items(messages) { line ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start) {
-                    Surface(color = if (line.fromUser) Color(0xFF1D4560) else Panel2, shape = RoundedCornerShape(18.dp)) {
+                    Surface(color = if (line.fromUser) Color(0xAA1D7894) else if (appDarkState) Color.White.copy(alpha = .09f) else Color.White.copy(alpha = .78f), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(18.dp)) {
                         Column(Modifier.widthIn(max = 290.dp).padding(horizontal = 14.dp, vertical = 11.dp)) {
                             if (line.text.isNotBlank()) Text(line.text, color = Color.White, fontSize = 14.sp)
                             line.attachments.forEach { name -> Text("📎 $name", color = Cyan, fontSize = 11.sp) }
@@ -368,7 +418,7 @@ private fun ChatPage(
             }
         }
         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(Modifier.weight(1f), color = Panel, shape = RoundedCornerShape(18.dp)) {
+            Surface(Modifier.weight(1f), color = if (appDarkState) Color.White.copy(alpha = .09f) else Color.White.copy(alpha = .8f), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(18.dp)) {
                 BasicTextField(value = draft, onValueChange = onDraft, modifier = Modifier.padding(horizontal = 15.dp, vertical = 15.dp).fillMaxWidth(),
                     textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp),
                     decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给萌宠…", color = Muted, fontSize = 14.sp, maxLines = 1); inner() })
@@ -395,11 +445,22 @@ private fun ChatPage(
 private fun SettingsPage(
     modifier: Modifier, provider: String, onProvider: (String) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
-    apiKey: String, onApiKey: (String) -> Unit, onSave: () -> Unit, saved: Boolean
+    apiKey: String, onApiKey: (String) -> Unit, onSave: () -> Unit, saved: Boolean,
+    themeMode: String, onThemeMode: (String) -> Unit
 ) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
-        Text("模型配置", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("模型配置", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(18.dp))
+        Text("外观与主题", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text("可跟随系统，也可按时间自动切换（07:00 亮色 / 19:00 深色）", color = Muted, fontSize = 11.sp)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("system" to "跟随系统", "time" to "按时间", "light" to "浅色", "dark" to "深色").forEach { (mode, label) ->
+                FilterChip(selected = themeMode == mode, onClick = { onThemeMode(mode) }, label = { Text(label, fontSize = 11.sp) })
+            }
+        }
+        Spacer(Modifier.height(18.dp))
         Text("连接本地模型或在线大模型服务", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(20.dp))
         Text("服务类型", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
