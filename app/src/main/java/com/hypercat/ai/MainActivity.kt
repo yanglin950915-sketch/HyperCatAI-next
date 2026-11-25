@@ -2,6 +2,11 @@ package com.hypercat.ai
 
 import android.content.Context
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
@@ -54,7 +59,15 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class Page { HOME, CHAT, SETTINGS }
-private data class ChatLine(val text: String, val fromUser: Boolean)
+
+private fun inferMood(reply: String): String = when {
+    listOf("开心", "高兴", "太棒", "喜欢", "成功").any { reply.contains(it) } -> "happy"
+    listOf("难过", "抱歉", "遗憾", "失败").any { reply.contains(it) } -> "sad"
+    listOf("什么", "竟然", "惊讶", "哇").any { reply.contains(it) } -> "surprised"
+    listOf("思考", "考虑", "分析", "让我想想").any { reply.contains(it) } -> "thinking"
+    else -> "normal"
+}
+private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList())
 
 @Composable
 private fun HyperCatApp() {
@@ -67,6 +80,7 @@ private fun HyperCatApp() {
     var saved by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
     var petName by remember { mutableStateOf("小橘") }
+    var petMood by remember { mutableStateOf("normal") }
     val messages = remember { mutableStateListOf<ChatLine>() }
 
     LaunchedEffect(Unit) {
@@ -118,22 +132,23 @@ private fun HyperCatApp() {
                     modifier = Modifier.padding(padding),
                     messages = messages,
                     draft = draft,
+                    petMood = petMood,
+                    onMood = { mood -> petMood = mood },
                     onDraft = { draft = it },
-                    onSend = {
-                        val value = draft.trim()
-                        if (value.isNotEmpty()) {
-                            messages.add(ChatLine(value, true))
-                            messages.add(ChatLine(
-                                if (saved) "模型配置已保存，但当前版本尚未接入推理请求。下一步会连接你配置的模型接口。"
-                                else "我还没有连接大模型。先到「模型配置」填写本地或在线模型信息，之后就能启用真正的 AI 对话。",
-                                false
-                            ))
+                    onSend = { value, attachments ->
+                        if (value.isNotBlank() || attachments.isNotEmpty()) {
+                            messages.add(ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }))
+                            val reply = if (saved) "模型配置已保存，但当前版本尚未接入推理请求。附件已加入本条消息，下一步会接入模型多模态请求。" else "我还没有连接大模型。你可以先添加文字、图片或文件；到「模型配置」填写模型信息后，才能启用真正的 AI 对话。"
+                            val mood = inferMood(reply)
+                            petMood = mood
+                            messages.add(ChatLine(reply, false))
                             draft = ""
                         }
                     },
                     openSettings = { page = Page.SETTINGS },
                     configured = saved,
-                    petName = petName
+                    petName = petName,
+                    petMood = petMood
                 )
                 Page.SETTINGS -> SettingsPage(
                     modifier = Modifier.padding(padding),
@@ -214,7 +229,7 @@ private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, o
 }
 
 @Composable
-private fun CatFace(modifier: Modifier = Modifier) {
+private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
     var gazeX by remember { mutableStateOf(0f) }
     var gazeY by remember { mutableStateOf(0f) }
     var blinking by remember { mutableStateOf(false) }
@@ -284,10 +299,18 @@ private fun CatFace(modifier: Modifier = Modifier) {
         drawPath(nose, Color(0xFF8BEAFF))
         val mouthY = noseY + 12.dp.toPx()
         val mouth = Path().apply {
-            moveTo(cx, mouthY)
-            cubicTo(cx - 2.dp.toPx(), mouthY + 10.dp.toPx(), cx - 13.dp.toPx(), mouthY + 11.dp.toPx(), cx - 16.dp.toPx(), mouthY + 5.dp.toPx())
-            moveTo(cx, mouthY)
-            cubicTo(cx + 2.dp.toPx(), mouthY + 10.dp.toPx(), cx + 13.dp.toPx(), mouthY + 11.dp.toPx(), cx + 16.dp.toPx(), mouthY + 5.dp.toPx())
+            when (mood) {
+                "happy" -> { moveTo(cx - 17.dp.toPx(), mouthY); quadraticTo(cx, mouthY + 24.dp.toPx(), cx + 17.dp.toPx(), mouthY) }
+                "sad" -> { moveTo(cx - 15.dp.toPx(), mouthY + 9.dp.toPx()); quadraticTo(cx, mouthY - 7.dp.toPx(), cx + 15.dp.toPx(), mouthY + 9.dp.toPx()) }
+                "surprised" -> addOval(androidx.compose.ui.geometry.Rect(cx - 6.dp.toPx(), mouthY, cx + 6.dp.toPx(), mouthY + 15.dp.toPx()))
+                "thinking" -> { moveTo(cx - 10.dp.toPx(), mouthY + 4.dp.toPx()); lineTo(cx + 10.dp.toPx(), mouthY + 4.dp.toPx()) }
+                else -> {
+                    moveTo(cx, mouthY)
+                    cubicTo(cx - 2.dp.toPx(), mouthY + 10.dp.toPx(), cx - 13.dp.toPx(), mouthY + 11.dp.toPx(), cx - 16.dp.toPx(), mouthY + 5.dp.toPx())
+                    moveTo(cx, mouthY)
+                    cubicTo(cx + 2.dp.toPx(), mouthY + 10.dp.toPx(), cx + 13.dp.toPx(), mouthY + 11.dp.toPx(), cx + 16.dp.toPx(), mouthY + 5.dp.toPx())
+                }
+            }
         }
         drawPath(mouth, Color(0xFF8BEAFF), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.2.dp.toPx()))
     }
@@ -296,8 +319,16 @@ private fun CatFace(modifier: Modifier = Modifier) {
 @Composable
 private fun ChatPage(
     modifier: Modifier, messages: List<ChatLine>, draft: String, onDraft: (String) -> Unit,
-    onSend: () -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String
+    onSend: (String, List<Uri>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
+    petMood: String, onMood: (String) -> Unit
 ) {
+    var selectedFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
+    val voiceInput = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (!spoken.isNullOrBlank()) onDraft(if (draft.isBlank()) spoken else "$draft $spoken")
+    }
     Column(modifier.fillMaxSize().imePadding().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(20.dp))
         Text("Agent 对话", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
@@ -314,7 +345,7 @@ private fun ChatPage(
         LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    CatFace(Modifier.width(220.dp).height(170.dp))
+                    CatFace(Modifier.width(220.dp).height(170.dp), petMood)
                     Text("嗨，我是$petName。", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Text("你可以在这里和我聊天。", color = Muted, fontSize = 13.sp)
                 }
@@ -322,9 +353,18 @@ private fun ChatPage(
             items(messages) { line ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start) {
                     Surface(color = if (line.fromUser) Color(0xFF1D4560) else Panel2, shape = RoundedCornerShape(18.dp)) {
-                        Text(line.text, Modifier.widthIn(max = 290.dp).padding(horizontal = 14.dp, vertical = 11.dp), color = Color.White, fontSize = 14.sp)
+                        Column(Modifier.widthIn(max = 290.dp).padding(horizontal = 14.dp, vertical = 11.dp)) {
+                            if (line.text.isNotBlank()) Text(line.text, color = Color.White, fontSize = 14.sp)
+                            line.attachments.forEach { name -> Text("📎 $name", color = Cyan, fontSize = 11.sp) }
+                        }
                     }
                 }
+            }
+        }
+        if (selectedFiles.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("${selectedFiles.size} 个附件已添加", color = Cyan, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedFiles = emptyList() })
             }
         }
         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -334,7 +374,19 @@ private fun ChatPage(
                     decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给萌宠…", color = Muted, fontSize = 14.sp, maxLines = 1); inner() })
             }
             Spacer(Modifier.width(8.dp))
-            Button(onClick = onSend, enabled = draft.isNotBlank(), shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp)) { Text("发送") }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("＋", color = Cyan, fontSize = 22.sp, modifier = Modifier.clickable { filePicker.launch(arrayOf("*/*")) }.padding(horizontal = 8.dp))
+                Text("▧", color = Cyan, fontSize = 18.sp, modifier = Modifier.clickable { imagePicker.launch("image/*") }.padding(horizontal = 8.dp))
+            }
+            Text("🎙", fontSize = 20.sp, modifier = Modifier.clickable {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                    putExtra(RecognizerIntent.EXTRA_PROMPT, "请开始说话")
+                }
+                runCatching { voiceInput.launch(intent) }
+            }.padding(horizontal = 7.dp))
+            Button(onClick = { onSend(draft, selectedFiles); selectedFiles = emptyList() }, enabled = draft.isNotBlank() || selectedFiles.isNotEmpty(), shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(horizontal = 15.dp, vertical = 14.dp)) { Text("发送") }
         }
     }
 }
