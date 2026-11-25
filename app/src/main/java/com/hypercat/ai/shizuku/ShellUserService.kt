@@ -16,8 +16,7 @@ class ShellUserService @Keep constructor(@Suppress("UNUSED_PARAMETER") context: 
     @Throws(RemoteException::class)
     override fun exec(command: String): String {
         // Restrict this bridge to the small set of diagnostics/launch operations used by HyperCat.
-        val allowed = command == "am display list" ||
-            command == "am start --display 1 -n com.hypercat.ai/.MainActivity"
+        val allowed = command == "am display list"
         if (!allowed) return "拒绝执行未授权命令"
         return try {
             val process = ProcessBuilder("sh", "-c", command)
