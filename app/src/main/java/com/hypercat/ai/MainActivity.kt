@@ -102,6 +102,7 @@ private fun inferMood(reply: String): String = when {
 }
 private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList())
 private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String)
+private data class SkillProfile(val name: String, val description: String, val instructions: String)
 private data class ReleaseInfo(val version: String, val notes: String, val url: String)
 private fun versionIsNewer(latest: String, current: String): Boolean {
     fun parts(value: String) = value.trim().removePrefix("v").split(".", "-", "+").map { it.toIntOrNull() ?: 0 }
@@ -858,6 +859,30 @@ private fun SettingsPage(
     var showHelpDialog by remember { mutableStateOf(false) }
     var showTaskDialog by remember { mutableStateOf(false) }
     var showSecurityDetail by remember { mutableStateOf(false) }
+    var showSkillDialog by remember { mutableStateOf(false) }
+    var skillName by remember { mutableStateOf("") }
+    var skillDescription by remember { mutableStateOf("") }
+    var skillInstructions by remember { mutableStateOf("") }
+    var skillStatus by remember { mutableStateOf("支持导入 JSON、Markdown 和 TXT 技能文件") }
+    val skills = remember { mutableStateListOf<SkillProfile>() }
+    val skillImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("无法读取所选文件")
+            val json = runCatching { JSONObject(raw) }.getOrNull()
+            val importedName = json?.optString("name")?.takeIf { it.isNotBlank() }
+                ?: uri.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.')?.ifBlank { "导入技能" } ?: "导入技能"
+            val description = json?.optString("description").orEmpty()
+            val instructions = json?.optString("instructions")?.takeIf { it.isNotBlank() }
+                ?: json?.optString("content")?.takeIf { it.isNotBlank() } ?: raw
+            val skill = SkillProfile(importedName.take(60), description.take(300), instructions.take(30000))
+            skills.removeAll { it.name.equals(skill.name, true) }
+            skills.add(0, skill)
+            val array = org.json.JSONArray()
+            skills.forEach { item -> array.put(JSONObject().put("name", item.name).put("description", item.description).put("instructions", item.instructions)) }
+            prefs.edit().putString("agent_skills", array.toString()).apply()
+            skillStatus = "已导入：${skill.name}"
+        }.onFailure { skillStatus = "导入失败：${it.message ?: "文件格式无法识别"}" }
+    }
     var securityDetailTitle by remember { mutableStateOf("") }
     var securityDetailText by remember { mutableStateOf("") }
     var taskTitle by remember { mutableStateOf("") }
@@ -872,6 +897,18 @@ private fun SettingsPage(
         pluginEnabled = prefs.getBoolean("plugins_enabled", false)
         mcpName = prefs.getString("mcp_name", "") ?: ""
         mcpEndpoint = prefs.getString("mcp_endpoint", "") ?: ""
+        runCatching {
+            val array = org.json.JSONArray(prefs.getString("agent_skills", "[]") ?: "[]")
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                skills.add(SkillProfile(item.optString("name"), item.optString("description"), item.optString("instructions")))
+            }
+        }
+    }
+    fun persistSkills() {
+        val array = org.json.JSONArray()
+        skills.forEach { item -> array.put(JSONObject().put("name", item.name).put("description", item.description).put("instructions", item.instructions)) }
+        prefs.edit().putString("agent_skills", array.toString()).apply()
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
@@ -935,14 +972,14 @@ private fun SettingsPage(
         }
         Spacer(Modifier.height(22.dp))
         Text("安全防护", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Text("管理 HyperCat AI 在应用内可执行的敏感操作授权", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+        Text("为 Agent、插件和技能设定操作边界。建议默认关闭高风险权限，按任务、目录和资源逐项授权。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
         val securityItems = listOf(
-            Triple("security_delete_files", "删除本地文件的授权", "允许应用在明确确认后删除其管理的本地文件。不会授予任意目录的系统级删除权限。"),
-            Triple("security_sensitive_dirs", "敏感目录的授权", "管理对用户指定目录的访问。访问 Android 受保护目录仍需通过系统文件选择器单独授权。"),
-            Triple("security_system_protection", "系统安全保护", "限制高风险操作并提示权限变化；不代表获得设备管理员或系统安全中心权限。"),
-            Triple("security_file_protection", "文件安全保护", "对应用管理的文件操作增加确认与保护提示；尚不等同于全盘防病毒或实时监控。"),
-            Triple("security_identity_delegate", "身份委托控制", "控制是否允许应用内功能代表你执行已授权的操作；不会共享系统账号凭据。"),
-            Triple("security_resource_access", "应用和资源访问控制", "管理应用内功能访问文件、附件及其他资源的授权偏好。")
+            Triple("security_delete_files", "删除本地文件的授权", "控制 Agent、技能或工具是否可以发起文件删除。建议默认关闭；开启后也应逐次展示目标文件路径、文件名和影响范围，并要求用户二次确认。应用只能删除自身有权管理的文件，SAF 授权范围之外及 Android 受保护目录仍由系统拦截。"),
+            Triple("security_sensitive_dirs", "敏感目录的授权", "为下载、文档、照片、项目资料等目录分别设置访问范围。应遵循最小授权原则，只选择任务必需的目录；目录访问通过 Android 系统文件选择器授予，用户可随时撤销。不要将整个内部存储或包含密钥的目录无差别开放给技能。"),
+            Triple("security_system_protection", "系统安全保护", "作为高风险动作的总开关：对启动外部应用、修改系统设置、调用系统能力及执行批量操作进行风险提示和确认。应用不会静默获取设备管理员、无障碍、Root 或其他系统权限；任何系统能力都必须经过 Android 正规授权页面。"),
+            Triple("security_file_protection", "文件安全保护", "保护文件读写、覆盖、移动和删除流程。建议在覆盖前保留原文件或提示备份，对批量修改显示清单，并拒绝路径越界和可疑文件操作。此项不等同于杀毒软件、云端备份或全盘实时防护。"),
+            Triple("security_identity_delegate", "身份委托控制", "控制是否允许 Agent、插件或技能在用户明确授权的范围内代为执行操作。委托应限定具体任务、资源和有效范围；敏感操作再次确认，不应把 API Key、登录密码、短信验证码或系统账号凭据交给技能。"),
+            Triple("security_resource_access", "应用和资源访问控制", "管理相机、麦克风、位置、附件、剪贴板及应用内数据等资源的调用边界。按功能逐项授权，只在任务需要时请求系统权限，并说明用途；用户可以关闭应用内授权或通过 Android 设置撤销系统权限。")
         )
         Surface(color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 5.dp)) {
@@ -967,12 +1004,13 @@ private fun SettingsPage(
                 }
             }
         }
-        Text("说明：这里的开关记录应用内授权意愿，不会绕过 Android 权限机制。系统目录、设备管理等权限仍需系统正式授权。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
+        Text("重要：当前开关仅保存应用内授权偏好，尚未接入对应的底层执行拦截器，因此不能视为已经具备完整安全防护。实际访问受保护目录、相机、麦克风等仍须 Android 系统授权；后续接入执行层时应再次校验授权状态。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
         Spacer(Modifier.height(22.dp))
         Text("扩展能力", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         SettingsAction("◷", "定时任务", "创建一次性提醒，到时间通过系统通知提醒") { showTaskDialog = true }
         SettingsAction("◇", "插件", if (pluginEnabled) "已启用插件框架" else "管理插件扩展入口") { showPluginDialog = true }
+        SettingsAction("✧", "技能（Skills）", "${skills.size} 个技能 · 创建自定义技能或从文件导入") { showSkillDialog = true }
         SettingsAction("⌁", "MCP 设置", if (mcpEndpoint.isBlank()) "配置 MCP 服务连接" else mcpName.ifBlank { mcpEndpoint }) { showMcpDialog = true }
         SettingsAction("✉", "帮助与反馈", "使用说明、问题反馈与项目主页") { showHelpDialog = true }
         Spacer(Modifier.height(18.dp))
@@ -991,6 +1029,48 @@ private fun SettingsPage(
         }
 
     }
+    if (showSkillDialog) AlertDialog(
+        onDismissRequest = { showSkillDialog = false },
+        title = { Text("技能库 · ${skills.size}") },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                Text("技能由名称、简介和操作指令组成。可创建自己的技能，或导入 JSON、Markdown、TXT 文件。导入内容会作为技能指令保存；请勿导入不可信来源的脚本或密钥。", color = Muted, fontSize = 11.sp)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(value = skillName, onValueChange = { skillName = it.take(60) }, label = { Text("技能名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = skillDescription, onValueChange = { skillDescription = it.take(300) }, label = { Text("技能简介（选填）") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = skillInstructions, onValueChange = { skillInstructions = it.take(30000) }, label = { Text("技能指令 / 工作流程") }, minLines = 4, modifier = Modifier.fillMaxWidth())
+                Button(onClick = {
+                    if (skillName.isNotBlank() && skillInstructions.isNotBlank()) {
+                        skills.removeAll { it.name.equals(skillName.trim(), true) }
+                        skills.add(0, SkillProfile(skillName.trim(), skillDescription.trim(), skillInstructions.trim()))
+                        persistSkills()
+                        skillName = ""; skillDescription = ""; skillInstructions = ""
+                        skillStatus = "技能已保存"
+                    }
+                }, enabled = skillName.isNotBlank() && skillInstructions.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("创建并保存技能") }
+                OutlinedButton(onClick = { skillImporter.launch(arrayOf("application/json", "text/markdown", "text/plain", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) { Text("从文件导入技能") }
+                Text(skillStatus, color = Muted, fontSize = 11.sp)
+                if (skills.isNotEmpty()) {
+                    Divider(color = GlassBorder)
+                    Text("已保存的技能", color = MainText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp))
+                    skills.forEach { skill ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(skill.name, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text(skill.description.ifBlank { skill.instructions.take(90) }, color = Muted, fontSize = 10.sp, maxLines = 2)
+                            }
+                            TextButton(onClick = {
+                                skills.remove(skill)
+                                persistSkills()
+                                skillStatus = "已删除：${skill.name}"
+                            }) { Text("删除") }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { showSkillDialog = false }) { Text("完成") } }
+    )
     if (showSecurityDetail) AlertDialog(
         onDismissRequest = { showSecurityDetail = false },
         title = { Text(securityDetailTitle) },
