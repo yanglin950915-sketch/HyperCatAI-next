@@ -1,6 +1,11 @@
 package com.hypercat.ai
 
-import android.content.Intent
+import android.content.ComponentName
+import android.content.ServiceConnection
+import android.os.IBinder
+import rikka.shizuku.Shizuku
+import com.hypercat.ai.shizuku.IRemoteShell
+import com.hypercat.ai.shizuku.ShellUserService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,27 +30,94 @@ import com.hypercat.ai.pet.PetCatalog
 import com.hypercat.ai.pet.PetMood
 
 class MainActivity : ComponentActivity() {
+    private var remoteShell: IRemoteShell? = null
+    private var pendingStatus: ((String) -> Unit)? = null
+
+    private val serviceArgs by lazy {
+        Shizuku.UserServiceArgs(ComponentName(this, ShellUserService::class.java))
+            .daemon(false)
+            .processNameSuffix("hypercat")
+            .version(1)
+    }
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            remoteShell = IRemoteShell.Stub.asInterface(service)
+            val callback = pendingStatus
+            Thread {
+                try {
+                    val shell = remoteShell ?: throw IllegalStateException("Shizuku 服务未连接")
+                    val displays = shell.exec("am display list")
+                    runOnUiThread {
+                        callback?.invoke("Shizuku 已连接。显示屏信息：\\n$displays")
+                    }
+                    val result = shell.exec("am start --display 1 -n com.hypercat.ai/.MainActivity")
+                    runOnUiThread {
+                        callback?.invoke("已通过 Shizuku 请求启动背屏 Activity。\\n$result\\n如果背屏仍无画面，请把这段显示屏信息发给我。")
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread { callback?.invoke("背屏启动失败：${e.message}") }
+                }
+            }.start()
+        }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            remoteShell = null
+            pendingStatus?.invoke("Shizuku 服务已断开")
+        }
+    }
+
+    private val permissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+        if (requestCode == 1001) {
+            runOnUiThread {
+                if (grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    bindRearShell()
+                } else {
+                    pendingStatus?.invoke("你拒绝了 Shizuku 授权。请在 Shizuku → 已授权应用中允许 HyperCat AI。")
+                }
+            }
+        }
+    }
+
     fun launchPetOnRearDisplay(onStatus: (String) -> Unit) {
+        pendingStatus = onStatus
         try {
-            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
-                onStatus("当前 Android 版本不支持多显示屏启动。")
+            if (!Shizuku.pingBinder()) {
+                onStatus("没有检测到 Shizuku 服务。请先打开 Shizuku 并确认状态为运行中。")
                 return
             }
-            val intent = Intent(this, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+                Shizuku.addRequestPermissionResultListener(permissionListener)
+                Shizuku.requestPermission(1001)
+                onStatus("请在弹出的 Shizuku 窗口中允许 HyperCat AI。")
+                return
             }
-            val options = android.app.ActivityOptions.makeBasic()
-                .setLaunchDisplayId(1)
-            startActivity(intent, options.toBundle())
-            onStatus("已请求在副显示屏启动。若背屏没有显示，说明系统未向第三方应用开放该显示屏。")
+            bindRearShell()
         } catch (e: Exception) {
-            onStatus("副屏启动被系统拒绝或不可用：${e.message ?: "未知错误"}")
+            onStatus("Shizuku 初始化失败：${e.message ?: "未知错误"}")
+        }
+    }
+
+    private fun bindRearShell() {
+        try {
+            Shizuku.bindUserService(serviceArgs, serviceConnection)
+            pendingStatus?.invoke("正在连接 Shizuku 系统服务…")
+        } catch (e: Exception) {
+            pendingStatus?.invoke("连接 Shizuku 失败：${e.message ?: "未知错误"}")
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Shizuku.addRequestPermissionResultListener(permissionListener)
         setContent { HyperCatApp() }
+    }
+
+    override fun onDestroy() {
+        try {
+            Shizuku.removeRequestPermissionResultListener(permissionListener)
+            Shizuku.unbindUserService(serviceArgs, serviceConnection, true)
+        } catch (_: Exception) { }
+        super.onDestroy()
     }
 }
 
