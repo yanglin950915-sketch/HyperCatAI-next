@@ -1,35 +1,22 @@
-# HyperCat AI 背屏 MAML 模块（UriRoute 兼容协议）
+# HyperCat AI 背屏模块
 
-本模块从 HyperCat AI APK 内置的 ContentProvider 读取萌宠数据。不需要另装 UriRoute、REAREye、Janus，也不需要 Root。
-
-## 数据接口
+## 直接替换方式
+本模块由 CI 打包为 `rearscreen.zip`，压缩包内固定结构为：
 
 ```
-content://uriroute/data?group=hypercat&name=pet-state
+rearscreen/
+└── manifest.xml
 ```
 
-Provider 按 UriRoute `/data` 读取形态返回单列 `result`，内容为 JSON：`pet_name`、`pet_emoji`、`mood`、`reply`、`updated_at`。当前版本不返回 `app_version`。
+解压后，用整个新版 `rearscreen` 文件夹替换背屏 AI 壁纸目录中的旧 `rearscreen` 文件夹。替换前请备份旧文件。
 
-这是固定协议兼容层，不是把 UriRoute 的 Rhino JavaScript 引擎、脚本安装器或全部功能移植进 APK。只实现 HyperCat 自己的 `hypercat/pet-state` 路由。
+## 数据同步
+主程序选择萌宠后，需要点击“确认更换萌宠”。确认操作会将名称、Emoji、心情和回复写入本地状态，并通知 ContentProvider。模板每秒刷新一次作为兜底。
 
-## 同步与互动
+数据 URI：`content://uriroute/data?group=hypercat&name=pet-state`。
 
-- 主程序更换萌宠、表情或回复后，会更新本地状态并通知 ContentProvider 观察者。
-- MAML 保留每秒刷新作为兜底；背屏休眠或系统暂停刷新时，更新会延迟到恢复后。
-- 点击背屏萌宠可触发本地表情/心情反馈；点击右上角 ↻ 可手动重新读取主程序状态。
-- 背屏触摸反馈目前在 MAML 模板内完成，不会反向执行手机操作，也不代表 AI 模型已经接入。
+## 背屏触摸
+点击萌宠区域会切换为开心表情并显示摸摸反馈；右上角刷新按钮会重新读取主程序状态。这些是 MAML 模板内的本地交互，不会直接执行 Agent 或手机系统操作。
 
-## 安装
-
-1. 安装并至少打开一次 HyperCat AI。
-2. 在应用内选择萌宠并产生状态/回复。
-3. 用文件管理器备份目标 AI 壁纸原始资源，再将本目录中的 `manifest.xml` 放入该壁纸的 `rearscreen` 目录（以实际壁纸目录结构为准）。
-4. 回到妙享背屏，选择该 AI 壁纸。
-
-Android/HyperOS 可能限制文件管理器访问 `Android/data`。如果目录不可写，不要删除原始资源或覆盖系统分区。
-
-## 兼容性限制
-
-- Provider authority 使用 `uriroute`，因此不要同时安装独立 UriRoute，否则可能发生 authority 冲突。
-- Provider exported=true，供系统 MAML 宿主跨进程读取；HyperOS 是否允许目标宿主访问仍需真机验证。
-- MAML XML 是否被当前固件接受、是否正确渲染、背屏触摸是否被宿主转发，也必须真机验证。构建成功不等于所有交互已在设备上验证。
+## 兼容性说明
+模板由 HyperOS 背屏 MAML 宿主加载，Provider 由 HyperCat AI APK 提供。不同 HyperOS 版本对 MAML 控件事件、ContentProvider 跨进程访问和刷新时机的支持可能不同，最终以真机测试为准。
