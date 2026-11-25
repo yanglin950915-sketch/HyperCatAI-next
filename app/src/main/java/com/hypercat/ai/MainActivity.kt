@@ -121,6 +121,7 @@ private fun HyperCatApp() {
     var timeRefresh by remember { mutableIntStateOf(0) }
     var updateStatus by remember { mutableStateOf("尚未检查") }
     var latestRelease by remember { mutableStateOf<ReleaseInfo?>(null) }
+    var showUpdatePrompt by remember { mutableStateOf(false) }
     val currentVersion = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0.0.0" }.getOrDefault("0.0.0") }
     val scope = rememberCoroutineScope()
     LaunchedEffect(themeMode) {
@@ -153,6 +154,21 @@ private fun HyperCatApp() {
         saved = endpoint.isNotBlank() && model.isNotBlank()
         petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
         themeMode = prefs.getString("theme_mode", "system") ?: "system"
+    }
+
+    LaunchedEffect(currentVersion) {
+        try {
+            val release = withContext(Dispatchers.IO) { fetchLatestRelease() }
+            latestRelease = release
+            if (versionIsNewer(release.version, currentVersion)) {
+                updateStatus = "发现新版本：${release.version}"
+                showUpdatePrompt = true
+            } else {
+                updateStatus = "当前已是最新版本（${currentVersion}）"
+            }
+        } catch (_: Exception) {
+            updateStatus = "自动检查暂不可用，可稍后手动检查"
+        }
     }
 
     LaunchedEffect(petName, petMood) {
@@ -251,6 +267,20 @@ private fun HyperCatApp() {
                     openUrl = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } }
                 )
             }
+        }
+        if (showUpdatePrompt && latestRelease != null) {
+            AlertDialog(
+                onDismissRequest = { showUpdatePrompt = false },
+                title = { Text("发现 HyperCat AI 新版本") },
+                text = { Text("最新版本：${latestRelease!!.version}\n建议前往 GitHub 下载并安装更新。") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showUpdatePrompt = false
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(latestRelease!!.url))) }
+                    }) { Text("立即更新") }
+                },
+                dismissButton = { TextButton(onClick = { showUpdatePrompt = false }) { Text("稍后") } }
+            )
         }
     }
 }
