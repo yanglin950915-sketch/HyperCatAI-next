@@ -85,7 +85,7 @@ class MainActivity : ComponentActivity() {
                 onStatus("没有检测到 Shizuku 服务。请先打开 Shizuku 并确认状态为运行中。")
                 return
             }
-            if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+            if (Shizuku.checkSelfPermission() != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 Shizuku.addRequestPermissionResultListener(permissionListener)
                 Shizuku.requestPermission(1001)
                 onStatus("请在弹出的 Shizuku 窗口中允许 HyperCat AI。")
