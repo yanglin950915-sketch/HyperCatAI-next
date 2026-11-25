@@ -4,7 +4,7 @@
   var MOODS = {
     idle:     { face: "normal", pose: "idle", locomotion: "idle" },
     happy:    { face: "excited", pose: "happy", locomotion: "idle" },
-    sad:      { face: "dizzy", pose: "sad", locomotion: "idle" },
+    sad:      { face: "normal", pose: "sad", locomotion: "idle" },
     angry:    { face: "normal", pose: "angry", locomotion: "idle" },
     sleepy:   { face: "normal", pose: "sleepy", locomotion: "idle" },
     thinking: { face: "normal", pose: "thinking", locomotion: "idle" },
