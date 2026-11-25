@@ -8,11 +8,16 @@
 content://uriroute/data?group=hypercat&name=pet-state
 ```
 
-Provider 按 UriRoute `/data` 读取形态返回单列 `result`，内容为 JSON：`pet_name`、`pet_emoji`、`mood`、`reply`、`updated_at`、`app_version`。
+Provider 按 UriRoute `/data` 读取形态返回单列 `result`，内容为 JSON：`pet_name`、`pet_emoji`、`mood`、`reply`、`updated_at`。当前版本不返回 `app_version`。
 
 这是固定协议兼容层，不是把 UriRoute 的 Rhino JavaScript 引擎、脚本安装器或全部功能移植进 APK。只实现 HyperCat 自己的 `hypercat/pet-state` 路由。
 
-MAML 模板每秒轮询一次 Provider。萌宠变化通常会在下一次轮询显示；这是轮询，不是推送。背屏休眠或系统暂停刷新时，更新会延迟到恢复后。
+## 同步与互动
+
+- 主程序更换萌宠、表情或回复后，会更新本地状态并通知 ContentProvider 观察者。
+- MAML 保留每秒刷新作为兜底；背屏休眠或系统暂停刷新时，更新会延迟到恢复后。
+- 点击背屏萌宠可触发本地表情/心情反馈；点击右上角 ↻ 可手动重新读取主程序状态。
+- 背屏触摸反馈目前在 MAML 模板内完成，不会反向执行手机操作，也不代表 AI 模型已经接入。
 
 ## 安装
 
@@ -27,4 +32,4 @@ Android/HyperOS 可能限制文件管理器访问 `Android/data`。如果目录�
 
 - Provider authority 使用 `uriroute`，因此不要同时安装独立 UriRoute，否则可能发生 authority 冲突。
 - Provider exported=true，供系统 MAML 宿主跨进程读取；HyperOS 是否允许目标宿主访问仍需真机验证。
-- MAML XML 是否被当前固件接受、是否正确渲染，也必须真机验证。构建成功不等于背屏已工作。
+- MAML XML 是否被当前固件接受、是否正确渲染、背屏触摸是否被宿主转发，也必须真机验证。构建成功不等于所有交互已在设备上验证。
