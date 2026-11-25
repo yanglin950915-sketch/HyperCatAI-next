@@ -1,37 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Widget version="2" scaleByDensity="false" useVariableUpdater="DateTime.Second">
-    <Var name="petUri" type="string" expression="'content://uriroute/data?group=hypercat&amp;name=pet-state'" const="true"/>
+    <Var name="petUri" type="string" expression="'content://com.hypercat.ai.rear.provider/pet-state'" const="true"/>
     <Var name="resultJson" type="string" expression="'{}'"/>
     <Var name="petName" type="string" expression="'小橘'"/>
-    <Var name="petEmoji" type="string" expression="'🐈'"/>
     <Var name="mood" type="string" expression="'IDLE'"/>
-    <Var name="reply" type="string" expression="'你好！我是你的 AI 萌宠伙伴。'"/>
+    <Var name="reply" type="string" expression="'你好！我是你的机器人伙伴。'"/>
+    <Var name="updatedAt" type="string" expression="'0'"/>
     <Var name="touchMood" expression="0"/>
     <Var name="refreshTick" expression="#second">
         <Trigger>
             <BinderCommand name="petBinder" command="refresh"/>
         </Trigger>
     </Var>
+
     <Function name="parsePet">
         <VariableCommand name="petName" expression="jsonGetString(strToJson(@resultJson), 'pet_name')" type="string"/>
-        <VariableCommand name="petEmoji" expression="jsonGetString(strToJson(@resultJson), 'pet_emoji')" type="string"/>
         <VariableCommand name="mood" expression="jsonGetString(strToJson(@resultJson), 'mood')" type="string"/>
         <VariableCommand name="reply" expression="jsonGetString(strToJson(@resultJson), 'reply')" type="string"/>
+        <VariableCommand name="updatedAt" expression="jsonGetString(strToJson(@resultJson), 'updated_at')" type="string"/>
     </Function>
 
-    <Rectangle x="0" y="0" w="#view_width" h="#view_height" fillColor="#080B14"/>
-    <Text x="(0.08 * #view_width)" y="(0.09 * #view_height)" size="28" color="#AFC5FF" text="HYPERCAT AI"/>
-    <Text x="(0.08 * #view_width)" y="(0.24 * #view_height)" size="25" color="#FFFFFF" textExp="@petName"/>
-    <Text x="(0.08 * #view_width)" y="(0.72 * #view_height)" size="21" color="#7DE2C2" textExp="ifelse(#touchMood==1,'HAPPY',@mood)"/>
-    <Text x="(0.08 * #view_width)" y="(0.82 * #view_height)" w="(0.84 * #view_width)" size="18" color="#E7ECF8" textExp="ifelse(#touchMood==1,'喵～摸摸我真开心！',@reply)"/>
+    <!-- Pure black canvas. Keep the top 30% clear for the rear camera island. -->
+    <Rectangle x="0" y="0" w="#view_width" h="#view_height" fillColor="#000000"/>
+    <Text x="(0.08 * #view_width)" y="(0.08 * #view_height)" size="25" color="#69E8FF" text="HYPERCAT"/>
+    <Text x="(0.08 * #view_width)" y="(0.19 * #view_height)" size="24" color="#FFFFFF" textExp="@petName"/>
+    <Text x="(0.08 * #view_width)" y="(0.29 * #view_height)" size="15" color="#7B91A8" textExp="ifelse(#touchMood==1,'ONLINE  •  HAPPY','ONLINE  •  '+@mood)"/>
 
-    <!-- The pet itself is the touch target; keep the button above the artwork. -->
-    <Button x="(0.30 * #view_width)" y="(0.28 * #view_height)" w="(0.62 * #view_width)" h="(0.40 * #view_height)" interceptTouch="true">
+    <!-- Robot pet stays in the lower half, away from the camera cutout. -->
+    <Button x="(0.16 * #view_width)" y="(0.39 * #view_height)" w="(0.68 * #view_width)" h="(0.37 * #view_height)" interceptTouch="true">
         <Normal>
-            <Text x="(0.42 * #view_width)" y="(0.34 * #view_height)" size="118" color="#FFFFFF" textExp="ifelse(#touchMood==1,'😻',@petEmoji)"/>
+            <Rectangle x="(0.25 * #view_width)" y="(0.42 * #view_height)" w="(0.50 * #view_width)" h="(0.29 * #view_height)" fillColor="#10202D"/>
+            <Ellipse x="(0.30 * #view_width)" y="(0.40 * #view_height)" w="(0.40 * #view_width)" h="(0.32 * #view_height)" fillColor="#173449"/>
+            <Ellipse x="(0.37 * #view_width)" y="(0.50 * #view_height)" w="(0.07 * #view_width)" h="(0.055 * #view_height)" fillColor="#6AF0FF"/>
+            <Ellipse x="(0.56 * #view_width)" y="(0.50 * #view_height)" w="(0.07 * #view_width)" h="(0.055 * #view_height)" fillColor="#6AF0FF"/>
+            <Rectangle x="(0.43 * #view_width)" y="(0.62 * #view_height)" w="(0.14 * #view_width)" h="(0.018 * #view_height)" fillColor="#6AF0FF"/>
+            <Rectangle x="(0.18 * #view_width)" y="(0.52 * #view_height)" w="(0.10 * #view_width)" h="(0.07 * #view_height)" fillColor="#24536A"/>
+            <Rectangle x="(0.72 * #view_width)" y="(0.52 * #view_height)" w="(0.10 * #view_width)" h="(0.07 * #view_height)" fillColor="#24536A"/>
         </Normal>
         <Pressed>
-            <Text x="(0.42 * #view_width)" y="(0.34 * #view_height)" size="118" color="#FFFFFF" text="😻"/>
+            <Rectangle x="(0.25 * #view_width)" y="(0.42 * #view_height)" w="(0.50 * #view_width)" h="(0.29 * #view_height)" fillColor="#163C45"/>
+            <Ellipse x="(0.30 * #view_width)" y="(0.40 * #view_height)" w="(0.40 * #view_width)" h="(0.32 * #view_height)" fillColor="#205568"/>
+            <Text x="(0.35 * #view_width)" y="(0.49 * #view_height)" size="38" color="#8BFFDA" text="♥"/>
+            <Text x="(0.55 * #view_width)" y="(0.49 * #view_height)" size="38" color="#8BFFDA" text="♥"/>
+            <Text x="(0.43 * #view_width)" y="(0.60 * #view_height)" size="26" color="#8BFFDA" text="⌣"/>
+            <Rectangle x="(0.18 * #view_width)" y="(0.52 * #view_height)" w="(0.10 * #view_width)" h="(0.07 * #view_height)" fillColor="#24536A"/>
+            <Rectangle x="(0.72 * #view_width)" y="(0.52 * #view_height)" w="(0.10 * #view_width)" h="(0.07 * #view_height)" fillColor="#24536A"/>
         </Pressed>
         <Triggers>
             <Trigger action="up">
@@ -40,9 +53,12 @@
         </Triggers>
     </Button>
 
+    <Text x="(0.08 * #view_width)" y="(0.80 * #view_height)" w="(0.84 * #view_width)" size="17" color="#9CEFFF" textExp="ifelse(#touchMood==1,'♥  收到摸摸！','点我互动')"/>
+    <Text x="(0.08 * #view_width)" y="(0.88 * #view_height)" w="(0.84 * #view_width)" size="15" color="#AAB6C4" textExp="ifelse(#touchMood==1,'今天也要和你一起加油！',@reply)"/>
+
     <Button x="(0.82 * #view_width)" y="(0.06 * #view_height)" w="(0.14 * #view_width)" h="(0.13 * #view_height)" interceptTouch="true">
-        <Normal><Text x="(0.85 * #view_width)" y="(0.08 * #view_height)" size="30" color="#AFC5FF" text="↻"/></Normal>
-        <Pressed><Text x="(0.85 * #view_width)" y="(0.08 * #view_height)" size="30" color="#FFFFFF" text="↻"/></Pressed>
+        <Normal><Text x="(0.84 * #view_width)" y="(0.07 * #view_height)" size="30" color="#69E8FF" text="↻"/></Normal>
+        <Pressed><Text x="(0.84 * #view_width)" y="(0.07 * #view_height)" size="30" color="#FFFFFF" text="↻"/></Pressed>
         <Triggers>
             <Trigger action="up">
                 <VariableCommand name="touchMood" expression="0"/>
