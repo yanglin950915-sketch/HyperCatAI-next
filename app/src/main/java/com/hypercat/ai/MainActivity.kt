@@ -250,7 +250,38 @@ private fun HyperCatApp() {
                     configured = saved,
                     petName = petName,
                     petMood = petMood,
-                    onMood = { mood -> petMood = mood }
+                    onMood = { mood -> petMood = mood },
+                    settingsContent = { drawerModifier ->
+                        SettingsPage(
+                            modifier = drawerModifier,
+                            provider = provider, onProvider = { provider = it },
+                            modelProfiles = modelProfiles.toList(),
+                            onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                            onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
+                            endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
+                            model = model, onModel = { model = it; saved = false },
+                            apiKey = apiKey, onApiKey = { apiKey = it; saved = false },
+                            onSave = {
+                                chatPrefs.edit().putString("provider", provider).putString("endpoint", endpoint.trim())
+                                    .putString("model", model.trim()).putString("api_key", apiKey).apply()
+                                saved = endpoint.isNotBlank() && model.isNotBlank()
+                            },
+                            saved = saved, themeMode = themeMode,
+                            onThemeMode = { mode -> themeMode = mode; chatPrefs.edit().putString("theme_mode", mode).apply() },
+                            currentVersion = currentVersion, updateStatus = updateStatus, latestRelease = latestRelease,
+                            onCheckUpdates = {
+                                scope.launch {
+                                    updateStatus = "正在检查 GitHub Releases…"
+                                    try {
+                                        val release = withContext(Dispatchers.IO) { fetchLatestRelease() }
+                                        latestRelease = release
+                                        updateStatus = if (versionIsNewer(release.version, currentVersion)) "发现新版本：${release.version}" else "当前已是最新版本（${currentVersion}）"
+                                    } catch (error: Exception) { updateStatus = error.message ?: "检查失败，请稍后重试" }
+                                }
+                            },
+                            openUrl = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } }
+                        )
+                    }
                 )
                 Page.SETTINGS -> SettingsPage(
                     modifier = Modifier.padding(padding),
@@ -466,8 +497,10 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
 private fun ChatPage(
     modifier: Modifier, messages: List<ChatLine>, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
-    petMood: String, onMood: (String) -> Unit
+    petMood: String, onMood: (String) -> Unit,
+    settingsContent: @Composable (Modifier) -> Unit
 ) {
+    var drawerSection by remember { mutableStateOf("recent") }
     var selectedFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
@@ -492,26 +525,38 @@ private fun ChatPage(
     val filteredRecent = recentPrompts.filter { it.contains(recentQuery, true) }
     val orderedRecent = when (recentSort) { "最早" -> filteredRecent.reversed(); "A-Z" -> filteredRecent.sortedBy { it.lowercase() }; else -> filteredRecent }
     ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = true, drawerContent = {
-        ModalDrawerSheet(drawerContainerColor = Panel, modifier = Modifier.fillMaxHeight().widthIn(max = 320.dp)) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                Spacer(Modifier.height(28.dp))
-                Text("最近对话", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text("向右滑动打开会话列表", color = Muted, fontSize = 11.sp)
-                Spacer(Modifier.height(14.dp))
-                OutlinedTextField(value = recentQuery, onValueChange = { recentQuery = it }, placeholder = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 10.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 11.sp) }) } }
-                LazyColumn(Modifier.weight(1f)) {
-                    items(orderedRecent) { prompt ->
-                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onDraft(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 12.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8276D9)))), contentAlignment = Alignment.Center) { Text(petName.take(1), color = Color.White, fontWeight = FontWeight.Bold) }
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) { Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold); Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 1) }
-                        }
-                        Divider(color = GlassBorder.copy(alpha = .4f))
+        ModalDrawerSheet(drawerContainerColor = Panel, modifier = Modifier.fillMaxHeight().widthIn(max = 360.dp)) {
+            if (drawerSection == "settings") {
+                Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { drawerSection = "recent" }) { Text("‹ 最近对话", color = Cyan) }
+                        Spacer(Modifier.weight(1f))
+                        Text("设置", color = MainText, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(12.dp))
                     }
+                    settingsContent(Modifier.weight(1f).fillMaxWidth())
                 }
-                TextButton(onClick = { drawerScope.launch { drawerState.close() }; openSettings() }, modifier = Modifier.fillMaxWidth()) { Text("⚙  设置", color = Cyan, fontWeight = FontWeight.SemiBold) }
-                Spacer(Modifier.height(12.dp))
+            } else {
+                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                    Spacer(Modifier.height(28.dp))
+                    Text("最近对话", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text("向右滑动打开会话列表", color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedTextField(value = recentQuery, onValueChange = { recentQuery = it }, placeholder = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 10.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 11.sp) }) } }
+                    LazyColumn(Modifier.weight(1f)) {
+                        items(orderedRecent) { prompt ->
+                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onDraft(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 12.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8276D9)))), contentAlignment = Alignment.Center) { Text(petName.take(1), color = Color.White, fontWeight = FontWeight.Bold) }
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) { Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold); Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 1) }
+                            }
+                            Divider(color = GlassBorder.copy(alpha = .4f))
+                        }
+                    }
+                    TextButton(onClick = { drawerSection = "settings" }, modifier = Modifier.fillMaxWidth()) { Text("⚙  设置", color = Cyan, fontWeight = FontWeight.SemiBold) }
+                    Spacer(Modifier.height(12.dp))
+                }
             }
         }
     }) {
