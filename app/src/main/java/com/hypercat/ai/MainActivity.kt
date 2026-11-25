@@ -247,7 +247,7 @@ private fun HyperCatApp() {
                             draft = ""
                         }
                     },
-                    openSettings = { page = Page.SETTINGS },
+                    openSettings = { page = Page.CHAT; openSettingsDrawer = true },
                     configured = saved,
                     petName = petName,
                     petMood = petMood,
