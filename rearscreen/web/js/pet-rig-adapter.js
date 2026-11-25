@@ -92,8 +92,10 @@
         }
       }
 
-      if (!rig[key].length) {
-        list = [];
+      var hasExplicitMap = Object.prototype.hasOwnProperty.call(overrides, key) ||
+        Object.prototype.hasOwnProperty.call(aliases, key);
+      if (!hasExplicitMap) {
+        list = rig[key].slice();
         bone = findByPatterns(found.bones, PATTERNS[key], used);
         while (bone) {
           list.push(bone);
@@ -101,6 +103,13 @@
           bone = findByPatterns(found.bones, PATTERNS[key], used);
         }
         rig[key] = list;
+      } else if (!rig[key].length) {
+        bone = findByPatterns(found.bones, PATTERNS[key], used);
+        while (bone) {
+          rig[key].push(bone);
+          used[bone.uuid] = true;
+          bone = findByPatterns(found.bones, PATTERNS[key], used);
+        }
       }
     }
 
