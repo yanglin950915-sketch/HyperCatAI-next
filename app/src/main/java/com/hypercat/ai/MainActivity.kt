@@ -8,6 +8,8 @@ import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
 import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
@@ -44,6 +46,9 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.runtime.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.animation.core.animateFloatAsState
@@ -666,6 +671,10 @@ private fun ChatPage(
     var showCallInfo by remember { mutableStateOf(false) }
     var callMode by remember { mutableStateOf("语音") }
     var isListening by remember { mutableStateOf(false) }
+    var ttsReady by remember { mutableStateOf(false) }
+    val speechEngine = remember(context) { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
+    LaunchedEffect(ttsReady) { if (ttsReady) speechEngine.language = Locale.SIMPLIFIED_CHINESE }
+    DisposableEffect(speechEngine) { onDispose { speechEngine.stop(); speechEngine.shutdown() } }
     var showRemember by remember { mutableStateOf(false) }
     var noteDraft by remember { mutableStateOf("") }
     var recentQuery by remember { mutableStateOf("") }
@@ -703,7 +712,7 @@ private fun ChatPage(
             )
         }
     ) {
-    Column(modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding(), bottom = if (WindowInsets.isImeVisible) 0.dp else contentPadding.calculateBottomPadding()).imePadding().padding(horizontal = 14.dp)) {
+    Column(modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding(), bottom = if (WindowInsets.isImeVisible) 0.dp else contentPadding.calculateBottomPadding()).padding(horizontal = 14.dp)) {
         Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { drawerScope.launch { drawerState.open() } }) {
@@ -781,10 +790,30 @@ private fun ChatPage(
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
                             if (line.text.isNotBlank()) {
                                 Text(line.text, color = if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), fontSize = 14.sp, lineHeight = 20.sp)
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                                    val actionTint = if (line.fromUser) Color.White.copy(alpha=.82f) else Cyan
                                     TextButton(onClick = { clipboardManager.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
-                                        Icon(Icons.Outlined.ContentCopy, contentDescription = "复制消息", modifier = Modifier.size(13.dp), tint = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan)
-                                        Spacer(Modifier.width(4.dp)); Text("复制", color = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan, fontSize = 10.sp)
+                                        Icon(Icons.Outlined.ContentCopy, contentDescription = "复制消息", modifier = Modifier.size(13.dp), tint = actionTint)
+                                        Spacer(Modifier.width(3.dp)); Text("复制", color = actionTint, fontSize = 10.sp)
+                                    }
+                                    TextButton(onClick = {
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_TEXT, line.text)
+                                        }
+                                        runCatching { context.startActivity(Intent.createChooser(shareIntent, "分享消息")) }
+                                    }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                        Icon(Icons.Outlined.Share, contentDescription = "分享消息", modifier = Modifier.size(13.dp), tint = actionTint)
+                                        Spacer(Modifier.width(3.dp)); Text("分享", color = actionTint, fontSize = 10.sp)
+                                    }
+                                    if (!line.fromUser) {
+                                        TextButton(enabled = ttsReady, onClick = {
+                                            if (speechEngine.isSpeaking) speechEngine.stop()
+                                            else speechEngine.speak(line.text, TextToSpeech.QUEUE_FLUSH, null, "hypercat-${System.nanoTime()}")
+                                        }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                            Icon(if (speechEngine.isSpeaking) Icons.Outlined.Stop else Icons.Outlined.VolumeUp, contentDescription = if (speechEngine.isSpeaking) "停止朗读" else "语音播放", modifier = Modifier.size(13.dp), tint = actionTint)
+                                            Spacer(Modifier.width(3.dp)); Text(if (speechEngine.isSpeaking) "停止" else "朗读", color = actionTint, fontSize = 10.sp)
+                                        }
                                     }
                                 }
                             }
@@ -813,7 +842,7 @@ private fun ChatPage(
                 Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedFiles = emptyList() })
             }
         }
-        Column(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 10.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
                 BasicTextField(value = draft, onValueChange = onDraft,
