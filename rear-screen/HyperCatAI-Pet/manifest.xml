@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Widget version="2" scaleByDensity="false" useVariableUpdater="DateTime.Second">
-    <!-- HyperCat AI fixed UriRoute-compatible /data endpoint; poll once per second. -->
+    <!-- HyperCat AI pet data; refresh when the second changes and whenever the provider notifies observers. -->
     <Var name="petUri" type="string" expression="'content://uriroute/data?group=hypercat&amp;name=pet-state'" const="true"/>
     <Var name="resultJson" type="string" expression="'{}'"/>
     <Var name="petName" type="string" expression="'小橘'"/>
@@ -8,8 +8,11 @@
     <Var name="mood" type="string" expression="'IDLE'"/>
     <Var name="reply" type="string" expression="'你好！我是你的 AI 萌宠伙伴。'"/>
     <Var name="updatedAt" type="string" expression="'0'"/>
+    <Var name="touchMood" expression="0"/>
     <Var name="refreshTick" expression="#second">
-        <Trigger><BinderCommand name="petBinder" command="refresh"/></Trigger>
+        <Trigger>
+            <BinderCommand name="petBinder" command="refresh"/>
+        </Trigger>
     </Var>
     <Function name="parsePet">
         <VariableCommand name="petName" expression="jsonGetString(strToJson(@resultJson), 'pet_name')" type="string"/>
@@ -21,10 +24,38 @@
     <Rectangle x="0" y="0" w="#view_width" h="#view_height" fillColor="#080B14"/>
     <Rectangle x="(0.32 * #view_width)" y="(0.10 * #view_height)" w="(0.62 * #view_width)" h="2" fillColor="#FFFFFF" alpha="35"/>
     <Text x="(0.34 * #view_width)" y="(0.13 * #view_height)" size="30" color="#AFC5FF" text="HYPERCAT AI"/>
+    <Button x="(0.82 * #view_width)" y="(0.08 * #view_height)" w="(0.14 * #view_width)" h="(0.12 * #view_height)" interceptTouch="true">
+        <Normal>
+            <Text x="(0.07 * #view_width)" y="(0.06 * #view_height)" size="34" color="#AFC5FF" text="↻"/>
+        </Normal>
+        <Pressed>
+            <Text x="(0.07 * #view_width)" y="(0.06 * #view_height)" size="34" color="#FFFFFF" text="↻"/>
+        </Pressed>
+        <Triggers>
+            <Trigger action="up">
+                <VariableCommand name="touchMood" expression="0"/>
+                <BinderCommand name="petBinder" command="refresh"/>
+            </Trigger>
+        </Triggers>
+    </Button>
     <Text x="(0.34 * #view_width)" y="(0.27 * #view_height)" size="25" color="#FFFFFF" textExp="@petName"/>
-    <Text x="(0.52 * #view_width)" y="(0.36 * #view_height)" size="112" color="#FFFFFF" textExp="@petEmoji"/>
-    <Text x="(0.34 * #view_width)" y="(0.72 * #view_height)" size="21" color="#7DE2C2" textExp="@mood"/>
-    <Text x="(0.34 * #view_width)" y="(0.81 * #view_height)" w="(0.60 * #view_width)" size="18" color="#E7ECF8" textExp="@reply"/>
+    <Text x="(0.52 * #view_width)" y="(0.36 * #view_height)" size="112" color="#FFFFFF" textExp="ifelse(#touchMood==1,'😻',@petEmoji)"/>
+    <Text x="(0.34 * #view_width)" y="(0.72 * #view_height)" size="21" color="#7DE2C2" textExp="ifelse(#touchMood==1,'HAPPY',@mood)"/>
+    <Text x="(0.34 * #view_width)" y="(0.81 * #view_height)" w="(0.60 * #view_width)" size="18" color="#E7ECF8" textExp="ifelse(#touchMood==1,'喵～再摸摸我！',@reply)"/>
+    <!-- Tap the pet to make it react. -->
+    <Button x="(0.43 * #view_width)" y="(0.31 * #view_height)" w="(0.53 * #view_width)" h="(0.38 * #view_height)" interceptTouch="true">
+        <Normal>
+            <Rectangle x="(0.43 * #view_width)" y="(0.31 * #view_height)" w="(0.53 * #view_width)" h="(0.38 * #view_height)" fillColor="#FFFFFF" alpha="0"/>
+        </Normal>
+        <Pressed>
+            <Rectangle x="(0.43 * #view_width)" y="(0.31 * #view_height)" w="(0.53 * #view_width)" h="(0.38 * #view_height)" fillColor="#FFFFFF" alpha="18"/>
+        </Pressed>
+        <Triggers>
+            <Trigger action="up">
+                <VariableCommand name="touchMood" expression="ifelse(#touchMood==1,0,1)"/>
+            </Trigger>
+        </Triggers>
+    </Button>
     <VariableBinders>
         <ContentProviderBinder name="petBinder" uriExp="@petUri" columns="result">
             <Variable name="resultJson" column="result" type="string"/>
@@ -32,7 +63,8 @@
         </ContentProviderBinder>
     </VariableBinders>
     <ExternalCommands>
-        <Trigger action="init"><BinderCommand name="petBinder" command="refresh"/></Trigger>
-        <Trigger action="resume"><BinderCommand name="petBinder" command="refresh"/></Trigger>
+        <Trigger action="init,resume">
+            <BinderCommand name="petBinder" command="refresh"/>
+        </Trigger>
     </ExternalCommands>
 </Widget>
