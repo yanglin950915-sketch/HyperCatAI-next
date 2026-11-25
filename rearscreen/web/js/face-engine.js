@@ -6,7 +6,7 @@ curious:{y:1.08,w:.94,p:.86,b:.1,m:"small",gx:.18,gy:-.05},thinking:{y:.88,w:.94
 sleepy:{y:.34,w:1.05,p:.7,b:0,m:"soft",gx:0,gy:.12},sad:{y:.78,w:.94,p:.86,b:.24,m:"frown",gx:0,gy:.18},
 angry:{y:.78,w:1.04,p:.9,b:-.28,m:"flat",gx:0,gy:0},surprised:{y:1.18,w:1.02,p:.72,b:.28,m:"open",gx:0,gy:0},
 love:{y:.72,w:1.08,p:.9,b:0,m:"smile",gx:0,gy:0},sleep:{y:.08,w:1,p:0,b:0,m:"sleep",gx:0,gy:.1}};
-function clamp(v,a,b){return Math.max(a,Math.min(b,v));}function lerp(a,b,t){return a+(b-a)*t;}function smooth(t){return t*t*(3-2*t);}
+function now(){return (root.performance&&root.performance.now)?root.performance.now():Date.now();}function clamp(v,a,b){return Math.max(a,Math.min(b,v));}function lerp(a,b,t){return a+(b-a)*t;}function smooth(t){return t*t*(3-2*t);}
 function create(canvas,options){
 if(!canvas||!canvas.getContext)throw Error("HyperCatFace: canvas required");options=options||{};
 var c=canvas.getContext("2d");if(!c)throw Error("HyperCatFace: Canvas 2D unavailable");
