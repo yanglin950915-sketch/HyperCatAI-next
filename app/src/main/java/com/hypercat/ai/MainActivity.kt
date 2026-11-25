@@ -588,6 +588,9 @@ private fun SettingsPage(
     var showPluginDialog by remember { mutableStateOf(false) }
     var showMcpDialog by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
+    var showTaskDialog by remember { mutableStateOf(false) }
+    var taskTitle by remember { mutableStateOf("") }
+    var taskDelayMinutes by remember { mutableStateOf("30") }
     var pluginEnabled by remember { mutableStateOf(false) }
     var mcpName by remember { mutableStateOf("") }
     var mcpEndpoint by remember { mutableStateOf("") }
@@ -624,6 +627,7 @@ private fun SettingsPage(
         Spacer(Modifier.height(22.dp))
         Text("扩展与支持", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
+        SettingsAction("⏰", "定时任务", "创建一次性提醒，到时间通过系统通知提醒") { showTaskDialog = true }
         SettingsAction("🧩", "插件", if (pluginEnabled) "已启用插件框架" else "管理插件扩展入口") { showPluginDialog = true }
         SettingsAction("🔌", "MCP 设置", if (mcpEndpoint.isBlank()) "配置 MCP 服务连接" else mcpName.ifBlank { mcpEndpoint }) { showMcpDialog = true }
         SettingsAction("💬", "帮助与反馈", "使用说明、问题反馈与项目主页") { showHelpDialog = true }
@@ -688,6 +692,30 @@ private fun SettingsPage(
         } },
         confirmButton = { TextButton(onClick = { prefs.edit().putString("mcp_name", mcpName.trim()).putString("mcp_endpoint", mcpEndpoint.trim()).apply(); showMcpDialog = false }) { Text("保存") } },
         dismissButton = { TextButton(onClick = { showMcpDialog = false }) { Text("取消") } }
+    )
+    if (showTaskDialog) AlertDialog(
+        onDismissRequest = { showTaskDialog = false },
+        title = { Text("创建定时任务") },
+        text = { Column {
+            Text("设置任务名称和提醒时间。当前支持一次性本地通知提醒。", color = Muted, fontSize = 12.sp)
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(value = taskTitle, onValueChange = { taskTitle = it.take(60) }, label = { Text("任务名称") }, singleLine = true)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(value = taskDelayMinutes, onValueChange = { taskDelayMinutes = it.filter { ch -> ch.isDigit() }.take(5) }, label = { Text("多少分钟后提醒") }, singleLine = true)
+        } },
+        confirmButton = { TextButton(onClick = {
+            val minutes = taskDelayMinutes.toLongOrNull()
+            if (taskTitle.isNotBlank() && minutes != null && minutes > 0) {
+                val data = androidx.work.workDataOf("task_title" to taskTitle.trim(), "task_note" to "你设置的定时任务时间到了。")
+                val request = androidx.work.OneTimeWorkRequestBuilder<ReminderWorker>()
+                    .setInitialDelay(minutes, java.util.concurrent.TimeUnit.MINUTES)
+                    .setInputData(data).build()
+                androidx.work.WorkManager.getInstance(context).enqueue(request)
+                taskTitle = ""
+                showTaskDialog = false
+            }
+        }) { Text("创建提醒") } },
+        dismissButton = { TextButton(onClick = { showTaskDialog = false }) { Text("取消") } }
     )
     if (showHelpDialog) AlertDialog(
         onDismissRequest = { showHelpDialog = false },
