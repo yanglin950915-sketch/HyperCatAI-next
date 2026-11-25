@@ -147,7 +147,8 @@ private fun HyperCatApp() {
                     openSettings = { page = Page.SETTINGS },
                     configured = saved,
                     petName = petName,
-                    petMood = petMood
+                    petMood = petMood,
+                    onMood = { mood -> petMood = mood }
                 )
                 Page.SETTINGS -> SettingsPage(
                     modifier = Modifier.padding(padding),
