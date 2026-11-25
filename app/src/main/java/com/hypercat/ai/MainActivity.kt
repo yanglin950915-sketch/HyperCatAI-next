@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
         Shizuku.UserServiceArgs(ComponentName(this, ShellUserService::class.java))
             .daemon(false)
             .processNameSuffix("hypercat")
-            .version(1)
+            .version(2)
     }
 
     private val serviceConnection = object : ServiceConnection {
