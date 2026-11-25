@@ -1,48 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Widget frameRate="30" scaleByDensity="false" screenWidth="1080" version="2" useVariableUpdater="DateTime.Second">
-    <!-- HyperCat AI rear-screen pet card. Camera-safe content starts at 32% width. -->
-    <Var name="DATA_URI" type="string" expression="'content://com.hypercat.ai.rear/pet'" const="true"/>
-    <Var name="petName" type="string" expression="'小橘'" const="true"/>
-    <Var name="petEmoji" type="string" expression="'🐈'" const="true"/>
-    <Var name="mood" type="string" expression="'IDLE'" const="true"/>
-    <Var name="reply" type="string" expression="'你好！我是你的 AI 萌宠。'" const="true"/>
-    <Var name="scale" type="number" expression="(#view_width / 1080)"/>
-    <Var name="bgColor" type="string" expression="'#080B14'" const="true"/>
-
+<Widget version="2" scaleByDensity="false" useVariableUpdater="DateTime.Second">
+    <!-- HyperCat AI fixed UriRoute-compatible /data endpoint; poll once per second. -->
+    <Var name="petUri" type="string" expression="'content://uriroute/data?group=hypercat&amp;name=pet-state'" const="true"/>
+    <Var name="resultJson" type="string" expression="'{}'"/>
+    <Var name="petName" type="string" expression="'小橘'"/>
+    <Var name="petEmoji" type="string" expression="'🐈'"/>
+    <Var name="mood" type="string" expression="'IDLE'"/>
+    <Var name="reply" type="string" expression="'你好！我是你的 AI 萌宠伙伴。'"/>
+    <Var name="updatedAt" type="string" expression="'0'"/>
+    <Var name="refreshTick" expression="#second">
+        <Trigger><BinderCommand name="petBinder" command="refresh"/></Trigger>
+    </Var>
     <Function name="parsePet">
-        <VariableCommand name="petName" expression="jsonGetString(strToJson(@result_json), 'pet_name')" type="string"/>
-        <VariableCommand name="petEmoji" expression="jsonGetString(strToJson(@result_json), 'pet_emoji')" type="string"/>
-        <VariableCommand name="mood" expression="jsonGetString(strToJson(@result_json), 'mood')" type="string"/>
-        <VariableCommand name="reply" expression="jsonGetString(strToJson(@result_json), 'reply')" type="string"/>
+        <VariableCommand name="petName" expression="jsonGetString(strToJson(@resultJson), 'pet_name')" type="string"/>
+        <VariableCommand name="petEmoji" expression="jsonGetString(strToJson(@resultJson), 'pet_emoji')" type="string"/>
+        <VariableCommand name="mood" expression="jsonGetString(strToJson(@resultJson), 'mood')" type="string"/>
+        <VariableCommand name="reply" expression="jsonGetString(strToJson(@resultJson), 'reply')" type="string"/>
+        <VariableCommand name="updatedAt" expression="jsonGetString(strToJson(@resultJson), 'updated_at')" type="string"/>
     </Function>
-
-    <Rectangle w="#view_width" h="#view_height" fillColor="@bgColor"/>
-    <Rectangle x="(0.32 * #view_width)" y="(0.10 * #view_height)" w="(0.62 * #view_width)" h="1" fillColor="#FFFFFF" alpha="30"/>
-
-    <Text x="(0.34 * #view_width)" y="(0.12 * #view_height)" size="(34 * #scale)" color="#AFC5FF" textExp="'HYPERCAT AI'" fontFamily="sans-serif" />
-    <Text x="(0.34 * #view_width)" y="(0.23 * #view_height)" size="(24 * #scale)" color="#FFFFFF" textExp="@petName" />
-    <Text x="(0.55 * #view_width)" y="(0.30 * #view_height)" size="(120 * #scale)" color="#FFFFFF" textExp="@petEmoji" />
-    <Text x="(0.34 * #view_width)" y="(0.70 * #view_height)" size="(22 * #scale)" color="#7DE2C2" textExp="@mood" />
-    <Text x="(0.34 * #view_width)" y="(0.78 * #view_height)" w="(0.58 * #view_width)" size="(22 * #scale)" color="#E7ECF8" textExp="@reply" />
-
+    <Rectangle x="0" y="0" w="#view_width" h="#view_height" fillColor="#080B14"/>
+    <Rectangle x="(0.32 * #view_width)" y="(0.10 * #view_height)" w="(0.62 * #view_width)" h="2" fillColor="#FFFFFF" alpha="35"/>
+    <Text x="(0.34 * #view_width)" y="(0.13 * #view_height)" size="30" color="#AFC5FF" text="HYPERCAT AI"/>
+    <Text x="(0.34 * #view_width)" y="(0.27 * #view_height)" size="25" color="#FFFFFF" textExp="@petName"/>
+    <Text x="(0.52 * #view_width)" y="(0.36 * #view_height)" size="112" color="#FFFFFF" textExp="@petEmoji"/>
+    <Text x="(0.34 * #view_width)" y="(0.72 * #view_height)" size="21" color="#7DE2C2" textExp="@mood"/>
+    <Text x="(0.34 * #view_width)" y="(0.81 * #view_height)" w="(0.60 * #view_width)" size="18" color="#E7ECF8" textExp="@reply"/>
     <VariableBinders>
-        <ContentProviderBinder name="petBinder" uriExp="@DATA_URI" columns="code,result">
-            <Variable name="providerCode" column="code" type="number"/>
-            <Variable name="result_json" column="result" type="string"/>
-            <Trigger>
-                <FunctionCommand target="parsePet"/>
-            </Trigger>
+        <ContentProviderBinder name="petBinder" uriExp="@petUri" columns="result">
+            <Variable name="resultJson" column="result" type="string"/>
+            <Trigger><FunctionCommand target="parsePet"/></Trigger>
         </ContentProviderBinder>
     </VariableBinders>
     <ExternalCommands>
-        <Trigger action="init">
-            <BinderCommand name="petBinder" command="refresh"/>
-        </Trigger>
-        <Trigger action="resume">
-            <BinderCommand name="petBinder" command="refresh"/>
-        </Trigger>
-        <Trigger action="notification_received">
-            <BinderCommand name="petBinder" command="refresh"/>
-        </Trigger>
+        <Trigger action="init"><BinderCommand name="petBinder" command="refresh"/></Trigger>
+        <Trigger action="resume"><BinderCommand name="petBinder" command="refresh"/></Trigger>
     </ExternalCommands>
 </Widget>
