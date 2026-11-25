@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -30,10 +31,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Send
 import androidx.compose.runtime.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -517,6 +532,8 @@ private fun ChatPage(
     var showClear by remember { mutableStateOf(false) }
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
+    var callMode by remember { mutableStateOf("语音") }
+    var isListening by remember { mutableStateOf(false) }
     var showRemember by remember { mutableStateOf(false) }
     var noteDraft by remember { mutableStateOf("") }
     var recentQuery by remember { mutableStateOf("") }
@@ -526,6 +543,7 @@ private fun ChatPage(
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val voiceInput = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        isListening = false
         val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         if (!spoken.isNullOrBlank()) onDraft(if (draft.isBlank()) spoken else "$draft $spoken")
     }
@@ -541,66 +559,19 @@ private fun ChatPage(
     }
     val filteredRecent = recentPrompts.filter { it.contains(recentQuery, true) }
     val orderedRecent = when (recentSort) { "最早" -> filteredRecent.reversed(); "A-Z" -> filteredRecent.sortedBy { it.lowercase() }; else -> filteredRecent }
-    ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = true, drawerContent = {
-        Surface(modifier = Modifier.fillMaxSize(), color = Panel, shape = RoundedCornerShape(0.dp)) {
-            if (drawerSection == "settings") {
-                Column(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { drawerSection = "recent" }) { Text("‹ 最近对话", color = Cyan) }
-                        Spacer(Modifier.weight(1f))
-                        Text("设置", color = MainText, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(12.dp))
-                    }
-                    settingsContent(Modifier.weight(1f).fillMaxWidth())
+    Box(
+        Modifier.fillMaxSize().pointerInput(drawerState.isOpen) {
+            var dragDistance = 0f
+            detectHorizontalDragGestures(
+                onDragStart = { dragDistance = 0f },
+                onHorizontalDrag = { _, amount -> dragDistance += amount },
+                onDragEnd = {
+                    if (!drawerState.isOpen && dragDistance > 72f) drawerScope.launch { drawerState.open() }
+                    else if (drawerState.isOpen && dragDistance < -72f) drawerScope.launch { drawerState.close() }
                 }
-            } else {
-                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                    Spacer(Modifier.height(28.dp))
-                    Text("最近对话", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Text("向右滑动打开会话列表", color = Muted, fontSize = 11.sp)
-                    Spacer(Modifier.height(14.dp))
-                    OutlinedTextField(value = recentQuery, onValueChange = { recentQuery = it }, placeholder = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 10.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 11.sp) }) } }
-                    LazyColumn(Modifier.weight(1f)) {
-                        items(orderedRecent) { prompt ->
-                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onDraft(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 12.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8276D9)))), contentAlignment = Alignment.Center) { Text(petName.take(1), color = Color.White, fontWeight = FontWeight.Bold) }
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) { Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold); Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 1) }
-                            }
-                            Divider(color = GlassBorder.copy(alpha = .4f))
-                        }
-                    }
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp),
-                        color = Panel2,
-                        shape = RoundedCornerShape(18.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-                    ) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf("⌕" to "找一下", "✎" to "记一下", "⚙" to "设置").forEachIndexed { index, item ->
-                                Column(
-                                    Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            when (index) {
-                                                0 -> { showSearch = true; drawerScope.launch { drawerState.close() } }
-                                                1 -> { noteDraft = draft; showRemember = true; drawerScope.launch { drawerState.close() } }
-                                                else -> drawerSection = "settings"
-                                            }
-                                        }.padding(vertical = 8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(item.first, color = Cyan, fontSize = 20.sp)
-                                    Text(item.second, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
-            }
+            )
         }
-    }) {
+    ) {
     Column(modifier.fillMaxSize().padding(contentPadding).imePadding().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -682,25 +653,115 @@ private fun ChatPage(
                 Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedFiles = emptyList() })
             }
         }
-        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(Modifier.weight(1f), color = if (appDarkState) Color.White.copy(alpha = .09f) else Color.White.copy(alpha = .8f), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(18.dp)) {
-                BasicTextField(value = draft, onValueChange = onDraft, modifier = Modifier.padding(horizontal = 15.dp, vertical = 15.dp).fillMaxWidth(),
-                    textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp),
-                    decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给萌宠…", color = Muted, fontSize = 14.sp, maxLines = 1); inner() })
+        Column(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
+                BasicTextField(value = draft, onValueChange = onDraft,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp, max = 132.dp).padding(horizontal = 16.dp, vertical = 15.dp),
+                    textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
+                    decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$petName…", color = Muted, fontSize = 14.sp); inner() })
             }
-            Spacer(Modifier.width(8.dp))
-            Text("＋", color = Cyan, fontSize = 23.sp, modifier = Modifier.clickable { filePicker.launch(arrayOf("*/*")) }.padding(horizontal = 8.dp))
-            Text("🎙", fontSize = 20.sp, modifier = Modifier.clickable {
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
-                    putExtra(RecognizerIntent.EXTRA_PROMPT, "请开始说话")
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Surface(Modifier.size(40.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
+                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted) }
                 }
-                runCatching { voiceInput.launch(intent) }
-            }.padding(horizontal = 7.dp))
-            Button(onClick = { onSend(draft, selectedFiles); selectedFiles = emptyList() }, enabled = draft.isNotBlank() || selectedFiles.isNotEmpty(), shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(horizontal = 15.dp, vertical = 14.dp)) { Text("发送") }
+                Surface(Modifier.clip(RoundedCornerShape(14.dp)).clickable { callMode = "语音"; showCallInfo = true }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
+                    Row(Modifier.padding(horizontal = 9.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Call, contentDescription = null, tint = Cyan, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(5.dp)); Text("语音", color = MainText, fontSize = 11.sp)
+                    }
+                }
+                Surface(Modifier.clip(RoundedCornerShape(14.dp)).clickable { callMode = "视频"; showCallInfo = true }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
+                    Row(Modifier.padding(horizontal = 9.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Videocam, contentDescription = null, tint = Cyan, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(5.dp)); Text("视频", color = MainText, fontSize = 11.sp)
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                VoiceInputButton(isListening = isListening) {
+                    if (!isListening) {
+                        isListening = true
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, "请开始说话")
+                        }
+                        runCatching { voiceInput.launch(intent) }.onFailure { isListening = false }
+                    }
+                }
+                Surface(Modifier.size(42.dp).clickable(enabled = draft.isNotBlank() || selectedFiles.isNotEmpty()) {
+                    onSend(draft, selectedFiles); selectedFiles = emptyList()
+                }, color = if (draft.isNotBlank() || selectedFiles.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.Send, contentDescription = "发送", tint = if (draft.isNotBlank() || selectedFiles.isNotEmpty()) Color(0xFF06202A) else Muted)
+                    }
+                }
+            }
+            if (isListening) Text("正在聆听… 说完后系统会自动返回识别文字", color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
         }
     }
+        AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize(),
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()) {
+                    Surface(modifier = Modifier.fillMaxSize(), color = Panel, shape = RoundedCornerShape(0.dp)) {
+                        if (drawerSection == "settings") {
+                            Column(Modifier.fillMaxSize()) {
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = { drawerSection = "recent" }) { Text("‹ 最近对话", color = Cyan) }
+                                    Spacer(Modifier.weight(1f))
+                                    Text("设置", color = MainText, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.width(12.dp))
+                                }
+                                settingsContent(Modifier.weight(1f).fillMaxWidth())
+                            }
+                        } else {
+                            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                                Spacer(Modifier.height(28.dp))
+                                Text("最近对话", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                Text("向右滑动打开会话列表", color = Muted, fontSize = 11.sp)
+                                Spacer(Modifier.height(14.dp))
+                                OutlinedTextField(value = recentQuery, onValueChange = { recentQuery = it }, placeholder = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 10.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 11.sp) }) } }
+                                LazyColumn(Modifier.weight(1f)) {
+                                    items(orderedRecent) { prompt ->
+                                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onDraft(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 12.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8276D9)))), contentAlignment = Alignment.Center) { Text(petName.take(1), color = Color.White, fontWeight = FontWeight.Bold) }
+                                            Spacer(Modifier.width(10.dp))
+                                            Column(Modifier.weight(1f)) { Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold); Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 1) }
+                                        }
+                                        Divider(color = GlassBorder.copy(alpha = .4f))
+                                    }
+                                }
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp),
+                                    color = Panel2,
+                                    shape = RoundedCornerShape(18.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                                ) {
+                                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf("⌕" to "找一下", "✎" to "记一下", "⚙" to "设置").forEachIndexed { index, item ->
+                                            Column(
+                                                Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                                                    .clickable {
+                                                        when (index) {
+                                                            0 -> { showSearch = true; drawerScope.launch { drawerState.close() } }
+                                                            1 -> { noteDraft = draft; showRemember = true; drawerScope.launch { drawerState.close() } }
+                                                            else -> drawerSection = "settings"
+                                                        }
+                                                    }.padding(vertical = 8.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text(item.first, color = Cyan, fontSize = 20.sp)
+                                                Text(item.second, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(12.dp))
+                            }
+                        }
+                    }
+        }
     }
     if (showSearch) AlertDialog(onDismissRequest = { showSearch = false; searchQuery = "" }, title = { Text("查找对话内容") },
         text = { Column { OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("输入关键词，聊天列表即时筛选") }, singleLine = true); Text("${messages.count { it.text.contains(searchQuery, true) }} 条匹配消息", color = Muted, fontSize = 12.sp) } },
@@ -717,9 +778,29 @@ private fun ChatPage(
         confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); showClear = false }) { Text("清屏") } },
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
     if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
-    if (showCallInfo) AlertDialog(onDismissRequest = { showCallInfo = false }, title = { Text("语音 / 视频通话") },
-        text = { Text("通话入口已规划。实时双向语音、摄像头采集与视频理解需要接入支持实时音视频的模型服务；当前语音输入仍为系统语音转文字。", color = Muted) },
+    if (showCallInfo) AlertDialog(onDismissRequest = { showCallInfo = false }, title = { Text("$callMode通话") },
+        text = { Text(if (callMode == "语音") "语音通话入口已恢复。实时双向通话需要接入支持实时音频的模型服务；当前版本暂未连接通话引擎。" else "视频通话入口已恢复。摄像头采集、实时视频传输与视频理解需要接入支持音视频的模型服务；当前版本暂未连接通话引擎。", color = Muted) },
         confirmButton = { TextButton(onClick = { showCallInfo = false }) { Text("知道了") } })
+}
+
+@Composable
+private fun VoiceInputButton(isListening: Boolean, onClick: () -> Unit) {
+    val pulseTransition = rememberInfiniteTransition(label = "voice-input-pulse")
+    val pulse by pulseTransition.animateFloat(initialValue = 0.78f, targetValue = 1.22f,
+        animationSpec = infiniteRepeatable(animation = tween(720), repeatMode = RepeatMode.Reverse), label = "voice-input-scale")
+    Box(Modifier.size(46.dp), contentAlignment = Alignment.Center) {
+        if (isListening) Canvas(Modifier.fillMaxSize()) {
+            drawCircle(color = Cyan.copy(alpha = 0.42f), radius = size.minDimension * 0.42f * pulse,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
+        }
+        Surface(Modifier.size(40.dp).clickable(enabled = !isListening, onClick = onClick),
+            color = if (isListening) Cyan else Panel2, shape = CircleShape) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Mic, contentDescription = if (isListening) "正在聆听" else "语音输入",
+                    tint = if (isListening) Color(0xFF06202A) else MainText)
+            }
+        }
+    }
 }
 
 @Composable
@@ -753,10 +834,43 @@ private fun SettingsPage(
         Text("设置", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Text("外观、扩展能力与应用信息", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(18.dp))
-        Text("模型与服务", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Text("管理多个在线或本地模型配置", color = Muted, fontSize = 11.sp)
-        Surface(color=Panel,shape=RoundedCornerShape(18.dp),border=androidx.compose.foundation.BorderStroke(1.dp,GlassBorder)) { Column(Modifier.fillMaxWidth().padding(12.dp)) { Text("模型档案 · ${modelProfiles.size}",color=MainText,fontWeight=FontWeight.SemiBold); modelProfiles.forEach { p -> Row(Modifier.fillMaxWidth().clickable { onSelectProfile(p) }.padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(p.name,color=MainText,fontSize=13.sp); Text("${p.provider} · ${p.model}",color=Muted,fontSize=10.sp) }; Text("设为当前",color=Cyan,fontSize=11.sp) } }; OutlinedTextField(value=profileName,onValueChange={profileName=it.take(24)},label={Text("档案名称")},singleLine=true,modifier=Modifier.fillMaxWidth()); Button(onClick={if(profileName.isNotBlank()&&endpoint.isNotBlank()&&model.isNotBlank()){onAddProfile(ModelProfile(profileName.trim(),provider,endpoint.trim(),model.trim(),apiKey));profileName=""}},enabled=profileName.isNotBlank()&&endpoint.isNotBlank()&&model.isNotBlank(),modifier=Modifier.fillMaxWidth()) { Text("保存当前配置为模型档案") } } }
-        Spacer(Modifier.height(18.dp))
+        Text("模型与服务", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text("先选择服务类型，再配置连接信息与模型档案", color = Muted, fontSize = 11.sp)
+        Spacer(Modifier.height(10.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                Text("服务类型", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("本地模型", "OpenAI 兼容接口").forEach { item ->
+                        FilterChip(selected = provider == item, onClick = { onProvider(item) }, label = { Text(item, fontSize = 12.sp) })
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 http://127.0.0.1:1234/v1")
+                ConfigField("模型名称", model, onModel, "例如 qwen2.5 或 gpt-4o-mini")
+                ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
+                Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
+                else modelProfiles.forEach { p ->
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSelectProfile(p) }.padding(vertical = 9.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(p.name, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp)
+                        }
+                        Text("设为当前  ›", color = Cyan, fontSize = 11.sp)
+                    }
+                }
+                OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(24) }, label = { Text("档案名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank()) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey)); profileName = "" } },
+                    enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存为模型档案") }
+                Spacer(Modifier.height(8.dp))
+                Text("密钥目前保存在应用私有配置中；模型推理请求与密钥加密存储仍需后续接入。", color = Muted, fontSize = 10.sp)
+                Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) { Text("保存模型配置", fontWeight = FontWeight.Bold) }
+                if (saved) Text("配置已保存", color = Color(0xFF76E0B1), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+        Spacer(Modifier.height(22.dp))
         Text("外观与主题", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Text("按系统或时间自动切换，也可手动固定主题", color = Muted, fontSize = 11.sp)
         Spacer(Modifier.height(10.dp))
@@ -796,28 +910,7 @@ private fun SettingsPage(
                 }
             }
         }
-        Spacer(Modifier.height(22.dp))
-        Text("当前模型连接详情", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        Text("连接本地模型或在线大模型服务", color = Muted, fontSize = 12.sp)
-        Spacer(Modifier.height(16.dp))
-        Text("服务类型", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-        Spacer(Modifier.height(9.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("本地模型", "OpenAI 兼容接口").forEach { item ->
-                FilterChip(selected = provider == item, onClick = { onProvider(item) }, label = { Text(item) })
-            }
-        }
-        Spacer(Modifier.height(14.dp))
-        ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 http://127.0.0.1:1234/v1")
-        ConfigField("模型名称", model, onModel, "例如 qwen2.5 或 gpt-4o-mini")
-        ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
-        Spacer(Modifier.height(8.dp))
-        Surface(color = Panel, shape = RoundedCornerShape(14.dp)) {
-            Text("提示：密钥目前保存在应用私有配置中。此版本已建立配置入口，模型请求与密钥加密存储仍需后续接入。", Modifier.padding(13.dp), color = Muted, fontSize = 11.sp)
-        }
-        Spacer(Modifier.height(18.dp))
-        Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) { Text("保存模型配置", fontWeight = FontWeight.Bold) }
-        if (saved) Text("配置已保存", color = Color(0xFF76E0B1), fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+
     }
     if (showPluginDialog) AlertDialog(
         onDismissRequest = { showPluginDialog = false },
