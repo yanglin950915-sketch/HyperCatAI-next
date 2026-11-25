@@ -47,13 +47,14 @@ class MainActivity : ComponentActivity() {
             Thread {
                 try {
                     val shell = remoteShell ?: throw IllegalStateException("Shizuku 服务未连接")
+                    // First identify the real external display ID. Never assume it is 1.
                     val displays = shell.exec("am display list")
                     runOnUiThread {
-                        callback?.invoke("Shizuku 已连接。显示屏信息：\\n$displays")
-                    }
-                    val result = shell.exec("am start --display 1 -n com.hypercat.ai/.MainActivity")
-                    runOnUiThread {
-                        callback?.invoke("已通过 Shizuku 请求启动背屏 Activity。\\n$result\\n如果背屏仍无画面，请把这段显示屏信息发给我。")
+                        callback?.invoke(
+                            "Shizuku 已连接，已执行显示屏检测。\\n\\n" +
+                                displays +
+                                "\\n\\n请把完整检测结果发给开发者。确认背屏 display ID 后，再执行定向启动。"
+                        )
                     }
                 } catch (e: Exception) {
                     runOnUiThread { callback?.invoke("背屏启动失败：${e.message}") }
@@ -62,7 +63,7 @@ class MainActivity : ComponentActivity() {
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             remoteShell = null
-            pendingStatus?.invoke("Shizuku 服务已断开")
+            runOnUiThread { pendingStatus?.invoke("Shizuku 服务已断开") }
         }
     }
 
@@ -86,7 +87,6 @@ class MainActivity : ComponentActivity() {
                 return
             }
             if (Shizuku.checkSelfPermission() != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                Shizuku.addRequestPermissionResultListener(permissionListener)
                 Shizuku.requestPermission(1001)
                 onStatus("请在弹出的 Shizuku 窗口中允许 HyperCat AI。")
                 return
