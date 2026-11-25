@@ -26,29 +26,29 @@
     <Text x="(0.08 * #view_width)" y="(0.19 * #view_height)" size="24" color="#FFFFFF" textExp="@petName"/>
     <Text x="(0.08 * #view_width)" y="(0.29 * #view_height)" size="15" color="#7B91A8" textExp="ifelse(#touchMood==1,'ONLINE  •  HAPPY',@mood)"/>
 
-    <!-- Robot pet stays in the lower half, away from the camera cutout. -->
-    <Button x="(0.16 * #view_width)" y="(0.39 * #view_height)" w="(0.68 * #view_width)" h="(0.37 * #view_height)" interceptTouch="true">
+    <!-- Minimal cat face: only expressive eyes, a tiny nose and mouth. -->
+    <Button x="(0.12 * #view_width)" y="(0.39 * #view_height)" w="(0.76 * #view_width)" h="(0.37 * #view_height)" interceptTouch="true">
         <Normal>
-            <Rectangle x="(0.25 * #view_width)" y="(0.42 * #view_height)" w="(0.50 * #view_width)" h="(0.29 * #view_height)" fillColor="#10202D"/>
-            <Ellipse x="(0.30 * #view_width)" y="(0.40 * #view_height)" w="(0.40 * #view_width)" h="(0.32 * #view_height)" fillColor="#173449"/>
-            <Ellipse x="(0.37 * #view_width)" y="(0.50 * #view_height)" w="(0.07 * #view_width)" h="(0.055 * #view_height)" fillColor="#6AF0FF"/>
-            <Ellipse x="(0.56 * #view_width)" y="(0.50 * #view_height)" w="(0.07 * #view_width)" h="(0.055 * #view_height)" fillColor="#6AF0FF"/>
-            <Rectangle x="(0.43 * #view_width)" y="(0.62 * #view_height)" w="(0.14 * #view_width)" h="(0.018 * #view_height)" fillColor="#6AF0FF"/>
-            <Rectangle x="(0.18 * #view_width)" y="(0.52 * #view_height)" w="(0.10 * #view_width)" h="(0.07 * #view_height)" fillColor="#24536A"/>
-            <Rectangle x="(0.72 * #view_width)" y="(0.52 * #view_height)" w="(0.10 * #view_width)" h="(0.07 * #view_height)" fillColor="#24536A"/>
+            <Ellipse x="(0.23 * #view_width)" y="(0.45 * #view_height)" w="(0.22 * #view_width)" h="(0.17 * #view_height)" fillColor="#72DFFF"/>
+            <Ellipse x="(0.55 * #view_width)" y="(0.45 * #view_height)" w="(0.22 * #view_width)" h="(0.17 * #view_height)" fillColor="#72DFFF"/>
+            <Ellipse x="(0.30 * #view_width)" y="(0.47 * #view_height)" w="(0.085 * #view_width)" h="(0.12 * #view_height)" fillColor="#061321"/>
+            <Ellipse x="(0.62 * #view_width)" y="(0.47 * #view_height)" w="(0.085 * #view_width)" h="(0.12 * #view_height)" fillColor="#061321"/>
+            <Ellipse x="(0.32 * #view_width)" y="(0.48 * #view_height)" w="(0.025 * #view_width)" h="(0.035 * #view_height)" fillColor="#FFFFFF"/>
+            <Ellipse x="(0.64 * #view_width)" y="(0.48 * #view_height)" w="(0.025 * #view_width)" h="(0.035 * #view_height)" fillColor="#FFFFFF"/>
+            <Ellipse x="(0.485 * #view_width)" y="(0.64 * #view_height)" w="(0.03 * #view_width)" h="(0.018 * #view_height)" fillColor="#72DFFF"/>
+            <Text x="(0.44 * #view_width)" y="(0.65 * #view_height)" size="25" color="#72DFFF" text="⌣"/>
         </Normal>
         <Pressed>
-            <Rectangle x="(0.25 * #view_width)" y="(0.42 * #view_height)" w="(0.50 * #view_width)" h="(0.29 * #view_height)" fillColor="#163C45"/>
-            <Ellipse x="(0.30 * #view_width)" y="(0.40 * #view_height)" w="(0.40 * #view_width)" h="(0.32 * #view_height)" fillColor="#205568"/>
-            <Text x="(0.35 * #view_width)" y="(0.49 * #view_height)" size="38" color="#8BFFDA" text="♥"/>
-            <Text x="(0.55 * #view_width)" y="(0.49 * #view_height)" size="38" color="#8BFFDA" text="♥"/>
-            <Text x="(0.43 * #view_width)" y="(0.60 * #view_height)" size="26" color="#8BFFDA" text="⌣"/>
-            <Rectangle x="(0.18 * #view_width)" y="(0.52 * #view_height)" w="(0.10 * #view_width)" h="(0.07 * #view_height)" fillColor="#24536A"/>
-            <Rectangle x="(0.72 * #view_width)" y="(0.52 * #view_height)" w="(0.10 * #view_width)" h="(0.07 * #view_height)" fillColor="#24536A"/>
+            <Ellipse x="(0.23 * #view_width)" y="(0.48 * #view_height)" w="(0.22 * #view_width)" h="(0.10 * #view_height)" fillColor="#72DFFF"/>
+            <Ellipse x="(0.55 * #view_width)" y="(0.48 * #view_height)" w="(0.22 * #view_width)" h="(0.10 * #view_height)" fillColor="#72DFFF"/>
+            <Ellipse x="(0.31 * #view_width)" y="(0.50 * #view_height)" w="(0.07 * #view_width)" h="(0.07 * #view_height)" fillColor="#061321"/>
+            <Ellipse x="(0.63 * #view_width)" y="(0.50 * #view_height)" w="(0.07 * #view_width)" h="(0.07 * #view_height)" fillColor="#061321"/>
+            <Text x="(0.44 * #view_width)" y="(0.63 * #view_height)" size="25" color="#8BFFDA" text="♥"/>
         </Pressed>
         <Triggers>
             <Trigger action="up">
                 <VariableCommand name="touchMood" expression="1"/>
+                <VariableCommand name="mood" expression="'HAPPY'" type="string"/>
             </Trigger>
         </Triggers>
     </Button>
