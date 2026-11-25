@@ -36,6 +36,8 @@ import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Send
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.runtime.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.animation.core.animateFloatAsState
@@ -74,13 +76,13 @@ import java.net.URL
 import com.hypercat.ai.rear.PetStateStore
 
 private var appDarkState by mutableStateOf(true)
-private val Bg get() = if (appDarkState) Color(0xFF080D18) else Color(0xFFF1F5FA)
-private val Panel get() = if (appDarkState) Color(0xFF111C2D) else Color(0xFFFFFFFF)
-private val Panel2 get() = if (appDarkState) Color(0xFF17263B) else Color(0xFFE4EDF6)
-private val Cyan = Color(0xFF55CFE4)
-private val Muted get() = if (appDarkState) Color(0xFF91A3BA) else Color(0xFF65758A)
-private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .18f) else Color(0xFF8AA4BA).copy(alpha = .35f)
-private val MainText get() = if (appDarkState) Color(0xFFF4FAFF) else Color(0xFF142235)
+private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF1F5FA)
+private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFFFFFFF)
+private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFE4EDF6)
+private val Cyan get() = if (appDarkState) Color(0xFFE6E6E6) else Color(0xFF168DA6)
+private val Muted get() = if (appDarkState) Color(0xFFA0A0A0) else Color(0xFF65758A)
+private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f) else Color(0xFF8AA4BA).copy(alpha = .35f)
+private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF142235)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -368,7 +370,7 @@ private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, p
     var nameDraft by remember(petName) { mutableStateOf(petName) }
     Column(
         modifier.fillMaxSize()
-            .background(Brush.verticalGradient(listOf(if (appDarkState) Color(0xFF101D30) else Color(0xFFEAF2F8), Bg)))
+            .background(Brush.verticalGradient(listOf(if (appDarkState) Color(0xFF090909) else Color(0xFFEAF2F8), Bg)))
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             .padding(bottom = 22.dp)
@@ -389,7 +391,7 @@ private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, p
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(30.dp),
-            color = if (appDarkState) Color(0xFF14243A) else Color.White,
+            color = if (appDarkState) Color(0xFF111111) else Color.White,
             border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
             shadowElevation = 12.dp
         ) {
@@ -494,23 +496,20 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
     ) {
         val cx = size.width / 2f
         val cy = size.height * .47f
-        val eyeW = size.width * .235f
-        val eyeH = size.height * .40f
-        val gap = size.width * .155f
-        val eyeBrush = Brush.verticalGradient(listOf(Color(0xFFE7FFFF), Color(0xFF65DFF5), Color(0xFF1489C7)))
+        val eyeW = size.width * .205f
+        val eyeH = size.height * .31f
+        val gap = size.width * .17f
+        val eyeWhite = Color(0xFFF4F1EA)
         listOf(cx - gap, cx + gap).forEach { x ->
             val currentEyeH = eyeH * eyelid
-            drawCircle(Color(0xFF55DDF5).copy(alpha = .13f), radius = eyeW * 1.02f, center = Offset(x, cy), style = androidx.compose.ui.graphics.drawscope.Fill)
-            drawOval(Color(0xFFB8F6FF).copy(alpha = .28f), Offset(x - eyeW / 2 - 2.dp.toPx(), cy - currentEyeH / 2 - 2.dp.toPx()), Size(eyeW + 4.dp.toPx(), currentEyeH + 4.dp.toPx()), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.4.dp.toPx()))
-            drawOval(eyeBrush, Offset(x - eyeW / 2, cy - currentEyeH / 2), Size(eyeW, currentEyeH))
-            if (eyelid > 0.22f) {
-                val px = (pupilX * eyeW * .38f).coerceIn(-eyeW * .38f, eyeW * .20f)
-                val py = (pupilY * eyeH * .28f).coerceIn(-eyeH * .28f, eyeH * .16f)
-                drawCircle(Color(0xFF2CB6D8).copy(alpha = .55f), radius = eyeW * .34f, center = Offset(x + px, cy + eyeH * .05f + py))
-                drawCircle(Color(0xFF06172A), radius = eyeW * .285f, center = Offset(x + px, cy + eyeH * .05f + py))
-                drawCircle(Color(0xFF163E5B), radius = eyeW * .17f, center = Offset(x + px + eyeW * .025f, cy + eyeH * .07f + py))
-                drawCircle(Color.White, radius = eyeW * .085f, center = Offset(x + px - eyeW * .09f, cy - eyeH * .08f + py))
-                drawCircle(Color(0xFFB8F7FF), radius = eyeW * .035f, center = Offset(x + px + eyeW * .11f, cy + eyeH * .16f + py))
+            // Soft ivory eye whites with compact dark pupils: calmer, friendlier and less neon.
+            drawOval(eyeWhite, Offset(x - eyeW / 2, cy - currentEyeH / 2), Size(eyeW, currentEyeH))
+            if (eyelid > .22f) {
+                val px = (pupilX * eyeW * .30f).coerceIn(-eyeW * .30f, eyeW * .30f)
+                val py = (pupilY * eyeH * .22f).coerceIn(-eyeH * .22f, eyeH * .22f)
+                val pupilCenter = Offset(x + px, cy + py)
+                drawCircle(Color(0xFF242424), radius = eyeW * .285f, center = pupilCenter)
+                drawCircle(Color.White, radius = eyeW * .075f, center = Offset(x + px - eyeW * .09f, cy - eyeH * .10f + py))
             }
         }
         val noseY = cy + eyeH * .72f
@@ -520,7 +519,7 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
             quadraticTo(cx, noseY + 9.dp.toPx(), cx - 7.dp.toPx(), noseY)
             close()
         }
-        drawPath(nose, Color(0xFF8BEAFF))
+        drawPath(nose, Color(0xFFB9A5A0))
         val mouthY = noseY + 12.dp.toPx()
         val mouth = Path().apply {
             when (mood) {
@@ -536,7 +535,7 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
                 }
             }
         }
-        drawPath(mouth, Color(0xFF8BEAFF), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.2.dp.toPx()))
+        drawPath(mouth, Color(0xFFB9A5A0), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
     }
 }
 
@@ -564,7 +563,6 @@ private fun ChatPage(
     var recentQuery by remember { mutableStateOf("") }
     var recentSort by remember { mutableStateOf("最新") }
     var showModelPicker by remember { mutableStateOf(false) }
-    var keepContext by remember { mutableStateOf(true) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val voiceInput = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -617,7 +615,7 @@ private fun ChatPage(
             }
             Spacer(Modifier.width(7.dp))
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { showClear = true }) {
-                Box(contentAlignment = Alignment.Center) { Text("＋", color = Cyan, fontSize = 22.sp, fontWeight = FontWeight.Light) }
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Delete, contentDescription = "清理当前对话", tint = MainText, modifier = Modifier.size(20.dp)) }
             }
         }
         if (!configured) {
@@ -671,7 +669,7 @@ private fun ChatPage(
                             Text(petName.take(1), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                    Surface(modifier = if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f), color = if (line.fromUser) Color(0xFF1689C2) else if (appDarkState) Color(0xFF202D40) else Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
+                    Surface(modifier = if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
                             if (line.text.isNotBlank()) Text(line.text, color = if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), fontSize = 14.sp, lineHeight = 20.sp)
                             line.attachments.forEach { name -> Text("📎 $name", color = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan, fontSize = 11.sp) }
@@ -745,27 +743,38 @@ private fun ChatPage(
                         if (drawerSection == "settings") {
                             Column(Modifier.fillMaxSize()) {
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(onClick = { drawerSection = "recent" }) { Text("‹ 最近对话", color = Cyan) }
+                                    TextButton(onClick = { drawerSection = "recent" }) { Text("‹ 最近对话", color = MainText) }
                                     Spacer(Modifier.weight(1f))
                                     Text("设置", color = MainText, fontWeight = FontWeight.Bold)
-                                    Spacer(Modifier.width(12.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭设置", tint = Muted) }
                                 }
                                 settingsContent(Modifier.weight(1f).fillMaxWidth())
                             }
                         } else {
                             Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                                Spacer(Modifier.height(28.dp))
-                                Text("最近对话", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                Text("向右滑动打开会话列表", color = Muted, fontSize = 11.sp)
+                                Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("最近对话", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                        Text("选择一条记录，将内容放回输入框继续编辑", color = Muted, fontSize = 11.sp)
+                                    }
+                                    IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭最近对话", tint = Muted) }
+                                }
                                 Spacer(Modifier.height(14.dp))
                                 OutlinedTextField(value = recentQuery, onValueChange = { recentQuery = it }, placeholder = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 10.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 11.sp) }) } }
-                                LazyColumn(Modifier.weight(1f)) {
+                                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp)) {
+                                    if (orderedRecent.isEmpty()) item {
+                                        Column(Modifier.fillMaxWidth().padding(top = 42.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("暂无最近对话", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                            Text("发送消息后，这里会显示最近使用的内容", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                                        }
+                                    }
                                     items(orderedRecent) { prompt ->
                                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onDraft(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 12.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8276D9)))), contentAlignment = Alignment.Center) { Text(petName.take(1), color = Color.White, fontWeight = FontWeight.Bold) }
                                             Spacer(Modifier.width(10.dp))
-                                            Column(Modifier.weight(1f)) { Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold); Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 1) }
+                                            Column(Modifier.weight(1f)) { Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold); Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 2) }
                                         }
                                         Divider(color = GlassBorder.copy(alpha = .4f))
                                     }
@@ -806,14 +815,8 @@ private fun ChatPage(
         confirmButton = { TextButton(onClick = { showSearch = false; searchQuery = "" }) { Text("完成") } })
     if (showRemember) AlertDialog(onDismissRequest = { showRemember = false }, title = { Text("记一下") }, text = { Column { OutlinedTextField(value = noteDraft, onValueChange = { noteDraft = it }, label = { Text("要记住的内容") }, minLines = 3); Text("已保存 ${savedNotes.size} 条", color = Muted, fontSize = 11.sp) } }, confirmButton = { TextButton(onClick = { if (noteDraft.isNotBlank()) onSaveNote(noteDraft.trim()); noteDraft=""; showRemember=false }) { Text("保存") } }, dismissButton = { TextButton(onClick = { showRemember=false }) { Text("取消") } })
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("清理当前对话") },
-        text = { Column {
-            Text("清除当前聊天消息。", color = Muted)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = keepContext, onCheckedChange = { keepContext = it })
-                Text("保留上下文选项（模型上下文功能接入后生效）", color = MainText, fontSize = 11.sp)
-            }
-        } },
-        confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); showClear = false }) { Text("清屏") } },
+        text = { Text("确定清空当前页面的全部消息吗？此操作不会删除最近对话记录。", color = Muted) },
+        confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); showClear = false }) { Text("清空消息", color = Color(0xFFE57373)) } },
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
     if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
     if (showCallInfo) AlertDialog(onDismissRequest = { showCallInfo = false }, title = { Text("${callMode}通话") },
