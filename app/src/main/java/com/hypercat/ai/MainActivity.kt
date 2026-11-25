@@ -230,8 +230,8 @@ private fun CatFace(modifier: Modifier = Modifier) {
 
     Canvas(modifier.pointerInput(Unit) {
         detectTapGestures { point ->
-            val w = size.width.coerceAtLeast(1f)
-            val h = size.height.coerceAtLeast(1f)
+            val w = size.width.toFloat().coerceAtLeast(1f)
+            val h = size.height.toFloat().coerceAtLeast(1f)
             gazeX = (((point.x / w) - 0.5f) * 2f).coerceIn(-1f, 1f)
             gazeY = (((point.y / h) - 0.45f) * 2f).coerceIn(-1f, 1f)
             blinking = true
