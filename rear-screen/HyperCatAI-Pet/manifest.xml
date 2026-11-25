@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Widget version="2" scaleByDensity="false" useVariableUpdater="DateTime.Second">
-    <!-- HyperCat AI pet data; refresh when the second changes and whenever the provider notifies observers. -->
     <Var name="petUri" type="string" expression="'content://uriroute/data?group=hypercat&amp;name=pet-state'" const="true"/>
     <Var name="resultJson" type="string" expression="'{}'"/>
     <Var name="petName" type="string" expression="'小橘'"/>
     <Var name="petEmoji" type="string" expression="'🐈'"/>
     <Var name="mood" type="string" expression="'IDLE'"/>
     <Var name="reply" type="string" expression="'你好！我是你的 AI 萌宠伙伴。'"/>
-    <Var name="updatedAt" type="string" expression="'0'"/>
     <Var name="touchMood" expression="0"/>
     <Var name="refreshTick" expression="#second">
         <Trigger>
@@ -19,18 +17,32 @@
         <VariableCommand name="petEmoji" expression="jsonGetString(strToJson(@resultJson), 'pet_emoji')" type="string"/>
         <VariableCommand name="mood" expression="jsonGetString(strToJson(@resultJson), 'mood')" type="string"/>
         <VariableCommand name="reply" expression="jsonGetString(strToJson(@resultJson), 'reply')" type="string"/>
-        <VariableCommand name="updatedAt" expression="jsonGetString(strToJson(@resultJson), 'updated_at')" type="string"/>
     </Function>
+
     <Rectangle x="0" y="0" w="#view_width" h="#view_height" fillColor="#080B14"/>
-    <Rectangle x="(0.32 * #view_width)" y="(0.10 * #view_height)" w="(0.62 * #view_width)" h="2" fillColor="#FFFFFF" alpha="35"/>
-    <Text x="(0.34 * #view_width)" y="(0.13 * #view_height)" size="30" color="#AFC5FF" text="HYPERCAT AI"/>
-    <Button x="(0.82 * #view_width)" y="(0.08 * #view_height)" w="(0.14 * #view_width)" h="(0.12 * #view_height)" interceptTouch="true">
+    <Text x="(0.08 * #view_width)" y="(0.09 * #view_height)" size="28" color="#AFC5FF" text="HYPERCAT AI"/>
+    <Text x="(0.08 * #view_width)" y="(0.24 * #view_height)" size="25" color="#FFFFFF" textExp="@petName"/>
+    <Text x="(0.08 * #view_width)" y="(0.72 * #view_height)" size="21" color="#7DE2C2" textExp="ifelse(#touchMood==1,'HAPPY',@mood)"/>
+    <Text x="(0.08 * #view_width)" y="(0.82 * #view_height)" w="(0.84 * #view_width)" size="18" color="#E7ECF8" textExp="ifelse(#touchMood==1,'喵～摸摸我真开心！',@reply)"/>
+
+    <!-- The pet itself is the touch target; keep the button above the artwork. -->
+    <Button x="(0.30 * #view_width)" y="(0.28 * #view_height)" w="(0.62 * #view_width)" h="(0.40 * #view_height)" interceptTouch="true">
         <Normal>
-            <Text x="(0.85 * #view_width)" y="(0.13 * #view_height)" size="34" color="#AFC5FF" text="↻"/>
+            <Text x="(0.42 * #view_width)" y="(0.34 * #view_height)" size="118" color="#FFFFFF" textExp="ifelse(#touchMood==1,'😻',@petEmoji)"/>
         </Normal>
         <Pressed>
-            <Text x="(0.07 * #view_width)" y="(0.06 * #view_height)" size="34" color="#FFFFFF" text="↻"/>
+            <Text x="(0.42 * #view_width)" y="(0.34 * #view_height)" size="118" color="#FFFFFF" text="😻"/>
         </Pressed>
+        <Triggers>
+            <Trigger action="up">
+                <VariableCommand name="touchMood" expression="1"/>
+            </Trigger>
+        </Triggers>
+    </Button>
+
+    <Button x="(0.82 * #view_width)" y="(0.06 * #view_height)" w="(0.14 * #view_width)" h="(0.13 * #view_height)" interceptTouch="true">
+        <Normal><Text x="(0.85 * #view_width)" y="(0.08 * #view_height)" size="30" color="#AFC5FF" text="↻"/></Normal>
+        <Pressed><Text x="(0.85 * #view_width)" y="(0.08 * #view_height)" size="30" color="#FFFFFF" text="↻"/></Pressed>
         <Triggers>
             <Trigger action="up">
                 <VariableCommand name="touchMood" expression="0"/>
@@ -38,24 +50,7 @@
             </Trigger>
         </Triggers>
     </Button>
-    <Text x="(0.34 * #view_width)" y="(0.27 * #view_height)" size="25" color="#FFFFFF" textExp="@petName"/>
-    <Text x="(0.52 * #view_width)" y="(0.36 * #view_height)" size="112" color="#FFFFFF" textExp="ifelse(#touchMood==1,'😻',@petEmoji)"/>
-    <Text x="(0.34 * #view_width)" y="(0.72 * #view_height)" size="21" color="#7DE2C2" textExp="ifelse(#touchMood==1,'HAPPY',@mood)"/>
-    <Text x="(0.34 * #view_width)" y="(0.81 * #view_height)" w="(0.60 * #view_width)" size="18" color="#E7ECF8" textExp="ifelse(#touchMood==1,'喵～再摸摸我！',@reply)"/>
-    <!-- Tap the pet to make it react. -->
-    <Button x="(0.43 * #view_width)" y="(0.31 * #view_height)" w="(0.53 * #view_width)" h="(0.38 * #view_height)" interceptTouch="true">
-        <Normal>
-            <Rectangle x="(0.43 * #view_width)" y="(0.31 * #view_height)" w="(0.53 * #view_width)" h="(0.38 * #view_height)" fillColor="#FFFFFF" alpha="0"/>
-        </Normal>
-        <Pressed>
-            <Rectangle x="(0.43 * #view_width)" y="(0.31 * #view_height)" w="(0.53 * #view_width)" h="(0.38 * #view_height)" fillColor="#FFFFFF" alpha="18"/>
-        </Pressed>
-        <Triggers>
-            <Trigger action="up">
-                <VariableCommand name="touchMood" expression="ifelse(#touchMood==1,0,1)"/>
-            </Trigger>
-        </Triggers>
-    </Button>
+
     <VariableBinders>
         <ContentProviderBinder name="petBinder" uriExp="@petUri" columns="result">
             <Variable name="resultJson" column="result" type="string"/>
