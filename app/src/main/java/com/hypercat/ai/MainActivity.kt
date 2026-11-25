@@ -114,6 +114,7 @@ private fun fetchLatestRelease(): ReleaseInfo {
 private fun HyperCatApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     var page by remember { mutableStateOf(Page.HOME) }
+    var openSettingsDrawer by remember { mutableStateOf(false) }
     var provider by remember { mutableStateOf("OpenAI 兼容接口") }
     var endpoint by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
@@ -204,7 +205,7 @@ private fun HyperCatApp() {
                         icon = { Icon(Icons.Outlined.Home, contentDescription = "萌宠") }, label = { Text("萌宠") })
                     NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
                         icon = { Icon(Icons.Outlined.Forum, contentDescription = "Agent") }, label = { Text("Agent") })
-                    NavigationBarItem(selected = page == Page.SETTINGS, onClick = { page = Page.SETTINGS },
+                    NavigationBarItem(selected = false, onClick = { page = Page.CHAT; openSettingsDrawer = true },
                         icon = { Icon(Icons.Outlined.Settings, contentDescription = "设置") }, label = { Text("设置") })
                 }
             }
@@ -221,7 +222,7 @@ private fun HyperCatApp() {
                         context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit().putString("pet_name", clean).apply()
                     },
                     openChat = { page = Page.CHAT },
-                    openSettings = { page = Page.SETTINGS }
+                    openSettings = { page = Page.CHAT; openSettingsDrawer = true }
                 )
                 Page.CHAT -> ChatPage(
                     modifier = Modifier.padding(padding),
@@ -251,6 +252,8 @@ private fun HyperCatApp() {
                     petName = petName,
                     petMood = petMood,
                     onMood = { mood -> petMood = mood },
+                    showSettingsOnEnter = openSettingsDrawer,
+                    onSettingsDrawerShown = { openSettingsDrawer = false },
                     settingsContent = { drawerModifier ->
                         SettingsPage(
                             modifier = drawerModifier,
@@ -498,6 +501,8 @@ private fun ChatPage(
     modifier: Modifier, messages: List<ChatLine>, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, onMood: (String) -> Unit,
+    showSettingsOnEnter: Boolean,
+    onSettingsDrawerShown: () -> Unit,
     settingsContent: @Composable (Modifier) -> Unit
 ) {
     var drawerSection by remember { mutableStateOf("recent") }
@@ -522,6 +527,13 @@ private fun ChatPage(
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
+    LaunchedEffect(showSettingsOnEnter) {
+        if (showSettingsOnEnter) {
+            drawerSection = "settings"
+            drawerState.open()
+            onSettingsDrawerShown()
+        }
+    }
     val filteredRecent = recentPrompts.filter { it.contains(recentQuery, true) }
     val orderedRecent = when (recentSort) { "最早" -> filteredRecent.reversed(); "A-Z" -> filteredRecent.sortedBy { it.lowercase() }; else -> filteredRecent }
     ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = true, drawerContent = {
