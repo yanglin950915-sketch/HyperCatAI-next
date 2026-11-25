@@ -1,5 +1,6 @@
 package com.hypercat.ai
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -104,7 +105,7 @@ private fun HyperCatApp() {
             Surface(color = Color(0xFF202D49), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
                     Text("小米背屏连接（实验功能）", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("原生背屏应用列表目前没有可供普通第三方应用直接注册的公开接口。可选用 Shizuku 尝试将萌宠界面启动到副屏。", color = Color(0xFFB5BED3), fontSize = 11.sp)
+                    Text("原生背屏应用列表目前没有可供普通第三方应用直接注册的公开接口。此处通过 Android 多显示屏 API 尝试启动到副屏，是否可用取决于小米系统权限和显示屏编号。", color = Color(0xFFB5BED3), fontSize = 11.sp)
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = {
                         (context as? MainActivity)?.launchPetOnRearDisplay { rearStatus = it }
