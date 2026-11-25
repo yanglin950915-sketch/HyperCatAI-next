@@ -16,10 +16,11 @@ class ShellUserService @Keep constructor(@Suppress("UNUSED_PARAMETER") context: 
     @Throws(RemoteException::class)
     override fun exec(command: String): String {
         // Restrict this bridge to the small set of diagnostics/launch operations used by HyperCat.
-        val allowed = command == "dumpsys display"
-        if (!allowed) return "拒绝执行未授权命令"
+        val normalizedCommand = command.trim()
+        val allowed = normalizedCommand == "dumpsys display"
+        if (!allowed) return "拒绝执行未授权命令（服务版本 2；收到命令长度=${command.length}）"
         return try {
-            val process = ProcessBuilder("sh", "-c", command)
+            val process = ProcessBuilder("sh", "-c", normalizedCommand)
                 .redirectErrorStream(true)
                 .start()
             val output = BufferedReader(InputStreamReader(process.inputStream)).use { it.readText() }
