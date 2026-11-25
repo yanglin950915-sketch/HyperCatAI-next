@@ -20,16 +20,15 @@ jobs:
           gradle-version: '8.9'
       - name: Build debug APK
         run: gradle assembleDebug
-      - name: Package rear-screen replacement folder
+      - name: Verify complete rearscreen folder
         run: |
-          mkdir -p rearscreen
-          cp rear-screen/HyperCatAI-Pet/manifest.xml rearscreen/manifest.xml
-          zip -r rearscreen.zip rearscreen
-      - name: Upload rearscreen replacement
+          test -s rearscreen/manifest.xml
+          test "$(find rearscreen -maxdepth 1 -type f | wc -l)" -eq 1
+      - name: Upload rearscreen folder
         uses: actions/upload-artifact@v4
         with:
-          name: rearscreen
-          path: rearscreen.zip
+          name: rearscreen-folder
+          path: rearscreen/
           if-no-files-found: error
           retention-days: 14
       - name: Upload debug APK
