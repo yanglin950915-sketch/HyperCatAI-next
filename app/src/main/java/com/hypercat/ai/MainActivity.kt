@@ -1,6 +1,9 @@
 package com.hypercat.ai
 
 import android.os.Bundle
+import android.content.pm.PackageManager
+import rikka.shizuku.Shizuku
+import java.util.concurrent.Executors
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -24,9 +27,63 @@ import com.hypercat.ai.pet.PetCatalog
 import com.hypercat.ai.pet.PetMood
 
 class MainActivity : ComponentActivity() {
+    private val rearExecutor = Executors.newSingleThreadExecutor()
+    private var rearStatus: ((String) -> Unit)? = null
+    private val permissionListener = Shizuku.OnRequestPermissionResultListener { code, result ->
+        if (code == 7301) {
+            if (result == PackageManager.PERMISSION_GRANTED) launchRearCommand()
+            else rearStatus?.invoke("Shizuku 权限未授权")
+        }
+    }
+
+    fun launchPetOnRearDisplay(onStatus: (String) -> Unit) {
+        rearStatus = onStatus
+        if (!Shizuku.pingBinder()) {
+            onStatus("未检测到 Shizuku，请先安装并启动 Shizuku。")
+            return
+        }
+        try {
+            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) launchRearCommand()
+            else Shizuku.requestPermission(7301)
+        } catch (e: Exception) {
+            onStatus("Shizuku 状态检查失败：${e.message ?: "未知错误"}")
+        }
+    }
+
+    private fun launchRearCommand() {
+        rearExecutor.execute {
+            try {
+                val process = Shizuku.newProcess(
+                    arrayOf("/system/bin/am", "start", "--display", "1", "-n", "$packageName/.MainActivity"),
+                    null,
+                    null
+                )
+                val output = process.inputStream.bufferedReader().use { it.readText() }
+                val error = process.errorStream.bufferedReader().use { it.readText() }
+                val exitCode = process.waitFor()
+                runOnUiThread {
+                    rearStatus?.invoke(
+                        if (exitCode == 0 && !output.contains("Error:") && !error.contains("Error:"))
+                            "已发送背屏启动指令。若未显示，可能是当前 HyperOS 版本限制第三方 Activity。"
+                        else "启动失败：${(error + output).trim().ifBlank { "命令退出码 $exitCode" }}"
+                    )
+                }
+            } catch (e: Exception) {
+                runOnUiThread { rearStatus?.invoke("背屏启动失败：${e.message ?: "未知错误"}") }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Shizuku.addRequestPermissionResultListener(permissionListener)
         setContent { HyperCatApp() }
+    }
+
+    override fun onDestroy() {
+        Shizuku.removeRequestPermissionResultListener(permissionListener)
+        rearExecutor.shutdown()
+        super.onDestroy()
     }
 }
 
@@ -37,6 +94,8 @@ private fun HyperCatApp() {
     var prompt by remember { mutableStateOf("") }
     var reply by remember { mutableStateOf("你好！我是你的 AI 萌宠伙伴。选择一个伙伴，或者告诉我你想做什么。") }
     var tab by remember { mutableIntStateOf(0) }
+    var rearStatus by remember { mutableStateOf("背屏尚未连接") }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val panel = Color(0xFF171F35)
     MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF8B9CFF), secondary = Color(0xFF75E0C1), background = Color(0xFF0B1020), surface = panel)) {
         Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF182344), Color(0xFF0B1020)))).padding(20.dp)) {
@@ -78,6 +137,18 @@ private fun HyperCatApp() {
                             Text(pet.name, color = Color.White, fontSize = 11.sp)
                         }
                     }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Surface(color = Color(0xFF202D49), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("小米背屏连接（实验功能）", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("原生背屏应用列表目前没有可供普通第三方应用直接注册的公开接口。可选用 Shizuku 尝试将萌宠界面启动到副屏。", color = Color(0xFFB5BED3), fontSize = 11.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = {
+                        (context as? MainActivity)?.launchPetOnRearDisplay { rearStatus = it }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("尝试启动到背屏") }
+                    Text(rearStatus, color = Color(0xFFB5BED3), fontSize = 11.sp)
                 }
             }
             Spacer(Modifier.height(18.dp))
