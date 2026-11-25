@@ -4,6 +4,10 @@
         <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="true" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
-        <provider android:name=".rear.RearPetProvider" android:authorities="uriroute" android:exported="true" android:grantUriPermissions="true" />
+        <provider
+            android:name=".rear.RearPetProvider"
+            android:authorities="com.hypercat.ai.rear.provider"
+            android:exported="true"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>
