@@ -115,6 +115,7 @@ private fun HyperCatApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     var page by remember { mutableStateOf(Page.HOME) }
     var openSettingsDrawer by remember { mutableStateOf(false) }
+    var chatDrawerExpanded by remember { mutableStateOf(false) }
     var provider by remember { mutableStateOf("OpenAI 兼容接口") }
     var endpoint by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
@@ -200,11 +201,13 @@ private fun HyperCatApp() {
         Scaffold(
             containerColor = Bg,
             bottomBar = {
+                if (!(page == Page.CHAT && chatDrawerExpanded)) {
                 NavigationBar(containerColor = if (darkNow) Color(0xCC0D1726) else Color(0xDDF7FAFD), tonalElevation = 0.dp) {
                     NavigationBarItem(selected = page == Page.HOME, onClick = { page = Page.HOME },
                         icon = { Icon(Icons.Outlined.Home, contentDescription = "萌宠") }, label = { Text("萌宠") })
                     NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
                         icon = { Icon(Icons.Outlined.Forum, contentDescription = "Agent") }, label = { Text("Agent") })
+                }
                 }
             }
         ) { padding ->
@@ -223,7 +226,9 @@ private fun HyperCatApp() {
                     openSettings = { page = Page.CHAT; openSettingsDrawer = true }
                 )
                 Page.CHAT -> ChatPage(
-                    modifier = Modifier.padding(padding),
+                    modifier = Modifier,
+                    contentPadding = padding,
+                    onDrawerVisibility = { chatDrawerExpanded = it },
                     messages = messages,
                     recentPrompts = recentPrompts,
                     modelProfiles = modelProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
@@ -496,7 +501,7 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
 
 @Composable
 private fun ChatPage(
-    modifier: Modifier, messages: List<ChatLine>, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, onMood: (String) -> Unit,
     showSettingsOnEnter: Boolean,
@@ -525,6 +530,7 @@ private fun ChatPage(
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
+    LaunchedEffect(drawerState) { androidx.compose.runtime.snapshotFlow { drawerState.isOpen }.collect { onDrawerVisibility(it) } }
     LaunchedEffect(showSettingsOnEnter) {
         if (showSettingsOnEnter) {
             drawerSection = "settings"
@@ -535,7 +541,7 @@ private fun ChatPage(
     val filteredRecent = recentPrompts.filter { it.contains(recentQuery, true) }
     val orderedRecent = when (recentSort) { "最早" -> filteredRecent.reversed(); "A-Z" -> filteredRecent.sortedBy { it.lowercase() }; else -> filteredRecent }
     ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = true, drawerContent = {
-        ModalDrawerSheet(drawerContainerColor = Panel, modifier = Modifier.fillMaxHeight().widthIn(max = 360.dp)) {
+        ModalDrawerSheet(drawerContainerColor = Panel, modifier = Modifier.fillMaxSize()) {
             if (drawerSection == "settings") {
                 Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -594,8 +600,8 @@ private fun ChatPage(
             }
         }
     }) {
-    Column(modifier.fillMaxSize().imePadding().padding(horizontal = 16.dp)) {
-        Spacer(Modifier.height(20.dp))
+    Column(modifier.fillMaxSize().padding(contentPadding).imePadding().padding(horizontal = 16.dp)) {
+        Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Agent", color = MainText, fontSize = 23.sp, fontWeight = FontWeight.Bold)
@@ -609,12 +615,9 @@ private fun ChatPage(
                 }
             }
             Spacer(Modifier.width(8.dp))
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { showClear = true }) { Box(contentAlignment = Alignment.Center) { Text("⋯", color = Cyan, fontSize = 22.sp) } }
+            Spacer(Modifier.width(6.dp))
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { drawerScope.launch { drawerState.open() } }) { Box(contentAlignment = Alignment.Center) { Text("☰", color = Cyan, fontSize = 18.sp) } }
-        }
-        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            AssistChip(onClick = { showClear = true }, label = { Text("清屏") })
-            AssistChip(onClick = { showCallInfo = true }, label = { Text("语音通话") })
-            AssistChip(onClick = { showCallInfo = true }, label = { Text("视频通话") })
         }
         if (!configured) {
             Spacer(Modifier.height(12.dp))
@@ -625,8 +628,8 @@ private fun ChatPage(
                 }
             }
         }
-        Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
-            Text("常用 Skills", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        if (messages.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+            Text("从一个任务开始", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(
                     "总结" to "请帮我总结以下内容，提炼重点：",
@@ -641,7 +644,7 @@ private fun ChatPage(
                         leadingIcon = { Text("✦", color = Cyan, fontSize = 11.sp) })
                 }
             }
-            Text("快捷技能会填入提示词；模型接入后即可交由 Agent 执行。", color = Muted, fontSize = 10.sp)
+            Text("选择一个常用任务，或直接告诉我你想做什么。", color = Muted, fontSize = 10.sp)
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
@@ -658,8 +661,8 @@ private fun ChatPage(
                             Text(petName.take(1), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                    Surface(color = if (line.fromUser) Color(0xFF1689C2) else if (appDarkState) Color(0xFF202D40) else Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
-                        Column(Modifier.widthIn(max = 276.dp).padding(horizontal = 14.dp, vertical = 11.dp)) {
+                    Surface(modifier = if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f), color = if (line.fromUser) Color(0xFF1689C2) else if (appDarkState) Color(0xFF202D40) else Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
+                        Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
                             if (line.text.isNotBlank()) Text(line.text, color = if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), fontSize = 14.sp, lineHeight = 20.sp)
                             line.attachments.forEach { name -> Text("📎 $name", color = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan, fontSize = 11.sp) }
                         }
@@ -685,11 +688,7 @@ private fun ChatPage(
                     decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给萌宠…", color = Muted, fontSize = 14.sp, maxLines = 1); inner() })
             }
             Spacer(Modifier.width(8.dp))
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("＋", color = Cyan, fontSize = 22.sp, modifier = Modifier.clickable { filePicker.launch(arrayOf("*/*")) }.padding(horizontal = 8.dp))
-                Text("▧", color = Cyan, fontSize = 18.sp, modifier = Modifier.clickable { imagePicker.launch("image/*") }.padding(horizontal = 8.dp))
-            }
-            Text("记", color = Cyan, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { noteDraft = draft; showRemember = true }.padding(horizontal = 6.dp))
+            Text("＋", color = Cyan, fontSize = 23.sp, modifier = Modifier.clickable { filePicker.launch(arrayOf("*/*")) }.padding(horizontal = 8.dp))
             Text("🎙", fontSize = 20.sp, modifier = Modifier.clickable {
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
