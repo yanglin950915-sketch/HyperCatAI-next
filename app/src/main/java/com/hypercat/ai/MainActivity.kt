@@ -14,8 +14,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -129,9 +131,35 @@ private fun HyperCatApp() {
     var reply by remember { mutableStateOf("你好！我是你的 AI 萌宠伙伴。选择一个伙伴，或者告诉我你想做什么。") }
     var tab by remember { mutableIntStateOf(0) }
     var rearStatus by remember { mutableStateOf("背屏尚未连接") }
+    var showDiagnostics by remember { mutableStateOf(false) }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val panel = Color(0xFF171F35)
     MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF8B9CFF), secondary = Color(0xFF75E0C1), background = Color(0xFF0B1020), surface = panel)) {
+        if (showDiagnostics) {
+            AlertDialog(
+                onDismissRequest = { showDiagnostics = false },
+                title = { Text("完整显示屏检测结果") },
+                text = {
+                    SelectionContainer {
+                        Text(
+                            rearStatus,
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 11.sp
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(rearStatus))
+                    }) { Text("复制全部") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDiagnostics = false }) { Text("关闭") }
+                }
+            )
+        }
         Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF182344), Color(0xFF0B1020)))).padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -180,9 +208,20 @@ private fun HyperCatApp() {
                     Text("HyperOS 不允许普通应用直接绘制背屏。本实验使用 Shizuku 授权执行固定系统命令，将 HyperCat AI 启动到背屏；需要先在 Shizuku 中授权。", color = Color(0xFFB5BED3), fontSize = 11.sp)
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = {
-                        (context as? MainActivity)?.launchPetOnRearDisplay { rearStatus = it }
-                    }, modifier = Modifier.fillMaxWidth()) { Text("Shizuku 授权并启动背屏") }
-                    Text(rearStatus, color = Color(0xFFB5BED3), fontSize = 11.sp)
+                        (context as? MainActivity)?.launchPetOnRearDisplay {
+                            rearStatus = it
+                            if (it.contains("exit=") || it.contains("Display")) showDiagnostics = true
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Shizuku 授权并检测显示屏") }
+                    Text(
+                        rearStatus.lineSequence().take(3).joinToString("\n"),
+                        color = Color(0xFFB5BED3),
+                        fontSize = 11.sp,
+                        maxLines = 3
+                    )
+                    if (rearStatus.length > 100 || rearStatus.contains("exit=")) {
+                        TextButton(onClick = { showDiagnostics = true }) { Text("查看完整检测结果") }
+                    }
                 }
             }
             Spacer(Modifier.height(18.dp))
