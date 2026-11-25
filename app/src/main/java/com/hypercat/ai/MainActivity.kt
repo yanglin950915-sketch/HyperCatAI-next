@@ -8,6 +8,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,6 +20,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,6 +35,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
 import com.hypercat.ai.rear.PetStateStore
 
 private val Bg = Color(0xFF080D18)
@@ -58,6 +65,7 @@ private fun HyperCatApp() {
     var apiKey by remember { mutableStateOf("") }
     var saved by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
+    var petName by remember { mutableStateOf("小橘") }
     val messages = remember { mutableStateListOf<ChatLine>() }
 
     LaunchedEffect(Unit) {
@@ -67,8 +75,12 @@ private fun HyperCatApp() {
         model = prefs.getString("model", "") ?: ""
         apiKey = prefs.getString("api_key", "") ?: ""
         saved = endpoint.isNotBlank() && model.isNotBlank()
+        petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
+    }
+
+    LaunchedEffect(petName) {
         val state = PetStateStore.read(context)
-        PetStateStore.update(context, "小橘", "🤖", state.mood, state.reply)
+        PetStateStore.update(context, petName, "🤖", state.mood, state.reply)
     }
 
     MaterialTheme(colorScheme = darkColorScheme(
@@ -92,6 +104,12 @@ private fun HyperCatApp() {
                 Page.HOME -> HomePage(
                     modifier = Modifier.padding(padding),
                     configured = saved,
+                    petName = petName,
+                    onPetNameChange = { value ->
+                        val clean = value.trim().take(16).ifBlank { "小橘" }
+                        petName = clean
+                        context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit().putString("pet_name", clean).apply()
+                    },
                     openChat = { page = Page.CHAT },
                     openSettings = { page = Page.SETTINGS }
                 )
@@ -113,7 +131,8 @@ private fun HyperCatApp() {
                         }
                     },
                     openSettings = { page = Page.SETTINGS },
-                    configured = saved
+                    configured = saved,
+                    petName = petName
                 )
                 Page.SETTINGS -> SettingsPage(
                     modifier = Modifier.padding(padding),
@@ -135,7 +154,9 @@ private fun HyperCatApp() {
 }
 
 @Composable
-private fun HomePage(modifier: Modifier, configured: Boolean, openChat: () -> Unit, openSettings: () -> Unit) {
+private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, onPetNameChange: (String) -> Unit, openChat: () -> Unit, openSettings: () -> Unit) {
+    var showNameDialog by remember { mutableStateOf(false) }
+    var nameDraft by remember(petName) { mutableStateOf(petName) }
     Column(modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF13243A), Bg))).padding(horizontal = 22.dp)) {
         Spacer(Modifier.height(28.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -154,8 +175,12 @@ private fun HomePage(modifier: Modifier, configured: Boolean, openChat: () -> Un
                 Spacer(Modifier.height(8.dp))
                 CatFace(Modifier.fillMaxWidth().height(260.dp))
                 Spacer(Modifier.height(10.dp))
-                Text("小橘", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
-                Text("一直在背屏等你", color = Muted, fontSize = 13.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(petName, color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(8.dp))
+                    Text("✎", color = Cyan, fontSize = 17.sp, modifier = Modifier.clip(CircleShape).clickable { nameDraft = petName; showNameDialog = true }.padding(5.dp))
+                }
+                Text("轻触表情，和我互动", color = Muted, fontSize = 13.sp)
                 Spacer(Modifier.height(18.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                     Box(Modifier.size(7.dp).clip(CircleShape).background(if (configured) Color(0xFF6DE3B1) else Color(0xFFFFC46B)))
@@ -167,7 +192,7 @@ private fun HomePage(modifier: Modifier, configured: Boolean, openChat: () -> Un
         Spacer(Modifier.height(16.dp))
         Button(onClick = openChat, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(18.dp)) {
             Spacer(Modifier.width(9.dp))
-            Text("和小橘开始对话", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text("和${petName}开始对话", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(10.dp))
         OutlinedButton(onClick = openSettings, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp)) {
@@ -176,11 +201,42 @@ private fun HomePage(modifier: Modifier, configured: Boolean, openChat: () -> Un
         }
         Spacer(Modifier.height(18.dp))
     }
+    if (showNameDialog) {
+        AlertDialog(
+            onDismissRequest = { showNameDialog = false },
+            title = { Text("给萌宠取个名字") },
+            text = { OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) }, singleLine = true, label = { Text("萌宠名称") }) },
+            confirmButton = { TextButton(onClick = { onPetNameChange(nameDraft); showNameDialog = false }) { Text("保存") } },
+            dismissButton = { TextButton(onClick = { showNameDialog = false }) { Text("取消") } }
+        )
+    }
 }
 
 @Composable
 private fun CatFace(modifier: Modifier = Modifier) {
-    Canvas(modifier) {
+    var gazeX by remember { mutableStateOf(0f) }
+    var gazeY by remember { mutableStateOf(0f) }
+    var blinking by remember { mutableStateOf(false) }
+    val pupilX by animateFloatAsState(gazeX, animationSpec = tween(180), label = "pupilX")
+    val pupilY by animateFloatAsState(gazeY, animationSpec = tween(180), label = "pupilY")
+    val eyelid by animateFloatAsState(if (blinking) 0.10f else 1f, animationSpec = tween(85), label = "eyelid")
+
+    LaunchedEffect(blinking) {
+        if (blinking) {
+            delay(150)
+            blinking = false
+        }
+    }
+
+    Canvas(modifier.pointerInput(Unit) {
+        detectTapGestures { point ->
+            val w = size.width.coerceAtLeast(1f)
+            val h = size.height.coerceAtLeast(1f)
+            gazeX = (((point.x / w) - 0.5f) * 2f).coerceIn(-1f, 1f)
+            gazeY = (((point.y / h) - 0.45f) * 2f).coerceIn(-1f, 1f)
+            blinking = true
+        }
+    }) {
         val cx = size.width / 2f
         val cy = size.height * .47f
         val eyeW = size.width * .235f
@@ -188,10 +244,15 @@ private fun CatFace(modifier: Modifier = Modifier) {
         val gap = size.width * .155f
         val eyeBrush = Brush.verticalGradient(listOf(Color(0xFFE7FFFF), Color(0xFF65DFF5), Color(0xFF1489C7)))
         listOf(cx - gap, cx + gap).forEach { x ->
-            drawOval(eyeBrush, Offset(x - eyeW / 2, cy - eyeH / 2), Size(eyeW, eyeH))
-            drawCircle(Color(0xFF06172A), radius = eyeW * .29f, center = Offset(x, cy + eyeH * .05f))
-            drawCircle(Color.White, radius = eyeW * .085f, center = Offset(x - eyeW * .09f, cy - eyeH * .08f))
-            drawCircle(Color(0xFFB8F7FF), radius = eyeW * .035f, center = Offset(x + eyeW * .11f, cy + eyeH * .16f))
+            val currentEyeH = eyeH * eyelid
+            drawOval(eyeBrush, Offset(x - eyeW / 2, cy - currentEyeH / 2), Size(eyeW, currentEyeH))
+            if (eyelid > 0.22f) {
+                val px = (pupilX * eyeW * .20f).coerceIn(-eyeW * .20f, eyeW * .20f)
+                val py = (pupilY * eyeH * .16f).coerceIn(-eyeH * .16f, eyeH * .16f)
+                drawCircle(Color(0xFF06172A), radius = eyeW * .29f, center = Offset(x + px, cy + eyeH * .05f + py))
+                drawCircle(Color.White, radius = eyeW * .085f, center = Offset(x + px - eyeW * .09f, cy - eyeH * .08f + py))
+                drawCircle(Color(0xFFB8F7FF), radius = eyeW * .035f, center = Offset(x + px + eyeW * .11f, cy + eyeH * .16f + py))
+            }
         }
         val noseY = cy + eyeH * .72f
         val nose = Path().apply {
@@ -215,12 +276,12 @@ private fun CatFace(modifier: Modifier = Modifier) {
 @Composable
 private fun ChatPage(
     modifier: Modifier, messages: List<ChatLine>, draft: String, onDraft: (String) -> Unit,
-    onSend: () -> Unit, openSettings: () -> Unit, configured: Boolean
+    onSend: () -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String
 ) {
     Column(modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(20.dp))
         Text("Agent 对话", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-        Text(if (configured) "小橘已读取模型配置" else "先配置模型，才能启用真实 AI 回复", color = Muted, fontSize = 12.sp)
+        Text(if (configured) "$petName 已读取模型配置" else "先配置模型，才能启用真实 AI 回复", color = Muted, fontSize = 12.sp)
         if (!configured) {
             Spacer(Modifier.height(12.dp))
             Surface(Modifier.fillMaxWidth().clickable(onClick = openSettings), color = Color(0xFF2B2A22), shape = RoundedCornerShape(14.dp)) {
@@ -234,7 +295,7 @@ private fun ChatPage(
             if (messages.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     CatFace(Modifier.width(220.dp).height(170.dp))
-                    Text("嗨，我是小橘。", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("嗨，我是$petName。", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Text("你可以在这里和我聊天。", color = Muted, fontSize = 13.sp)
                 }
             }
@@ -264,7 +325,7 @@ private fun SettingsPage(
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
     apiKey: String, onApiKey: (String) -> Unit, onSave: () -> Unit, saved: Boolean
 ) {
-    Column(modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
         Text("模型配置", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         Text("连接本地模型或在线大模型服务", color = Muted, fontSize = 12.sp)
