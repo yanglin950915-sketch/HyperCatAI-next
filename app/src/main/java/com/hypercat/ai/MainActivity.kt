@@ -26,6 +26,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Pets
+import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.runtime.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.animation.core.animateFloatAsState
@@ -79,6 +83,7 @@ private fun inferMood(reply: String): String = when {
     else -> "normal"
 }
 private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList())
+private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String)
 private data class ReleaseInfo(val version: String, val notes: String, val url: String)
 private fun versionIsNewer(latest: String, current: String): Boolean {
     fun parts(value: String) = value.trim().removePrefix("v").split(".", "-", "+").map { it.toIntOrNull() ?: 0 }
@@ -144,6 +149,8 @@ private fun HyperCatApp() {
     }
     SideEffect { appDarkState = darkNow }
     val messages = remember { mutableStateListOf<ChatLine>() }
+    val modelProfiles = remember { mutableStateListOf<ModelProfile>() }
+    var savedNotes by remember { mutableStateOf(emptyList<String>()) }
     val chatPrefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     var recentPrompts by remember {
         mutableStateOf(chatPrefs.getString("recent_chat_titles", "")?.split("||")?.filter { it.isNotBlank() } ?: emptyList())
@@ -156,6 +163,8 @@ private fun HyperCatApp() {
         model = prefs.getString("model", "") ?: ""
         apiKey = prefs.getString("api_key", "") ?: ""
         saved = endpoint.isNotBlank() && model.isNotBlank()
+        runCatching { val array = org.json.JSONArray(prefs.getString("model_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); modelProfiles.add(ModelProfile(item.optString("name"), item.optString("provider"), item.optString("endpoint"), item.optString("model"), item.optString("apiKey"))) } }
+        savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
         petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
         themeMode = prefs.getString("theme_mode", "system") ?: "system"
     }
@@ -192,11 +201,11 @@ private fun HyperCatApp() {
             bottomBar = {
                 NavigationBar(containerColor = if (darkNow) Color(0xCC0D1726) else Color(0xDDF7FAFD), tonalElevation = 0.dp) {
                     NavigationBarItem(selected = page == Page.HOME, onClick = { page = Page.HOME },
-                        icon = { Text("⌂", fontSize = 21.sp) }, label = { Text("萌宠") })
+                        icon = { Icon(Icons.Outlined.Pets, contentDescription = "萌宠") }, label = { Text("萌宠") })
                     NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
-                        icon = { Text("◌", fontSize = 21.sp) }, label = { Text("Agent") })
+                        icon = { Icon(Icons.Outlined.Forum, contentDescription = "Agent") }, label = { Text("Agent") })
                     NavigationBarItem(selected = page == Page.SETTINGS, onClick = { page = Page.SETTINGS },
-                        icon = { Text("⚙", fontSize = 19.sp) }, label = { Text("模型配置") })
+                        icon = { Icon(Icons.Outlined.Settings, contentDescription = "设置") }, label = { Text("模型配置") })
                 }
             }
         ) { padding ->
@@ -218,6 +227,9 @@ private fun HyperCatApp() {
                     modifier = Modifier.padding(padding),
                     messages = messages,
                     recentPrompts = recentPrompts,
+                    modelProfiles = modelProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
+                    onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
+                    savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
                     draft = draft,
                     onDraft = { draft = it },
                     onSend = { value, attachments ->
@@ -243,6 +255,9 @@ private fun HyperCatApp() {
                 Page.SETTINGS -> SettingsPage(
                     modifier = Modifier.padding(padding),
                     provider = provider, onProvider = { provider = it },
+                    modelProfiles = modelProfiles.toList(),
+                    onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                    onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
                     endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
                     model = model, onModel = { model = it; saved = false },
                     apiKey = apiKey, onApiKey = { apiKey = it; saved = false },
@@ -306,7 +321,7 @@ private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, p
                 Text("你的随身 AI 伙伴", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
             }
             Box(Modifier.size(42.dp).clip(CircleShape).background(Panel2), contentAlignment = Alignment.Center) {
-                Text("HC", color = Cyan, fontWeight = FontWeight.Bold)
+                Box(Modifier.size(28.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8C7BFF)))),contentAlignment=Alignment.Center) { Text("✦",color=Color.White,fontWeight=FontWeight.Black,fontSize=17.sp) }
             }
         }
         Spacer(Modifier.height(18.dp))
@@ -449,7 +464,7 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
 
 @Composable
 private fun ChatPage(
-    modifier: Modifier, messages: List<ChatLine>, recentPrompts: List<String>, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, messages: List<ChatLine>, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, onMood: (String) -> Unit
 ) {
@@ -460,6 +475,11 @@ private fun ChatPage(
     var showClear by remember { mutableStateOf(false) }
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
+    var showRemember by remember { mutableStateOf(false) }
+    var noteDraft by remember { mutableStateOf("") }
+    var recentQuery by remember { mutableStateOf("") }
+    var recentSort by remember { mutableStateOf("最新") }
+    var showModelPicker by remember { mutableStateOf(false) }
     var keepContext by remember { mutableStateOf(true) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
@@ -474,7 +494,7 @@ private fun ChatPage(
             Text("最近", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showRecent = true }.padding(end = 16.dp))
             Text("查找", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showSearch = true }.padding(end = 16.dp))
             Text("清屏", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showClear = true }.padding(end = 16.dp))
-            Text("模型：当前配置", color = Muted, fontSize = 11.sp, modifier = Modifier.clickable { showModelInfo = true }.weight(1f))
+            Text("模型：$activeModel", color = Muted, fontSize = 11.sp, modifier = Modifier.clickable { showModelPicker = true }.weight(1f))
             Text("☎", color = Cyan, fontSize = 19.sp, modifier = Modifier.clickable { showCallInfo = true }.padding(horizontal = 5.dp))
             Text("▣", color = Cyan, fontSize = 18.sp, modifier = Modifier.clickable { showCallInfo = true }.padding(horizontal = 5.dp))
         }
@@ -514,7 +534,7 @@ private fun ChatPage(
                     Text("你可以在这里和我聊天。", color = Muted, fontSize = 13.sp)
                 }
             }
-            items(messages) { line ->
+            items(messages.filter { searchQuery.isBlank() || it.text.contains(searchQuery, ignoreCase = true) }) { line ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start) {
                     Surface(color = if (line.fromUser) Color(0xAA1D7894) else if (appDarkState) Color.White.copy(alpha = .09f) else Color.White.copy(alpha = .78f), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(18.dp)) {
                         Column(Modifier.widthIn(max = 290.dp).padding(horizontal = 14.dp, vertical = 11.dp)) {
@@ -542,6 +562,7 @@ private fun ChatPage(
                 Text("＋", color = Cyan, fontSize = 22.sp, modifier = Modifier.clickable { filePicker.launch(arrayOf("*/*")) }.padding(horizontal = 8.dp))
                 Text("▧", color = Cyan, fontSize = 18.sp, modifier = Modifier.clickable { imagePicker.launch("image/*") }.padding(horizontal = 8.dp))
             }
+            Text("记", color = Cyan, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { noteDraft = draft; showRemember = true }.padding(horizontal = 6.dp))
             Text("🎙", fontSize = 20.sp, modifier = Modifier.clickable {
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -554,12 +575,11 @@ private fun ChatPage(
         }
     }
     if (showSearch) AlertDialog(onDismissRequest = { showSearch = false; searchQuery = "" }, title = { Text("查找对话内容") },
-        text = { OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("输入关键词") }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { showSearch = false }) { Text("完成") } })
+        text = { Column { OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("输入关键词，聊天列表即时筛选") }, singleLine = true); Text("${messages.count { it.text.contains(searchQuery, true) }} 条匹配消息", color = Muted, fontSize = 12.sp) } },
+        confirmButton = { TextButton(onClick = { showSearch = false; searchQuery = "" }) { Text("完成") } })
+    if (showRemember) AlertDialog(onDismissRequest = { showRemember = false }, title = { Text("记一下") }, text = { Column { OutlinedTextField(value = noteDraft, onValueChange = { noteDraft = it }, label = { Text("要记住的内容") }, minLines = 3); Text("已保存 ${savedNotes.size} 条", color = Muted, fontSize = 11.sp) } }, confirmButton = { TextButton(onClick = { if (noteDraft.isNotBlank()) onSaveNote(noteDraft.trim()); noteDraft=""; showRemember=false }) { Text("保存") } }, dismissButton = { TextButton(onClick = { showRemember=false }) { Text("取消") } })
     if (showRecent) AlertDialog(onDismissRequest = { showRecent = false }, title = { Text("最近对话") },
-        text = { if (recentPrompts.isEmpty()) Text("暂无最近对话，发送消息后会记录标题。", color = Muted) else Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-            recentPrompts.forEach { prompt -> Text(prompt, color = MainText, modifier = Modifier.fillMaxWidth().clickable { onDraft(prompt); showRecent = false }.padding(vertical = 9.dp)) }
-        } },
+        text = { Column { OutlinedTextField(value = recentQuery, onValueChange = { recentQuery=it }, label = { Text("搜索最近对话") }, singleLine = true); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("最新","最早","A-Z").forEach { mode -> FilterChip(selected=recentSort==mode,onClick={recentSort=mode},label={Text(mode)}) } }; val filtered=recentPrompts.filter { it.contains(recentQuery,true) }; val ordered=when(recentSort) { "最早" -> filtered.reversed(); "A-Z" -> filtered.sortedBy { it.lowercase() }; else -> filtered }; if (ordered.isEmpty()) Text("暂无匹配对话",color=Muted) else Column(Modifier.heightIn(max=250.dp).verticalScroll(rememberScrollState())) { ordered.forEach { prompt -> Text(prompt,color=MainText,modifier=Modifier.fillMaxWidth().clickable { onDraft(prompt);showRecent=false }.padding(vertical=9.dp)) } } } },
         confirmButton = { TextButton(onClick = { showRecent = false }) { Text("关闭") } })
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("清理当前对话") },
         text = { Column {
@@ -571,9 +591,7 @@ private fun ChatPage(
         } },
         confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); showClear = false }) { Text("清屏") } },
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
-    if (showModelInfo) AlertDialog(onDismissRequest = { showModelInfo = false }, title = { Text("模型选择") },
-        text = { Text("当前应用只保存一组模型配置，尚未实现多模型档案与会话级路由。可前往设置修改当前模型。", color = Muted) },
-        confirmButton = { TextButton(onClick = { showModelInfo = false; openSettings() }) { Text("管理模型") } })
+    if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
     if (showCallInfo) AlertDialog(onDismissRequest = { showCallInfo = false }, title = { Text("语音 / 视频通话") },
         text = { Text("通话入口已规划。实时双向语音、摄像头采集与视频理解需要接入支持实时音视频的模型服务；当前语音输入仍为系统语音转文字。", color = Muted) },
         confirmButton = { TextButton(onClick = { showCallInfo = false }) { Text("知道了") } })
@@ -581,7 +599,7 @@ private fun ChatPage(
 
 @Composable
 private fun SettingsPage(
-    modifier: Modifier, provider: String, onProvider: (String) -> Unit,
+    modifier: Modifier, provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
     apiKey: String, onApiKey: (String) -> Unit, onSave: () -> Unit, saved: Boolean,
     themeMode: String, onThemeMode: (String) -> Unit,
@@ -594,6 +612,7 @@ private fun SettingsPage(
     var showTaskDialog by remember { mutableStateOf(false) }
     var taskTitle by remember { mutableStateOf("") }
     var taskDelayMinutes by remember { mutableStateOf("30") }
+    var profileName by remember { mutableStateOf("") }
     var pluginEnabled by remember { mutableStateOf(false) }
     var mcpName by remember { mutableStateOf("") }
     var mcpEndpoint by remember { mutableStateOf("") }
@@ -608,6 +627,10 @@ private fun SettingsPage(
         Spacer(Modifier.height(22.dp))
         Text("设置", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Text("外观、扩展能力与应用信息", color = Muted, fontSize = 12.sp)
+        Spacer(Modifier.height(18.dp))
+        Text("模型与服务", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text("管理多个在线或本地模型配置", color = Muted, fontSize = 11.sp)
+        Surface(color=Panel,shape=RoundedCornerShape(18.dp),border=androidx.compose.foundation.BorderStroke(1.dp,GlassBorder)) { Column(Modifier.fillMaxWidth().padding(12.dp)) { Text("模型档案 · ${modelProfiles.size}",color=MainText,fontWeight=FontWeight.SemiBold); modelProfiles.forEach { p -> Row(Modifier.fillMaxWidth().clickable { onSelectProfile(p) }.padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(p.name,color=MainText,fontSize=13.sp); Text("${p.provider} · ${p.model}",color=Muted,fontSize=10.sp) }; Text("设为当前",color=Cyan,fontSize=11.sp) } }; OutlinedTextField(value=profileName,onValueChange={profileName=it.take(24)},label={Text("档案名称")},singleLine=true,modifier=Modifier.fillMaxWidth()); Button(onClick={if(profileName.isNotBlank()&&endpoint.isNotBlank()&&model.isNotBlank()){onAddProfile(ModelProfile(profileName.trim(),provider,endpoint.trim(),model.trim(),apiKey));profileName=""}},enabled=profileName.isNotBlank()&&endpoint.isNotBlank()&&model.isNotBlank(),modifier=Modifier.fillMaxWidth()) { Text("保存当前配置为模型档案") } } }
         Spacer(Modifier.height(18.dp))
         Text("外观与主题", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Text("按系统或时间自动切换，也可手动固定主题", color = Muted, fontSize = 11.sp)
@@ -628,14 +651,14 @@ private fun SettingsPage(
             }
         }
         Spacer(Modifier.height(22.dp))
-        Text("扩展与支持", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text("扩展能力", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         SettingsAction("⏰", "定时任务", "创建一次性提醒，到时间通过系统通知提醒") { showTaskDialog = true }
         SettingsAction("🧩", "插件", if (pluginEnabled) "已启用插件框架" else "管理插件扩展入口") { showPluginDialog = true }
         SettingsAction("🔌", "MCP 设置", if (mcpEndpoint.isBlank()) "配置 MCP 服务连接" else mcpName.ifBlank { mcpEndpoint }) { showMcpDialog = true }
         SettingsAction("💬", "帮助与反馈", "使用说明、问题反馈与项目主页") { showHelpDialog = true }
         Spacer(Modifier.height(18.dp))
-        Text("关于 HyperCat AI", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text("应用与帮助", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         SettingsAction("ⓘ", "版本号", "当前版本 $currentVersion") { }
         SettingsAction("↻", "检查更新", updateStatus) { onCheckUpdates() }
@@ -649,7 +672,7 @@ private fun SettingsPage(
             }
         }
         Spacer(Modifier.height(22.dp))
-        Text("模型配置", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text("当前模型连接详情", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Text("连接本地模型或在线大模型服务", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(16.dp))
         Text("服务类型", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
