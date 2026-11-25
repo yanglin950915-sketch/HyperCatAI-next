@@ -1,6 +1,9 @@
 package com.hypercat.ai
 
 import android.content.Context
+import android.graphics.Bitmap
+import java.io.ByteArrayOutputStream
+import java.util.Base64
 import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
@@ -10,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,6 +41,8 @@ import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.runtime.*
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -58,9 +64,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -95,6 +104,55 @@ class MainActivity : ComponentActivity() {
 
 private enum class Page { HOME, CHAT, SETTINGS }
 
+private fun requestModelReply(context: Context, endpoint: String, model: String, apiKey: String, history: List<ChatLine>): String {
+    val base = endpoint.trim().trimEnd('/')
+    val apiUrl = when { base.endsWith("/chat/completions") -> base; base.endsWith("/v1") -> "$base/chat/completions"; else -> "$base/v1/chat/completions" }
+    val requestMessages = org.json.JSONArray()
+    history.forEach { line ->
+        if (line.text.isNotBlank() || line.photos.isNotEmpty() || line.imageUris.isNotEmpty()) {
+            val role = if (line.fromUser) "user" else "assistant"
+            if (line.fromUser && (line.photos.isNotEmpty() || line.imageUris.isNotEmpty())) {
+                val content = org.json.JSONArray()
+                if (line.text.isNotBlank()) content.put(JSONObject().put("type", "text").put("text", line.text))
+                line.photos.forEach { bitmap ->
+                    val bytes = ByteArrayOutputStream().use { out -> bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out); out.toByteArray() }
+                    content.put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:image/jpeg;base64,${Base64.getEncoder().encodeToString(bytes)}")))
+                }
+                line.imageUris.forEach { uri ->
+                    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                    if (mime.startsWith("image/")) {
+                        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        if (bytes != null) content.put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:$mime;base64,${Base64.getEncoder().encodeToString(bytes)}")))
+                    }
+                }
+                requestMessages.put(JSONObject().put("role", role).put("content", content))
+            } else if (line.text.isNotBlank()) requestMessages.put(JSONObject().put("role", role).put("content", line.text))
+        }
+    }
+    val payload = JSONObject().put("model", model).put("messages", requestMessages).put("stream", false)
+    val connection = URL(apiUrl).openConnection() as HttpURLConnection
+    try {
+        connection.requestMethod = "POST"; connection.connectTimeout = 15000; connection.readTimeout = 90000; connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.setRequestProperty("Accept", "application/json")
+        if (apiKey.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
+        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+        val code = connection.responseCode
+        val responseText = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (code !in 200..299) {
+            val detail = runCatching { JSONObject(responseText).optJSONObject("error")?.optString("message") }.getOrNull()
+            throw IllegalStateException("模型请求失败（HTTP $code）${detail?.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""}")
+        }
+        val message = JSONObject(responseText).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message") ?: throw IllegalStateException("模型返回内容格式不正确")
+        val value = message.opt("content")
+        return when (value) {
+            is String -> value
+            is org.json.JSONArray -> (0 until value.length()).mapNotNull { value.optJSONObject(it)?.optString("text") }.filter { it.isNotBlank() }.joinToString("\n")
+            else -> "模型已返回，但没有可显示的文字内容。"
+        }.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
+    } finally { connection.disconnect() }
+}
+
 private fun inferMood(reply: String): String = when {
     listOf("开心", "高兴", "太棒", "喜欢", "成功").any { reply.contains(it) } -> "happy"
     listOf("难过", "抱歉", "遗憾", "失败").any { reply.contains(it) } -> "sad"
@@ -102,7 +160,7 @@ private fun inferMood(reply: String): String = when {
     listOf("思考", "考虑", "分析", "让我想想").any { reply.contains(it) } -> "thinking"
     else -> "normal"
 }
-private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList())
+private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList())
 private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String)
 private data class SkillProfile(val name: String, val description: String, val instructions: String)
 private data class ThirdPartyPlugin(val name: String, val description: String, val endpoint: String, val method: String, val apiKey: String, val enabled: Boolean = false)
@@ -223,7 +281,7 @@ private fun HyperCatApp() {
         Scaffold(
             containerColor = Bg,
             bottomBar = {
-                if (!(page == Page.CHAT && chatDrawerExpanded)) {
+                if (!(page == Page.CHAT && (chatDrawerExpanded || WindowInsets.isImeVisible))) {
                 NavigationBar(containerColor = if (darkNow) Color(0xCC0D1726) else Color(0xDDF7FAFD), tonalElevation = 0.dp) {
                     NavigationBarItem(selected = page == Page.HOME, onClick = { page = Page.HOME },
                         icon = { Icon(Icons.Outlined.Home, contentDescription = "萌宠") }, label = { Text("萌宠") })
@@ -258,18 +316,20 @@ private fun HyperCatApp() {
                     savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
                     draft = draft,
                     onDraft = { draft = it },
-                    onSend = { value, attachments ->
-                        if (value.isNotBlank() || attachments.isNotEmpty()) {
-                            messages.add(ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }))
-                            if (value.isNotBlank()) {
-                                recentPrompts = (listOf(value.trim().take(42)) + recentPrompts).distinct().take(12)
-                                chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
-                            }
-                            val reply = if (saved) "模型配置已保存，但当前版本尚未接入推理请求。附件已加入本条消息，下一步会接入模型多模态请求。" else "我还没有连接大模型。你可以先添加文字、图片或文件；到「模型配置」填写模型信息后，才能启用真正的 AI 对话。"
-                            val mood = inferMood(reply)
-                            petMood = mood
-                            messages.add(ChatLine(reply, false))
+                    onSend = { value, attachments, photos ->
+                        if (value.isNotBlank() || attachments.isNotEmpty() || photos.isNotEmpty()) {
+                            val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") })
+                            messages.add(userLine)
+                            if (value.isNotBlank()) { recentPrompts = (listOf(value.trim().take(42)) + recentPrompts).distinct().take(12); chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply() }
                             draft = ""
+                            if (!saved || endpoint.isBlank() || model.isBlank()) messages.add(ChatLine("请先在设置中完成模型配置，再发送消息。", false))
+                            else {
+                                val requestHistory = messages.toList()
+                                scope.launch { try {
+                                    val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory) }
+                                    messages.add(ChatLine(reply, false)); petMood = inferMood(reply)
+                                } catch (error: Exception) { messages.add(ChatLine("模型请求未成功：${error.message ?: "网络或服务异常"}", false)) } }
+                            }
                         }
                     },
                     openSettings = { page = Page.CHAT; openSettingsDrawer = true },
@@ -584,7 +644,7 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
 @Composable
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
-    onSend: (String, List<Uri>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
+    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, onMood: (String) -> Unit,
     showSettingsOnEnter: Boolean,
     onSettingsDrawerShown: () -> Unit,
@@ -592,6 +652,10 @@ private fun ChatPage(
 ) {
     var drawerSection by remember { mutableStateOf("recent") }
     var selectedFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var selectedPhotos by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var previewPhoto by remember { mutableStateOf<Bitmap?>(null) }
+    val clipboardManager = LocalClipboardManager.current
+    val cameraCapture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap -> if (bitmap != null) selectedPhotos = selectedPhotos + bitmap }
     var searchQuery by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
     var showRecent by remember { mutableStateOf(false) }
@@ -637,7 +701,7 @@ private fun ChatPage(
             )
         }
     ) {
-    Column(modifier.fillMaxSize().padding(contentPadding).imePadding().padding(horizontal = 14.dp)) {
+    Column(modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding(), bottom = if (WindowInsets.isImeVisible) 0.dp else contentPadding.calculateBottomPadding()).imePadding().padding(horizontal = 14.dp)) {
         Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { drawerScope.launch { drawerState.open() } }) {
@@ -713,7 +777,16 @@ private fun ChatPage(
                     }
                     Surface(modifier = if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
-                            if (line.text.isNotBlank()) Text(line.text, color = if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), fontSize = 14.sp, lineHeight = 20.sp)
+                            if (line.text.isNotBlank()) {
+                                Text(line.text, color = if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), fontSize = 14.sp, lineHeight = 20.sp)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                    TextButton(onClick = { clipboardManager.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                        Icon(Icons.Outlined.ContentCopy, contentDescription = "复制消息", modifier = Modifier.size(13.dp), tint = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan)
+                                        Spacer(Modifier.width(4.dp)); Text("复制", color = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                            line.photos.forEach { photo -> Image(bitmap = photo.asImageBitmap(), contentDescription = "照片", modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp).clip(RoundedCornerShape(12.dp))) }
                             line.attachments.forEach { name -> Text("📎 $name", color = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan, fontSize = 11.sp) }
                         }
                     }
@@ -723,6 +796,13 @@ private fun ChatPage(
                         }
                     }
                 }
+            }
+        }
+        if (selectedPhotos.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                selectedPhotos.forEach { photo -> Image(bitmap = photo.asImageBitmap(), contentDescription = "待发送照片", modifier = Modifier.size(54.dp).clip(RoundedCornerShape(10.dp)).clickable { previewPhoto = photo }) }
+                Text("${selectedPhotos.size} 张照片", color = Cyan, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedPhotos = emptyList() })
             }
         }
         if (selectedFiles.isNotEmpty()) {
@@ -740,6 +820,8 @@ private fun ChatPage(
                     decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$petName…", color = Muted, fontSize = 14.sp); inner() })
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Surface(Modifier.size(40.dp).clickable { cameraCapture.launch(null) }, color = Panel2, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PhotoCamera, contentDescription = "拍照", tint = Cyan) } }
+                Surface(Modifier.size(40.dp).clickable { imagePicker.launch("image/*") }, color = Panel2, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加图片", tint = Muted) } }
                 Surface(Modifier.size(40.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted) }
                 }
@@ -767,9 +849,9 @@ private fun ChatPage(
                         runCatching { voiceInput.launch(intent) }.onFailure { isListening = false }
                     }
                 }
-                Surface(Modifier.size(42.dp).clickable(enabled = draft.isNotBlank() || selectedFiles.isNotEmpty()) {
-                    onSend(draft, selectedFiles); selectedFiles = emptyList()
-                }, color = if (draft.isNotBlank() || selectedFiles.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
+                Surface(Modifier.size(42.dp).clickable(enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) {
+                    onSend(draft, selectedFiles, selectedPhotos); selectedFiles = emptyList(); selectedPhotos = emptyList()
+                }, color = if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Outlined.Send, contentDescription = "发送", tint = if (draft.isNotBlank() || selectedFiles.isNotEmpty()) Color(0xFF06202A) else Muted)
                     }
@@ -852,6 +934,7 @@ private fun ChatPage(
                     }
         }
     }
+    if (previewPhoto != null) AlertDialog(onDismissRequest = { previewPhoto = null }, title = { Text("照片预览") }, text = { Image(bitmap = previewPhoto!!.asImageBitmap(), contentDescription = "照片预览", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) }, confirmButton = { TextButton(onClick = { previewPhoto = null }) { Text("完成") } })
     if (showSearch) AlertDialog(onDismissRequest = { showSearch = false; searchQuery = "" }, title = { Text("查找对话内容") },
         text = { Column { OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("输入关键词，聊天列表即时筛选") }, singleLine = true); Text("${messages.count { it.text.contains(searchQuery, true) }} 条匹配消息", color = Muted, fontSize = 12.sp) } },
         confirmButton = { TextButton(onClick = { showSearch = false; searchQuery = "" }) { Text("完成") } })
