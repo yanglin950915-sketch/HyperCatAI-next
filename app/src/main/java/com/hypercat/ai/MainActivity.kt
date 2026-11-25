@@ -205,8 +205,6 @@ private fun HyperCatApp() {
                         icon = { Icon(Icons.Outlined.Home, contentDescription = "萌宠") }, label = { Text("萌宠") })
                     NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
                         icon = { Icon(Icons.Outlined.Forum, contentDescription = "Agent") }, label = { Text("Agent") })
-                    NavigationBarItem(selected = false, onClick = { page = Page.CHAT; openSettingsDrawer = true },
-                        icon = { Icon(Icons.Outlined.Settings, contentDescription = "设置") }, label = { Text("设置") })
                 }
             }
         ) { padding ->
@@ -566,7 +564,31 @@ private fun ChatPage(
                             Divider(color = GlassBorder.copy(alpha = .4f))
                         }
                     }
-                    TextButton(onClick = { drawerSection = "settings" }, modifier = Modifier.fillMaxWidth()) { Text("⚙  设置", color = Cyan, fontWeight = FontWeight.SemiBold) }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp),
+                        color = Panel2,
+                        shape = RoundedCornerShape(18.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("⌕" to "找一下", "✎" to "记一下", "⚙" to "设置").forEachIndexed { index, item ->
+                                Column(
+                                    Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            when (index) {
+                                                0 -> { showSearch = true; drawerScope.launch { drawerState.close() } }
+                                                1 -> { noteDraft = draft; showRemember = true; drawerScope.launch { drawerState.close() } }
+                                                else -> drawerSection = "settings"
+                                            }
+                                        }.padding(vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(item.first, color = Cyan, fontSize = 20.sp)
+                                    Text(item.second, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
                 }
             }
@@ -576,21 +598,23 @@ private fun ChatPage(
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("消息", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                Text("Agent", color = MainText, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                 Text(if (configured) "$petName · $activeModel" else "$petName · 尚未配置模型", color = Muted, fontSize = 11.sp, maxLines = 1)
             }
+            Surface(shape = RoundedCornerShape(14.dp), color = Panel2, modifier = Modifier.clickable { showModelPicker = true }) {
+                Row(Modifier.padding(horizontal = 11.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("模型", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(4.dp))
+                    Text("⌄", color = Muted, fontSize = 13.sp)
+                }
+            }
+            Spacer(Modifier.width(8.dp))
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { drawerScope.launch { drawerState.open() } }) { Box(contentAlignment = Alignment.Center) { Text("☰", color = Cyan, fontSize = 18.sp) } }
-            Spacer(Modifier.width(8.dp))
-            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { showSearch = true }) { Box(contentAlignment = Alignment.Center) { Text("⌕", color = Cyan, fontSize = 22.sp) } }
-            Spacer(Modifier.width(8.dp))
-            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { showModelPicker = true }) { Box(contentAlignment = Alignment.Center) { Text("⋯", color = Cyan, fontSize = 22.sp) } }
         }
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            AssistChip(onClick = { showRecent = true }, label = { Text("最近对话") })
             AssistChip(onClick = { showClear = true }, label = { Text("清屏") })
-            Spacer(Modifier.weight(1f))
-            Text("语音", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showCallInfo = true })
-            Text("视频", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showCallInfo = true })
+            AssistChip(onClick = { showCallInfo = true }, label = { Text("语音通话") })
+            AssistChip(onClick = { showCallInfo = true }, label = { Text("视频通话") })
         }
         if (!configured) {
             Spacer(Modifier.height(12.dp))
