@@ -657,6 +657,7 @@ private fun ChatPage(
     onSettingsDrawerShown: () -> Unit,
     settingsContent: @Composable (Modifier) -> Unit
 ) {
+    val context = LocalContext.current
     var drawerSection by remember { mutableStateOf("recent") }
     var selectedFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var selectedPhotos by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
