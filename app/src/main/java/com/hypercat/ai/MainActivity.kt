@@ -177,11 +177,11 @@ private fun HyperCatApp() {
             Surface(color = Color(0xFF202D49), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
                     Text("小米背屏连接（实验功能）", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("原生背屏应用列表目前没有可供普通第三方应用直接注册的公开接口。此处通过 Android 多显示屏 API 尝试启动到副屏，是否可用取决于小米系统权限和显示屏编号。", color = Color(0xFFB5BED3), fontSize = 11.sp)
+                    Text("HyperOS 不允许普通应用直接绘制背屏。本实验使用 Shizuku 授权执行固定系统命令，将 HyperCat AI 启动到背屏；需要先在 Shizuku 中授权。", color = Color(0xFFB5BED3), fontSize = 11.sp)
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = {
                         (context as? MainActivity)?.launchPetOnRearDisplay { rearStatus = it }
-                    }, modifier = Modifier.fillMaxWidth()) { Text("尝试启动到背屏") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Shizuku 授权并启动背屏") }
                     Text(rearStatus, color = Color(0xFFB5BED3), fontSize = 11.sp)
                 }
             }
