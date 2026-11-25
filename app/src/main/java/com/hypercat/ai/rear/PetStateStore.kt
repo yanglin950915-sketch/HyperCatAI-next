@@ -1,6 +1,7 @@
 package com.hypercat.ai.rear
 
 import android.content.Context
+import android.net.Uri
 
 data class RearPetState(
     val petName: String,
@@ -10,7 +11,7 @@ data class RearPetState(
     val updatedAt: Long
 )
 
-/** Small local state bridge shared by the main UI and the MAML ContentProvider. */
+/** Local state bridge shared by the main UI and the MAML ContentProvider. */
 object PetStateStore {
     private const val PREFS = "hypercat_rear_pet"
     private const val KEY_NAME = "pet_name"
@@ -18,15 +19,18 @@ object PetStateStore {
     private const val KEY_MOOD = "mood"
     private const val KEY_REPLY = "reply"
     private const val KEY_UPDATED = "updated_at"
+    private val PET_URI = Uri.parse("content://uriroute/data?group=hypercat&name=pet-state")
 
     fun update(context: Context, name: String, emoji: String, mood: String, reply: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_NAME, name)
             .putString(KEY_EMOJI, emoji)
             .putString(KEY_MOOD, mood)
             .putString(KEY_REPLY, reply.take(100))
             .putLong(KEY_UPDATED, System.currentTimeMillis())
-            .apply()
+            .commit()
+        // Notify MAML immediately; the one-second MAML refresh remains as a fallback.
+        if (saved) context.contentResolver.notifyChange(PET_URI, null)
     }
 
     fun read(context: Context): RearPetState {
