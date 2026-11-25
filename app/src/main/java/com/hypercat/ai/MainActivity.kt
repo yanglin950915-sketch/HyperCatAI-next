@@ -218,6 +218,10 @@ private fun HyperCatApp() {
                     onSend = { value, attachments ->
                         if (value.isNotBlank() || attachments.isNotEmpty()) {
                             messages.add(ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }))
+                            if (value.isNotBlank()) {
+                                recentPrompts = (listOf(value.trim().take(42)) + recentPrompts).distinct().take(12)
+                                chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
+                            }
                             val reply = if (saved) "模型配置已保存，但当前版本尚未接入推理请求。附件已加入本条消息，下一步会接入模型多模态请求。" else "我还没有连接大模型。你可以先添加文字、图片或文件；到「模型配置」填写模型信息后，才能启用真正的 AI 对话。"
                             val mood = inferMood(reply)
                             petMood = mood
@@ -445,6 +449,15 @@ private fun ChatPage(
     petMood: String, onMood: (String) -> Unit
 ) {
     var selectedFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var searchQuery by remember { mutableStateOf("") }
+    var showSearch by remember { mutableStateOf(false) }
+    var showRecent by remember { mutableStateOf(false) }
+    var showClear by remember { mutableStateOf(false) }
+    var showModelInfo by remember { mutableStateOf(false) }
+    var showCallInfo by remember { mutableStateOf(false) }
+    var keepContext by remember { mutableStateOf(true) }
+    val chatPrefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+    var recentPrompts by remember { mutableStateOf(chatPrefs.getString("recent_chat_titles", "")?.split("||")?.filter { it.isNotBlank() } ?: emptyList()) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val voiceInput = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -454,6 +467,14 @@ private fun ChatPage(
     Column(modifier.fillMaxSize().imePadding().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(20.dp))
         Text("Agent 对话", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("最近", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showRecent = true }.padding(end = 16.dp))
+            Text("查找", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showSearch = true }.padding(end = 16.dp))
+            Text("清屏", color = Cyan, fontSize = 12.sp, modifier = Modifier.clickable { showClear = true }.padding(end = 16.dp))
+            Text("模型：当前配置", color = Muted, fontSize = 11.sp, modifier = Modifier.clickable { showModelInfo = true }.weight(1f))
+            Text("☎", color = Cyan, fontSize = 19.sp, modifier = Modifier.clickable { showCallInfo = true }.padding(horizontal = 5.dp))
+            Text("▣", color = Cyan, fontSize = 18.sp, modifier = Modifier.clickable { showCallInfo = true }.padding(horizontal = 5.dp))
+        }
         Text(if (configured) "$petName 已读取模型配置" else "先配置模型，才能启用真实 AI 回复", color = Muted, fontSize = 12.sp)
         if (!configured) {
             Spacer(Modifier.height(12.dp))
@@ -529,6 +550,30 @@ private fun ChatPage(
             Button(onClick = { onSend(draft, selectedFiles); selectedFiles = emptyList() }, enabled = draft.isNotBlank() || selectedFiles.isNotEmpty(), shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(horizontal = 15.dp, vertical = 14.dp)) { Text("发送") }
         }
     }
+    if (showSearch) AlertDialog(onDismissRequest = { showSearch = false; searchQuery = "" }, title = { Text("查找对话内容") },
+        text = { OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("输入关键词") }, singleLine = true) },
+        confirmButton = { TextButton(onClick = { showSearch = false }) { Text("完成") } })
+    if (showRecent) AlertDialog(onDismissRequest = { showRecent = false }, title = { Text("最近对话") },
+        text = { if (recentPrompts.isEmpty()) Text("暂无最近对话，发送消息后会记录标题。", color = Muted) else Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+            recentPrompts.forEach { prompt -> Text(prompt, color = MainText, modifier = Modifier.fillMaxWidth().clickable { onDraft(prompt); showRecent = false }.padding(vertical = 9.dp)) }
+        } },
+        confirmButton = { TextButton(onClick = { showRecent = false }) { Text("关闭") } })
+    if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("清理当前对话") },
+        text = { Column {
+            Text("清除当前聊天消息。", color = Muted)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = keepContext, onCheckedChange = { keepContext = it })
+                Text("保留上下文选项（模型上下文功能接入后生效）", color = MainText, fontSize = 11.sp)
+            }
+        } },
+        confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); showClear = false }) { Text("清屏") } },
+        dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
+    if (showModelInfo) AlertDialog(onDismissRequest = { showModelInfo = false }, title = { Text("模型选择") },
+        text = { Text("当前应用只保存一组模型配置，尚未实现多模型档案与会话级路由。可前往设置修改当前模型。", color = Muted) },
+        confirmButton = { TextButton(onClick = { showModelInfo = false; openSettings() }) { Text("管理模型") } })
+    if (showCallInfo) AlertDialog(onDismissRequest = { showCallInfo = false }, title = { Text("语音 / 视频通话") },
+        text = { Text("通话入口已规划。实时双向语音、摄像头采集与视频理解需要接入支持实时音视频的模型服务；当前语音输入仍为系统语音转文字。", color = Muted) },
+        confirmButton = { TextButton(onClick = { showCallInfo = false }) { Text("知道了") } })
 }
 
 @Composable
