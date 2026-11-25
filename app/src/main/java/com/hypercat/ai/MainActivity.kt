@@ -45,6 +45,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import com.hypercat.ai.rear.PetStateStore
 
 private var appDarkState by mutableStateOf(true)
@@ -73,6 +78,31 @@ private fun inferMood(reply: String): String = when {
     else -> "normal"
 }
 private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList())
+private data class ReleaseInfo(val version: String, val notes: String, val url: String)
+private fun versionIsNewer(latest: String, current: String): Boolean {
+    fun parts(value: String) = value.trim().removePrefix("v").split(".", "-", "+").map { it.toIntOrNull() ?: 0 }
+    val a = parts(latest); val b = parts(current)
+    for (i in 0 until maxOf(a.size, b.size)) {
+        val av = a.getOrElse(i) { 0 }; val bv = b.getOrElse(i) { 0 }
+        if (av != bv) return av > bv
+    }
+    return false
+}
+private fun fetchLatestRelease(): ReleaseInfo {
+    val connection = URL("https://api.github.com/repos/yanglin950915-sketch/HyperCatAI-next/releases/latest").openConnection() as HttpURLConnection
+    try {
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 10000
+        connection.readTimeout = 10000
+        connection.setRequestProperty("Accept", "application/vnd.github+json")
+        connection.setRequestProperty("User-Agent", "HyperCatAI-Android")
+        if (connection.responseCode !in 200..299) throw IllegalStateException("GitHub 暂无可用的正式 Release（HTTP ${connection.responseCode}）")
+        val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        val tag = json.optString("tag_name", "").ifBlank { json.optString("name", "") }
+        if (tag.isBlank()) throw IllegalStateException("Release 未设置版本标签")
+        return ReleaseInfo(tag, json.optString("body", "").take(1200), json.optString("html_url", "https://github.com/yanglin950915-sketch/HyperCatAI-next/releases"))
+    } finally { connection.disconnect() }
+}
 
 @Composable
 private fun HyperCatApp() {
@@ -88,6 +118,10 @@ private fun HyperCatApp() {
     var petMood by remember { mutableStateOf("normal") }
     var themeMode by remember { mutableStateOf("system") }
     var timeRefresh by remember { mutableIntStateOf(0) }
+    var updateStatus by remember { mutableStateOf("尚未检查") }
+    var latestRelease by remember { mutableStateOf<ReleaseInfo?>(null) }
+    val currentVersion = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0.0.0" }.getOrDefault("0.0.0") }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(themeMode) {
         if (themeMode == "time") {
             while (true) {
@@ -197,7 +231,23 @@ private fun HyperCatApp() {
                     onThemeMode = { mode ->
                         themeMode = mode
                         context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit().putString("theme_mode", mode).apply()
-                    }
+                    },
+                    currentVersion = currentVersion,
+                    updateStatus = updateStatus,
+                    latestRelease = latestRelease,
+                    onCheckUpdates = {
+                        scope.launch {
+                            updateStatus = "正在检查 GitHub Releases…"
+                            try {
+                                val release = withContext(Dispatchers.IO) { fetchLatestRelease() }
+                                latestRelease = release
+                                updateStatus = if (versionIsNewer(release.version, currentVersion)) "发现新版本：${release.version}" else "当前已是最新版本（${currentVersion}）"
+                            } catch (error: Exception) {
+                                updateStatus = error.message ?: "检查失败，请稍后重试"
+                            }
+                        }
+                    },
+                    openUrl = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } }
                 )
             }
         }
@@ -208,7 +258,7 @@ private fun HyperCatApp() {
 private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, petMood: String, onPetNameChange: (String) -> Unit, openChat: () -> Unit, openSettings: () -> Unit) {
     var showNameDialog by remember { mutableStateOf(false) }
     var nameDraft by remember(petName) { mutableStateOf(petName) }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).background(Brush.verticalGradient(listOf(Color(0xFF13243A), Bg))).padding(horizontal = 22.dp)) {
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).background(Brush.verticalGradient(listOf(if (appDarkState) Color(0xFF13243A) else Color(0xFFE6F0F8), Bg))).padding(horizontal = 22.dp)) {
         Spacer(Modifier.height(28.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -429,7 +479,7 @@ private fun ChatPage(
         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(Modifier.weight(1f), color = if (appDarkState) Color.White.copy(alpha = .09f) else Color.White.copy(alpha = .8f), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(18.dp)) {
                 BasicTextField(value = draft, onValueChange = onDraft, modifier = Modifier.padding(horizontal = 15.dp, vertical = 15.dp).fillMaxWidth(),
-                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp),
+                    textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp),
                     decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给萌宠…", color = Muted, fontSize = 14.sp, maxLines = 1); inner() })
             }
             Spacer(Modifier.width(8.dp))
@@ -455,24 +505,71 @@ private fun SettingsPage(
     modifier: Modifier, provider: String, onProvider: (String) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
     apiKey: String, onApiKey: (String) -> Unit, onSave: () -> Unit, saved: Boolean,
-    themeMode: String, onThemeMode: (String) -> Unit
+    themeMode: String, onThemeMode: (String) -> Unit,
+    currentVersion: String, updateStatus: String, latestRelease: ReleaseInfo?,
+    onCheckUpdates: () -> Unit, openUrl: (String) -> Unit
 ) {
+    var showPluginDialog by remember { mutableStateOf(false) }
+    var showMcpDialog by remember { mutableStateOf(false) }
+    var showHelpDialog by remember { mutableStateOf(false) }
+    var pluginEnabled by remember { mutableStateOf(false) }
+    var mcpName by remember { mutableStateOf("") }
+    var mcpEndpoint by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
+    LaunchedEffect(Unit) {
+        pluginEnabled = prefs.getBoolean("plugins_enabled", false)
+        mcpName = prefs.getString("mcp_name", "") ?: ""
+        mcpEndpoint = prefs.getString("mcp_endpoint", "") ?: ""
+    }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
-        Text("模型配置", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("设置", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text("外观、扩展能力与应用信息", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(18.dp))
         Text("外观与主题", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        Text("可跟随系统，也可按时间自动切换（07:00 亮色 / 19:00 深色）", color = Muted, fontSize = 11.sp)
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("system" to "跟随系统", "time" to "按时间", "light" to "浅色", "dark" to "深色").forEach { (mode, label) ->
-                FilterChip(selected = themeMode == mode, onClick = { onThemeMode(mode) }, label = { Text(label, fontSize = 11.sp) })
+        Text("按系统或时间自动切换，也可手动固定主题", color = Muted, fontSize = 11.sp)
+        Spacer(Modifier.height(10.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf("system" to "系统", "time" to "定时").forEach { (mode, label) ->
+                        FilterChip(selected = themeMode == mode, onClick = { onThemeMode(mode) }, modifier = Modifier.weight(1f), label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) })
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf("light" to "☀ 浅色", "dark" to "☾ 深色").forEach { (mode, label) ->
+                        FilterChip(selected = themeMode == mode, onClick = { onThemeMode(mode) }, modifier = Modifier.weight(1f), label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) })
+                    }
+                }
+                Text(if (themeMode == "time") "自动规则：07:00–18:59 浅色，19:00–06:59 深色" else if (themeMode == "system") "当前跟随手机系统外观" else if (themeMode == "light") "已固定为浅色外观" else "已固定为深色外观", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
             }
         }
+        Spacer(Modifier.height(22.dp))
+        Text("扩展与支持", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        SettingsAction("🧩", "插件", if (pluginEnabled) "已启用插件框架" else "管理插件扩展入口") { showPluginDialog = true }
+        SettingsAction("🔌", "MCP 设置", if (mcpEndpoint.isBlank()) "配置 MCP 服务连接" else mcpName.ifBlank { mcpEndpoint }) { showMcpDialog = true }
+        SettingsAction("💬", "帮助与反馈", "使用说明、问题反馈与项目主页") { showHelpDialog = true }
         Spacer(Modifier.height(18.dp))
+        Text("关于 HyperCat AI", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        SettingsAction("ⓘ", "版本号", "当前版本 $currentVersion") { }
+        SettingsAction("↻", "检查更新", updateStatus) { onCheckUpdates() }
+        if (latestRelease != null && versionIsNewer(latestRelease.version, currentVersion)) {
+            Surface(color = if (appDarkState) Color(0xFF183A43) else Color(0xFFE1F5F4), shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                    Text("发现新版本 ${latestRelease.version}", color = MainText, fontWeight = FontWeight.Bold)
+                    if (latestRelease.notes.isNotBlank()) Text(latestRelease.notes, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    Button(onClick = { openUrl(latestRelease.url) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) { Text("前往 GitHub 下载更新") }
+                }
+            }
+        }
+        Spacer(Modifier.height(22.dp))
+        Text("模型配置", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Text("连接本地模型或在线大模型服务", color = Muted, fontSize = 12.sp)
-        Spacer(Modifier.height(20.dp))
-        Text("服务类型", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Spacer(Modifier.height(16.dp))
+        Text("服务类型", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
         Spacer(Modifier.height(9.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("本地模型", "OpenAI 兼容接口").forEach { item ->
@@ -491,11 +588,62 @@ private fun SettingsPage(
         Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) { Text("保存模型配置", fontWeight = FontWeight.Bold) }
         if (saved) Text("配置已保存", color = Color(0xFF76E0B1), fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
     }
+    if (showPluginDialog) AlertDialog(
+        onDismissRequest = { showPluginDialog = false },
+        title = { Text("插件管理") },
+        text = { Column {
+            Text("插件扩展入口已建立。当前版本尚未接入第三方插件运行时，开关仅保存管理偏好。", color = Muted, fontSize = 12.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("启用插件功能", modifier = Modifier.weight(1f), color = MainText)
+                Switch(checked = pluginEnabled, onCheckedChange = { pluginEnabled = it; prefs.edit().putBoolean("plugins_enabled", it).apply() })
+            }
+            Text("后续可在此安装、授权和管理工具插件。", color = Muted, fontSize = 11.sp)
+        } },
+        confirmButton = { TextButton(onClick = { showPluginDialog = false }) { Text("完成") } }
+    )
+    if (showMcpDialog) AlertDialog(
+        onDismissRequest = { showMcpDialog = false },
+        title = { Text("MCP 服务设置") },
+        text = { Column {
+            Text("配置 MCP 服务连接信息。当前版本保存配置，MCP 客户端连接能力将在后续接入。", color = Muted, fontSize = 12.sp)
+            OutlinedTextField(value = mcpName, onValueChange = { mcpName = it }, label = { Text("服务名称") }, singleLine = true)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(value = mcpEndpoint, onValueChange = { mcpEndpoint = it }, label = { Text("服务地址 / URL") }, singleLine = true)
+        } },
+        confirmButton = { TextButton(onClick = { prefs.edit().putString("mcp_name", mcpName.trim()).putString("mcp_endpoint", mcpEndpoint.trim()).apply(); showMcpDialog = false }) { Text("保存") } },
+        dismissButton = { TextButton(onClick = { showMcpDialog = false }) { Text("取消") } }
+    )
+    if (showHelpDialog) AlertDialog(
+        onDismissRequest = { showHelpDialog = false },
+        title = { Text("帮助与反馈") },
+        text = { Text("HyperCat AI 项目主页、问题反馈和版本发布均通过 GitHub 提供。若遇到问题，请提交设备型号、系统版本和复现步骤。", color = Muted) },
+        confirmButton = { TextButton(onClick = { showHelpDialog = false; openUrl("https://github.com/yanglin950915-sketch/HyperCatAI-next/issues") }) { Text("提交反馈") } },
+        dismissButton = { TextButton(onClick = { showHelpDialog = false; openUrl("https://github.com/yanglin950915-sketch/HyperCatAI-next") }) { Text("项目主页") } }
+    )
+}
+
+@Composable
+private fun SettingsAction(icon: String, title: String, subtitle: String, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(onClick = onClick),
+        color = Panel, shape = RoundedCornerShape(15.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+    ) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(icon, fontSize = 19.sp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, color = Muted, fontSize = 11.sp, maxLines = 2)
+            }
+            Text("›", color = Muted, fontSize = 22.sp)
+        }
+    }
 }
 
 @Composable
 private fun ConfigField(label: String, value: String, onValue: (String) -> Unit, hint: String, secret: Boolean = false) {
-    Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+    Text(label, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     Spacer(Modifier.height(7.dp))
     Surface(color = Panel, shape = RoundedCornerShape(14.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp)) {
