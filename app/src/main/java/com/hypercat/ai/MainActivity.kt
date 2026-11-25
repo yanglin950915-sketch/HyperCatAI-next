@@ -865,6 +865,16 @@ private fun SettingsPage(
     var skillInstructions by remember { mutableStateOf("") }
     var skillStatus by remember { mutableStateOf("支持导入 JSON、Markdown 和 TXT 技能文件") }
     val skills = remember { mutableStateListOf<SkillProfile>() }
+    var securityDetailTitle by remember { mutableStateOf("") }
+    var securityDetailText by remember { mutableStateOf("") }
+    var taskTitle by remember { mutableStateOf("") }
+    var taskDelayMinutes by remember { mutableStateOf("30") }
+    var profileName by remember { mutableStateOf("") }
+    var pluginEnabled by remember { mutableStateOf(false) }
+    var mcpName by remember { mutableStateOf("") }
+    var mcpEndpoint by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     val skillImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("无法读取所选文件")
@@ -883,16 +893,6 @@ private fun SettingsPage(
             skillStatus = "已导入：${skill.name}"
         }.onFailure { skillStatus = "导入失败：${it.message ?: "文件格式无法识别"}" }
     }
-    var securityDetailTitle by remember { mutableStateOf("") }
-    var securityDetailText by remember { mutableStateOf("") }
-    var taskTitle by remember { mutableStateOf("") }
-    var taskDelayMinutes by remember { mutableStateOf("30") }
-    var profileName by remember { mutableStateOf("") }
-    var pluginEnabled by remember { mutableStateOf(false) }
-    var mcpName by remember { mutableStateOf("") }
-    var mcpEndpoint by remember { mutableStateOf("") }
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     LaunchedEffect(Unit) {
         pluginEnabled = prefs.getBoolean("plugins_enabled", false)
         mcpName = prefs.getString("mcp_name", "") ?: ""
