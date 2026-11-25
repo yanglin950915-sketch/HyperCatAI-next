@@ -87,12 +87,21 @@ private fun HyperCatApp() {
     var petName by remember { mutableStateOf("小橘") }
     var petMood by remember { mutableStateOf("normal") }
     var themeMode by remember { mutableStateOf("system") }
+    var timeRefresh by remember { mutableIntStateOf(0) }
+    LaunchedEffect(themeMode) {
+        if (themeMode == "time") {
+            while (true) {
+                kotlinx.coroutines.delay(60_000)
+                timeRefresh++
+            }
+        }
+    }
     val systemDark = isSystemInDarkTheme()
     val darkNow = when (themeMode) {
         "light" -> false
         "dark" -> true
         "time" -> {
-            val hour = java.time.LocalTime.now().hour
+            timeRefresh.let { java.time.LocalTime.now().hour }
             hour < 7 || hour >= 19
         }
         else -> systemDark
