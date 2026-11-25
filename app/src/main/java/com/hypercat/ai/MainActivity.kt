@@ -144,6 +144,10 @@ private fun HyperCatApp() {
     }
     SideEffect { appDarkState = darkNow }
     val messages = remember { mutableStateListOf<ChatLine>() }
+    val chatPrefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
+    var recentPrompts by remember {
+        mutableStateOf(chatPrefs.getString("recent_chat_titles", "")?.split("||")?.filter { it.isNotBlank() } ?: emptyList())
+    }
 
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
@@ -213,6 +217,7 @@ private fun HyperCatApp() {
                 Page.CHAT -> ChatPage(
                     modifier = Modifier.padding(padding),
                     messages = messages,
+                    recentPrompts = recentPrompts,
                     draft = draft,
                     onDraft = { draft = it },
                     onSend = { value, attachments ->
@@ -444,7 +449,7 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
 
 @Composable
 private fun ChatPage(
-    modifier: Modifier, messages: List<ChatLine>, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, messages: List<ChatLine>, recentPrompts: List<String>, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, onMood: (String) -> Unit
 ) {
@@ -456,8 +461,6 @@ private fun ChatPage(
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
     var keepContext by remember { mutableStateOf(true) }
-    val chatPrefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
-    var recentPrompts by remember { mutableStateOf(chatPrefs.getString("recent_chat_titles", "")?.split("||")?.filter { it.isNotBlank() } ?: emptyList()) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val voiceInput = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
