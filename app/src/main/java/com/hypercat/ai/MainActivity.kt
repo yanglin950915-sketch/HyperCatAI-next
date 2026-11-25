@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hypercat.ai.pet.PetCatalog
 import com.hypercat.ai.pet.PetMood
+import com.hypercat.ai.rear.PetStateStore
 
 class MainActivity : ComponentActivity() {
     private var remoteShell: IRemoteShell? = null
@@ -155,6 +156,9 @@ private fun HyperCatApp() {
     var showDiagnostics by remember { mutableStateOf(false) }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(selectedPet.id, mood, reply) {
+        PetStateStore.update(context, selectedPet.name, selectedPet.emoji, mood.name, reply)
+    }
     val panel = Color(0xFF171F35)
     MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF8B9CFF), secondary = Color(0xFF75E0C1), background = Color(0xFF0B1020), surface = panel)) {
         if (showDiagnostics) {
@@ -188,7 +192,7 @@ private fun HyperCatApp() {
                     Text("你的随身 AI 萌宠", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                 }
                 Surface(color = Color(0xFF243451), shape = RoundedCornerShape(50)) {
-                    Text("开发预览 0.1", Modifier.padding(horizontal = 12.dp, vertical = 7.dp), color = Color(0xFFB9C8FF), fontSize = 11.sp)
+                    Text("MAML 重构 0.2", Modifier.padding(horizontal = 12.dp, vertical = 7.dp), color = Color(0xFFB9C8FF), fontSize = 11.sp)
                 }
             }
             Spacer(Modifier.height(20.dp))
@@ -225,8 +229,8 @@ private fun HyperCatApp() {
             Spacer(Modifier.height(12.dp))
             Surface(color = Color(0xFF202D49), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("小米背屏连接（实验功能）", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("已确认系统识别到 904×572 的可信独立背屏。先检测显示设备，再用 Shizuku 尝试将本应用 Activity 定向启动到 Display 1。", color = Color(0xFFB5BED3), fontSize = 11.sp)
+                    Text("小米背屏组件（MAML）", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("新版采用原生 MAML 背屏模板 + 本地 ContentProvider 数据桥接。先导入随 APK 构建的 HyperCatAI-Pet 模板，再由背屏引擎渲染萌宠；Shizuku 定向启动仅保留为备用实验。", color = Color(0xFFB5BED3), fontSize = 11.sp)
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = {
                         (context as? MainActivity)?.launchPetOnRearDisplay {
@@ -239,7 +243,7 @@ private fun HyperCatApp() {
                             rearStatus = it
                             showDiagnostics = true
                         }
-                    }, modifier = Modifier.fillMaxWidth()) { Text("测试启动 HyperCat AI 到背屏") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("备用：测试 Activity 定向启动") }
                     Text(
                         rearStatus.lineSequence().take(3).joinToString("\n"),
                         color = Color(0xFFB5BED3),

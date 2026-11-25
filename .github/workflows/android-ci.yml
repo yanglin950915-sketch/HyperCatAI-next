@@ -20,6 +20,17 @@ jobs:
           gradle-version: '8.9'
       - name: Build debug APK
         run: gradle assembleDebug
+      - name: Package MAML rear-screen module
+        run: |
+          cd rear-screen
+          zip -r ../HyperCatAI-RearScreen-MAML.zip HyperCatAI-Pet
+      - name: Upload MAML module
+        uses: actions/upload-artifact@v4
+        with:
+          name: HyperCatAI-rear-screen-module
+          path: HyperCatAI-RearScreen-MAML.zip
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
