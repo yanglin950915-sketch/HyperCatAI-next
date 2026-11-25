@@ -27,7 +27,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Pets
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.runtime.*
@@ -201,7 +201,7 @@ private fun HyperCatApp() {
             bottomBar = {
                 NavigationBar(containerColor = if (darkNow) Color(0xCC0D1726) else Color(0xDDF7FAFD), tonalElevation = 0.dp) {
                     NavigationBarItem(selected = page == Page.HOME, onClick = { page = Page.HOME },
-                        icon = { Icon(Icons.Outlined.Pets, contentDescription = "萌宠") }, label = { Text("萌宠") })
+                        icon = { Icon(Icons.Outlined.Home, contentDescription = "萌宠") }, label = { Text("萌宠") })
                     NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
                         icon = { Icon(Icons.Outlined.Forum, contentDescription = "Agent") }, label = { Text("Agent") })
                     NavigationBarItem(selected = page == Page.SETTINGS, onClick = { page = Page.SETTINGS },
