@@ -1,22 +1,19 @@
 # HyperCat AI 背屏模块
 
-## 直接替换方式
-本模块由 CI 打包为 `rearscreen.zip`，压缩包内固定结构为：
-
+## 完整文件夹
+仓库根目录的 `rearscreen/` 就是要替换的完整文件夹：
 ```
 rearscreen/
 └── manifest.xml
 ```
-
-解压后，用整个新版 `rearscreen` 文件夹替换背屏 AI 壁纸目录中的旧 `rearscreen` 文件夹。替换前请备份旧文件。
+不需要手工制作 ZIP。也可从 GitHub 打开 `rearscreen/manifest.xml` 下载原始文件，然后放入名为 `rearscreen` 的文件夹中。
 
 ## 数据同步
-主程序选择萌宠后，需要点击“确认更换萌宠”。确认操作会将名称、Emoji、心情和回复写入本地状态，并通知 ContentProvider。模板每秒刷新一次作为兜底。
+主程序点击“确认更换萌宠”后写入本地状态。背屏从 HyperCat AI 自己的 Provider 读取：
+`content://com.hypercat.ai.rear.provider/pet-state`
+MAML 每秒轮询一次，右上角按钮触发即时刷新。
 
-数据 URI：`content://uriroute/data?group=hypercat&name=pet-state`。
+## 外观与交互
+纯黑背景；机器人面部位于背屏下半区，上方预留摄像头安全区域。点击机器人显示爱心眼和开心反馈。
 
-## 背屏触摸
-点击萌宠区域会切换为开心表情并显示摸摸反馈；右上角刷新按钮会重新读取主程序状态。这些是 MAML 模板内的本地交互，不会直接执行 Agent 或手机系统操作。
-
-## 兼容性说明
-模板由 HyperOS 背屏 MAML 宿主加载，Provider 由 HyperCat AI APK 提供。不同 HyperOS 版本对 MAML 控件事件、ContentProvider 跨进程访问和刷新时机的支持可能不同，最终以真机测试为准。
+最终布局、Provider 跨应用读取和刷新行为仍需在目标手机上验证。
