@@ -5,7 +5,6 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
-import com.hypercat.ai.BuildConfig
 import org.json.JSONObject
 
 /**
@@ -36,7 +35,6 @@ class RearPetProvider : ContentProvider() {
             .put("mood", prefs.getString("mood", "IDLE") ?: "IDLE")
             .put("reply", prefs.getString("reply", "你好！我是你的 AI 萌宠伙伴。") ?: "")
             .put("updated_at", prefs.getLong("updated_at", 0L).toString())
-            .put("app_version", BuildConfig.VERSION_NAME)
             .toString()
     }
 
