@@ -934,9 +934,11 @@ private fun SettingsPage(
             val item = ThirdPartyPlugin(name.take(60), json.optString("description").take(300), endpoint, method, json.optString("apiKey"), false)
             plugins.removeAll { it.name.equals(item.name, true) }
             plugins.add(0, item)
-            persistPlugins()
-            pluginStatus = "已导入插件：\${item.name}（默认未启用）"
-        }.onFailure { pluginStatus = "导入失败：\${it.message ?: "文件格式错误"}" }
+            val savedPlugins = org.json.JSONArray()
+            plugins.forEach { plugin -> savedPlugins.put(JSONObject().put("name", plugin.name).put("description", plugin.description).put("endpoint", plugin.endpoint).put("method", plugin.method).put("apiKey", plugin.apiKey).put("enabled", plugin.enabled)) }
+            prefs.edit().putString("third_party_plugins", savedPlugins.toString()).apply()
+            pluginStatus = "已导入插件：${item.name}（默认未启用）"
+        }.onFailure { pluginStatus = "导入失败：${it.message ?: "文件格式错误"}" }
     }
     val skillImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
