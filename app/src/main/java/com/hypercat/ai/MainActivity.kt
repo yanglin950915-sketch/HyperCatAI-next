@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -157,7 +158,7 @@ private fun HyperCatApp() {
 private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, onPetNameChange: (String) -> Unit, openChat: () -> Unit, openSettings: () -> Unit) {
     var showNameDialog by remember { mutableStateOf(false) }
     var nameDraft by remember(petName) { mutableStateOf(petName) }
-    Column(modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF13243A), Bg))).padding(horizontal = 22.dp)) {
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).background(Brush.verticalGradient(listOf(Color(0xFF13243A), Bg))).padding(horizontal = 22.dp)) {
         Spacer(Modifier.height(28.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -169,14 +170,14 @@ private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, o
             }
         }
         Spacer(Modifier.height(18.dp))
-        Surface(Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(30.dp), color = Color(0xFF0A1422), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF21364D))) {
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(30.dp), color = Color(0xFF0A1422), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF21364D))) {
             Column(Modifier.fillMaxSize().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Text("MEET YOUR COMPANION", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
                 Spacer(Modifier.height(8.dp))
-                CatFace(Modifier.fillMaxWidth().height(260.dp))
+                CatFace(Modifier.fillMaxWidth().height(220.dp))
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(petName, color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+                    Text(petName, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold, maxLines = 2, softWrap = true)
                     Spacer(Modifier.width(8.dp))
                     Text("✎", color = Cyan, fontSize = 17.sp, modifier = Modifier.clip(CircleShape).clickable { nameDraft = petName; showNameDialog = true }.padding(5.dp))
                 }
@@ -190,14 +191,14 @@ private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, o
             }
         }
         Spacer(Modifier.height(16.dp))
-        Button(onClick = openChat, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(18.dp)) {
+        Button(onClick = openChat, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp), shape = RoundedCornerShape(18.dp)) {
             Spacer(Modifier.width(9.dp))
-            Text("和${petName}开始对话", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text("和${petName}开始对话", fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2, softWrap = true)
         }
         Spacer(Modifier.height(10.dp))
-        OutlinedButton(onClick = openSettings, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp)) {
+        OutlinedButton(onClick = openSettings, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp), shape = RoundedCornerShape(16.dp)) {
             Spacer(Modifier.width(8.dp))
-            Text("配置本地 / 在线大模型")
+            Text("配置本地 / 在线大模型", maxLines = 2, softWrap = true)
         }
         Spacer(Modifier.height(18.dp))
     }
@@ -228,15 +229,34 @@ private fun CatFace(modifier: Modifier = Modifier) {
         }
     }
 
-    Canvas(modifier.pointerInput(Unit) {
-        detectTapGestures { point ->
-            val w = size.width.toFloat().coerceAtLeast(1f)
-            val h = size.height.toFloat().coerceAtLeast(1f)
-            gazeX = (((point.x / w) - 0.5f) * 2f).coerceIn(-1f, 1f)
-            gazeY = (((point.y / h) - 0.45f) * 2f).coerceIn(-1f, 1f)
-            blinking = true
+    Canvas(modifier
+        .pointerInput(Unit) {
+            detectTapGestures { point ->
+                val w = size.width.toFloat().coerceAtLeast(1f)
+                val h = size.height.toFloat().coerceAtLeast(1f)
+                gazeX = (((point.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
+                gazeY = (((point.y / h) - 0.47f) * 2.8f).coerceIn(-1f, 1f)
+                blinking = true
+            }
         }
-    }) {
+        .pointerInput(Unit) {
+            detectDragGestures(
+                onDragStart = { point ->
+                    val w = size.width.toFloat().coerceAtLeast(1f)
+                    val h = size.height.toFloat().coerceAtLeast(1f)
+                    gazeX = (((point.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
+                    gazeY = (((point.y / h) - 0.47f) * 2.8f).coerceIn(-1f, 1f)
+                },
+                onDrag = { change, _ ->
+                    val w = size.width.toFloat().coerceAtLeast(1f)
+                    val h = size.height.toFloat().coerceAtLeast(1f)
+                    gazeX = (((change.position.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
+                    gazeY = (((change.position.y / h) - 0.47f) * 2.8f).coerceIn(-1f, 1f)
+                    change.consume()
+                }
+            )
+        }
+    ) {
         val cx = size.width / 2f
         val cy = size.height * .47f
         val eyeW = size.width * .235f
@@ -247,8 +267,8 @@ private fun CatFace(modifier: Modifier = Modifier) {
             val currentEyeH = eyeH * eyelid
             drawOval(eyeBrush, Offset(x - eyeW / 2, cy - currentEyeH / 2), Size(eyeW, currentEyeH))
             if (eyelid > 0.22f) {
-                val px = (pupilX * eyeW * .20f).coerceIn(-eyeW * .20f, eyeW * .20f)
-                val py = (pupilY * eyeH * .16f).coerceIn(-eyeH * .16f, eyeH * .16f)
+                val px = (pupilX * eyeW * .38f).coerceIn(-eyeW * .38f, eyeW * .20f)
+                val py = (pupilY * eyeH * .28f).coerceIn(-eyeH * .28f, eyeH * .16f)
                 drawCircle(Color(0xFF06172A), radius = eyeW * .29f, center = Offset(x + px, cy + eyeH * .05f + py))
                 drawCircle(Color.White, radius = eyeW * .085f, center = Offset(x + px - eyeW * .09f, cy - eyeH * .08f + py))
                 drawCircle(Color(0xFFB8F7FF), radius = eyeW * .035f, center = Offset(x + px + eyeW * .11f, cy + eyeH * .16f + py))
@@ -278,7 +298,7 @@ private fun ChatPage(
     modifier: Modifier, messages: List<ChatLine>, draft: String, onDraft: (String) -> Unit,
     onSend: () -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String
 ) {
-    Column(modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+    Column(modifier.fillMaxSize().imePadding().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(20.dp))
         Text("Agent 对话", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         Text(if (configured) "$petName 已读取模型配置" else "先配置模型，才能启用真实 AI 回复", color = Muted, fontSize = 12.sp)
@@ -311,7 +331,7 @@ private fun ChatPage(
             Surface(Modifier.weight(1f), color = Panel, shape = RoundedCornerShape(18.dp)) {
                 BasicTextField(value = draft, onValueChange = onDraft, modifier = Modifier.padding(horizontal = 15.dp, vertical = 15.dp).fillMaxWidth(),
                     textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp),
-                    decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给小橘…", color = Muted, fontSize = 14.sp); inner() })
+                    decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给萌宠…", color = Muted, fontSize = 14.sp, maxLines = 1); inner() })
             }
             Spacer(Modifier.width(8.dp))
             Button(onClick = onSend, enabled = draft.isNotBlank(), shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp)) { Text("发送") }
