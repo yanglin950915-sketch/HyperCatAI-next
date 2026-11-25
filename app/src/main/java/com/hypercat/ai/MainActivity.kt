@@ -93,9 +93,9 @@ private fun HyperCatApp() {
         petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
     }
 
-    LaunchedEffect(petName) {
+    LaunchedEffect(petName, petMood) {
         val state = PetStateStore.read(context)
-        PetStateStore.update(context, petName, "🤖", state.mood, state.reply)
+        PetStateStore.update(context, petName, "🤖", petMood, state.reply)
     }
 
     MaterialTheme(colorScheme = darkColorScheme(
@@ -120,6 +120,7 @@ private fun HyperCatApp() {
                     modifier = Modifier.padding(padding),
                     configured = saved,
                     petName = petName,
+                    petMood = petMood,
                     onPetNameChange = { value ->
                         val clean = value.trim().take(16).ifBlank { "小橘" }
                         petName = clean
@@ -170,7 +171,7 @@ private fun HyperCatApp() {
 }
 
 @Composable
-private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, onPetNameChange: (String) -> Unit, openChat: () -> Unit, openSettings: () -> Unit) {
+private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, petMood: String, onPetNameChange: (String) -> Unit, openChat: () -> Unit, openSettings: () -> Unit) {
     var showNameDialog by remember { mutableStateOf(false) }
     var nameDraft by remember(petName) { mutableStateOf(petName) }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).background(Brush.verticalGradient(listOf(Color(0xFF13243A), Bg))).padding(horizontal = 22.dp)) {
@@ -189,7 +190,7 @@ private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, o
             Column(Modifier.fillMaxSize().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Text("MEET YOUR COMPANION", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
                 Spacer(Modifier.height(8.dp))
-                CatFace(Modifier.fillMaxWidth().height(220.dp))
+                CatFace(Modifier.fillMaxWidth().height(220.dp), petMood)
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(petName, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold, maxLines = 2, softWrap = true)
