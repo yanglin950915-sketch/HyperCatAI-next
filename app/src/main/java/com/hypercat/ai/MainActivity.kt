@@ -33,6 +33,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -438,6 +439,51 @@ private fun inferMood(reply: String): String = when {
 }
 private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "")
 
+private fun serializeChatHistory(messages: List<ChatLine>): String = org.json.JSONArray().apply {
+    messages.forEach { line ->
+        put(JSONObject().put("text", line.text).put("fromUser", line.fromUser).put("reasoning", line.reasoning)
+            .put("attachments", org.json.JSONArray(line.attachments)))
+    }
+}.toString()
+
+private fun loadChatHistory(context: Context, title: String): List<ChatLine> {
+    if (title.isBlank()) return emptyList()
+    val raw = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+        .getString("chat_session_$title", null) ?: return emptyList()
+    return runCatching {
+        val array = org.json.JSONArray(raw)
+        (0 until array.length()).map { index ->
+            val item = array.getJSONObject(index)
+            val files = item.optJSONArray("attachments") ?: org.json.JSONArray()
+            ChatLine(item.optString("text"), item.optBoolean("fromUser"),
+                attachments = (0 until files.length()).map { files.optString(it) },
+                reasoning = item.optString("reasoning"))
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun formatChatForSharing(title: String, messages: List<ChatLine>): String = buildString {
+    append("HyperCat AI 对话记录")
+    if (title.isNotBlank()) append("：").append(title)
+    append("\\n\\n")
+    messages.forEach { line ->
+        if (line.text.isNotBlank()) {
+            append(if (line.fromUser) "我：" else "Agent：").append(line.text).append("\\n\\n")
+        }
+        if (line.attachments.isNotEmpty()) append("附件：").append(line.attachments.joinToString("、")).append("\\n\\n")
+    }
+}.trim()
+
+private fun shareChatText(context: Context, text: String, chooserTitle: String = "分享对话") {
+    if (text.isBlank()) {
+        Toast.makeText(context, "没有可分享的对话内容", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }
+    runCatching { context.startActivity(Intent.createChooser(intent, chooserTitle)) }
+}
+
+
 private fun appendAgentReply(context: Context, messages: MutableList<ChatLine>, text: String, reasoning: String = "") {
     messages.add(ChatLine(text, false, reasoning = reasoning))
     AgentReplyNotifications.showIfBackground(context, text)
@@ -569,6 +615,24 @@ private fun HyperCatApp() {
     var recentPrompts by remember {
         mutableStateOf(chatPrefs.getString("recent_chat_titles", "")?.split("||")?.filter { it.isNotBlank() } ?: emptyList())
     }
+    var currentSessionTitle by remember { mutableStateOf("") }
+    LaunchedEffect(messages.size, currentSessionTitle) {
+        if (currentSessionTitle.isNotBlank() && messages.isNotEmpty()) {
+            chatPrefs.edit().putString("chat_session_$currentSessionTitle", serializeChatHistory(messages)).apply()
+        }
+    }
+    LaunchedEffect(recentPrompts) {
+        if (messages.isEmpty() && currentSessionTitle.isBlank()) {
+            val latest = recentPrompts.firstOrNull().orEmpty()
+            if (latest.isNotBlank()) {
+                val restored = loadChatHistory(context, latest)
+                if (restored.isNotEmpty()) {
+                    messages.addAll(restored)
+                    currentSessionTitle = latest
+                }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
@@ -656,7 +720,10 @@ private fun HyperCatApp() {
                     messages = messages,
                     isThinking = isThinking,
                     recentPrompts = recentPrompts,
-                    onDeleteRecentPrompt = { prompt -> recentPrompts = recentPrompts.filterNot { it == prompt }; chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply() },
+                    onDeleteRecentPrompt = { prompt -> recentPrompts = recentPrompts.filterNot { it == prompt }; chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).remove("chat_session_$prompt").apply() },
+                    onOpenRecentSession = { prompt -> messages.clear(); messages.addAll(loadChatHistory(context, prompt)); currentSessionTitle = prompt },
+                    onShareRecentSession = { prompt -> shareChatText(context, formatChatForSharing(prompt, loadChatHistory(context, prompt))) },
+                    onShareCurrentSession = { shareChatText(context, formatChatForSharing(currentSessionTitle, messages)) },
                     modelProfiles = modelProfiles.toList(), ttsProfiles = ttsProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
                     onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
                     savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
@@ -665,10 +732,11 @@ private fun HyperCatApp() {
                     onDraft = { draft = it },
                     onSend = { value, attachments, photos ->
                         if (value.isNotBlank() || attachments.isNotEmpty() || photos.isNotEmpty()) {
+                            if (currentSessionTitle.isBlank() && value.isNotBlank()) currentSessionTitle = value.trim().take(42)
                             val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") })
                             messages.add(userLine)
                             if (value.isNotBlank()) {
-                                recentPrompts = (listOf(value.trim().take(42)) + recentPrompts).distinct().take(12)
+                                if (currentSessionTitle == value.trim().take(42)) recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(12)
                                 chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
                                 val explicitMemory = Regex("^(?:请)?记住[：:，, ]*(.+)$", RegexOption.DOT_MATCHES_ALL).find(value.trim())?.groupValues?.getOrNull(1)?.trim()
                                 if (!explicitMemory.isNullOrBlank()) {
@@ -1108,7 +1176,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
     ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit,
@@ -1127,6 +1195,7 @@ private fun ChatPage(
     var showSearch by remember { mutableStateOf(false) }
     var showRecent by remember { mutableStateOf(false) }
     var showClear by remember { mutableStateOf(false) }
+    var selectedMessageForShare by remember { mutableStateOf<ChatLine?>(null) }
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
     var callActive by remember { mutableStateOf(false) }
@@ -1525,6 +1594,10 @@ private fun ChatPage(
                 }
             }
             Spacer(Modifier.width(7.dp))
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { onShareCurrentSession() }) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Share, contentDescription = "分享当前对话", tint = Cyan, modifier = Modifier.size(19.dp)) }
+            }
+            Spacer(Modifier.width(6.dp))
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { showClear = true }) {
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Delete, contentDescription = "清理当前对话", tint = MainText, modifier = Modifier.size(20.dp)) }
             }
@@ -1587,7 +1660,7 @@ private fun ChatPage(
                             Text(petName.take(1), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                    Surface(modifier = if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
+                    Surface(modifier = (if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = {}, onLongClick = { selectedMessageForShare = line }), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
                             if (line.reasoning.isNotBlank() && !line.fromUser) {
                                 var reasoningExpanded by remember(line) { mutableStateOf(true) }
@@ -1768,9 +1841,12 @@ private fun ChatPage(
                                     }
                                     items(orderedRecent) { prompt ->
                                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(vertical = 8.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f).clickable { onDraft(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 4.dp)) {
+                                            Column(Modifier.weight(1f).clickable { onOpenRecentSession(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 4.dp)) {
                                                 Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                                 Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 2)
+                                            }
+                                            IconButton(onClick = { onShareRecentSession(prompt) }, modifier = Modifier.size(38.dp)) {
+                                                Icon(Icons.Outlined.Share, contentDescription = "分享完整对话", tint = Cyan, modifier = Modifier.size(18.dp))
                                             }
                                             IconButton(onClick = { onDeleteRecentPrompt(prompt) }, modifier = Modifier.size(40.dp)) {
                                                 Icon(Icons.Outlined.Delete, contentDescription = "删除这条最近对话", tint = Color(0xFFE07878), modifier = Modifier.size(19.dp))
@@ -1853,6 +1929,21 @@ private fun ChatPage(
         },
         confirmButton = { TextButton(onClick = { if (noteDraft.isNotBlank()) onSaveNote(noteDraft.trim()); noteDraft = ""; showRemember = false }) { Text("保存记忆") } },
         dismissButton = { TextButton(onClick = { showRemember = false }) { Text("完成") } }
+    )
+    if (selectedMessageForShare != null) AlertDialog(
+        onDismissRequest = { selectedMessageForShare = null },
+        title = { Text("消息操作") },
+        text = { Text("分享这条${if (selectedMessageForShare!!.fromUser) "提问" else "回复"}，或同时分享对应问答。", color = Muted) },
+        confirmButton = {
+            TextButton(onClick = {
+                val selected = selectedMessageForShare!!
+                val index = messages.indexOf(selected)
+                val pair = if (!selected.fromUser && index > 0 && messages[index - 1].fromUser) listOf(messages[index - 1], selected) else listOf(selected)
+                shareChatText(context, formatChatForSharing(currentSessionTitle, pair), "分享消息")
+                selectedMessageForShare = null
+            }) { Text("分享") }
+        },
+        dismissButton = { TextButton(onClick = { selectedMessageForShare = null }) { Text("取消") } }
     )
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("清理当前对话") },
         text = { Text("确定清空当前页面的全部消息吗？此操作不会删除最近对话记录。", color = Muted) },
