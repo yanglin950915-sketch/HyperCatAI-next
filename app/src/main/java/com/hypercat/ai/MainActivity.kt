@@ -1329,11 +1329,6 @@ private fun ChatPage(
             previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             audioManager.isSpeakerphoneOn = true
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            previousAudioMode = audioManager.mode
-            previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            audioManager.isSpeakerphoneOn = true
             callActive = true; micEnabled = true; videoEnabled = false
             showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
             latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
@@ -1357,6 +1352,11 @@ private fun ChatPage(
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             callMicPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         } else {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            previousAudioMode = audioManager.mode
+            previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            audioManager.isSpeakerphoneOn = true
             callActive = true; micEnabled = true; videoEnabled = false
             showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
             latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
@@ -1392,7 +1392,7 @@ private fun ChatPage(
                         isSpeaking = true
                         agentPlaybackUntilMs = Long.MAX_VALUE
                         val result = speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${messages.size}-last")
-                        if (result == TextToSpeech.ERROR) { isSpeaking = false; speechStatus = "通话语音播报失败，请检查系统 TTS 语音数据" }
+                        if (result == TextToSpeech.ERROR) { isSpeaking = false; agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 1200L; speechStatus = "通话语音播报失败，请检查系统 TTS 语音数据" }
                     }
                 }
             }
