@@ -634,11 +634,12 @@ private fun HyperCatApp() {
                                 }
                             }
                             draft = ""
-                            if (value.contains("天气") || value.contains("气温")) {
-                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                            if (value.contains("天气") || value.contains("气温") || value.contains("温度")) {
+                                val requestedPlace = AgentDeviceTools.extractWeatherPlace(value)
+                                if (requestedPlace.isNotBlank() || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                                     scope.launch {
                                         isThinking = true
-                                        try { messages.add(ChatLine(withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context) }, false)) }
+                                        try { messages.add(ChatLine(withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context, requestedPlace.ifBlank { null }) }, false)) }
                                         catch (error: Exception) { messages.add(ChatLine("天气查询失败：${error.message ?: "请稍后重试"}", false)) }
                                         finally { isThinking = false }
                                     }
@@ -1668,9 +1669,7 @@ private fun ChatPage(
                         modifier = Modifier.weight(1f).heightIn(min = 42.dp, max = 132.dp).padding(vertical = 10.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
                         decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$petName…", color = Muted, fontSize = 14.sp); inner() })
-                    Surface(Modifier.size(40.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
-                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted) }
-                    }
+                    VoiceInputButton(isListening = isListening, onPressStart = { startInAppRecognition() }, onPressEnd = { stopInAppRecognition() })
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -1682,7 +1681,9 @@ private fun ChatPage(
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                VoiceInputButton(isListening = isListening, onPressStart = { startInAppRecognition() }, onPressEnd = { stopInAppRecognition() })
+                Surface(Modifier.size(40.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
+                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted) }
+                }
                 Surface(Modifier.size(42.dp).clickable(enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) {
                     onSend(draft, selectedFiles, selectedPhotos); selectedFiles = emptyList(); selectedPhotos = emptyList()
                 }, color = if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
@@ -2017,6 +2018,7 @@ private fun SettingsPage(
     var mcpEndpoint by remember { mutableStateOf("") }
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
+    var amapWeatherKey by remember { mutableStateOf(prefs.getString("amap_weather_key", "") ?: "") }
     val pluginImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("无法读取插件清单")
@@ -2054,6 +2056,7 @@ private fun SettingsPage(
     }
     LaunchedEffect(Unit) {
         pluginEnabled = prefs.getBoolean("plugins_enabled", false)
+        amapWeatherKey = prefs.getString("amap_weather_key", "") ?: ""
         runCatching {
             val array = org.json.JSONArray(prefs.getString("third_party_plugins", "[]") ?: "[]")
             for (i in 0 until array.length()) {
@@ -2166,6 +2169,19 @@ private fun SettingsPage(
             }
         }
         Spacer(Modifier.height(22.dp))
+        Text("天气服务（中国大陆）", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text("使用高德地图行政区划编码识别城市/区县，再查询对应区域的实时天气和未来 4 天预报。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                ConfigField("高德地图 Web 服务 API Key", amapWeatherKey, {
+                    amapWeatherKey = it
+                    prefs.edit().putString("amap_weather_key", it.trim()).apply()
+                }, "粘贴高德开放平台创建的 Key", secret = true)
+                Text("申请入口：https://console.amap.com/dev/key/app", color = Cyan, fontSize = 10.sp)
+                Text("创建应用并添加“Web 服务”类型 Key。Key 仅保存在本机应用配置中，不要提交到 GitHub。", color = Muted, fontSize = 10.sp)
+            }
+        }
+        Spacer(Modifier.height(18.dp))
         Text("外观与主题", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Text("按系统或时间自动切换，也可手动固定主题", color = Muted, fontSize = 11.sp)
         Spacer(Modifier.height(10.dp))
