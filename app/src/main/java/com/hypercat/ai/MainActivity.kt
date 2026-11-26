@@ -1229,8 +1229,8 @@ private fun ChatPage(
                                         putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
                                         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                                         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                                        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
-                                        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
+                                        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+                                        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
                                     })
                                 }.onFailure { speechStatus = "语音识别重试失败：${it.message ?: "请检查系统语音服务"}" }
                             }
@@ -1825,6 +1825,10 @@ private fun ChatPage(
         onDismissRequest = {
             callActive = false; micEnabled = false; videoEnabled = false; isListening = false
             runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
+            agentPlaybackUntilMs = 0L
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.isSpeakerphoneOn = previousSpeakerphoneOn
+            audioManager.mode = previousAudioMode
         },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
@@ -1882,6 +1886,10 @@ private fun ChatPage(
                     CallControl("挂断", "☎", danger = true) {
                         callActive = false; micEnabled = false; videoEnabled = false; isListening = false
                         runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
+                        agentPlaybackUntilMs = 0L
+                        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                        audioManager.isSpeakerphoneOn = previousSpeakerphoneOn
+                        audioManager.mode = previousAudioMode
                     }
                 }
                 Text(if (videoEnabled) "摄像头画面为设备本地实时预览；AI 语音通话持续工作。连续视频流理解需接入支持实时音视频的模型服务。" else "语音通话已启动。点击摄像头按钮可开启视频，点击麦克风按钮可静音。",
