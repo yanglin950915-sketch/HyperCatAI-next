@@ -850,7 +850,7 @@ private fun HyperCatApp() {
                             onSaveNote = { note -> savedNotes = (listOf(note) + savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
                             onDeleteNote = { note -> savedNotes = savedNotes.filterNot { it == note }; chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
                             autoReadReplies = autoReadReplies,
-                            onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() }
+                            onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
                              petName = petName,
                              petMood = petMood,
                              onPetNameChange = { value ->
@@ -907,7 +907,7 @@ private fun HyperCatApp() {
                             onSaveNote = { note -> savedNotes = (listOf(note) + savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
                             onDeleteNote = { note -> savedNotes = savedNotes.filterNot { it == note }; chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
                             autoReadReplies = autoReadReplies,
-                            onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() }
+                            onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
                     petName = petName,
                     petMood = petMood,
                     onPetNameChange = { value ->
