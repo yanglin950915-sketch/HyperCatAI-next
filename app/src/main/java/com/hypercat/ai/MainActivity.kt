@@ -273,6 +273,9 @@ private fun HyperCatApp() {
     var endpoint by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
     var apiKey by remember { mutableStateOf("") }
+    var ttsLanguage by remember { mutableStateOf("zh-CN") }
+    var ttsRate by remember { mutableFloatStateOf(1.0f) }
+    var ttsPitch by remember { mutableFloatStateOf(1.0f) }
     var saved by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
     var petName by remember { mutableStateOf("小橘") }
@@ -318,6 +321,9 @@ private fun HyperCatApp() {
         endpoint = prefs.getString("endpoint", "") ?: ""
         model = prefs.getString("model", "") ?: ""
         apiKey = prefs.getString("api_key", "") ?: ""
+        ttsLanguage = prefs.getString("tts_language", "zh-CN") ?: "zh-CN"
+        ttsRate = prefs.getFloat("tts_rate", 1.0f).coerceIn(0.6f, 1.6f)
+        ttsPitch = prefs.getFloat("tts_pitch", 1.0f).coerceIn(0.7f, 1.4f)
         saved = endpoint.isNotBlank() && model.isNotBlank()
         runCatching { val array = org.json.JSONArray(prefs.getString("model_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); modelProfiles.add(ModelProfile(item.optString("name"), item.optString("provider"), item.optString("endpoint"), item.optString("model"), item.optString("apiKey"))) } }
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
@@ -416,6 +422,7 @@ private fun HyperCatApp() {
                     configured = saved,
                     petName = petName,
                     petMood = petMood,
+                    ttsLanguage = ttsLanguage, ttsRate = ttsRate, ttsPitch = ttsPitch,
                     onMood = { mood -> petMood = mood },
                     showSettingsOnEnter = openSettingsDrawer,
                     onSettingsDrawerShown = { openSettingsDrawer = false },
@@ -429,6 +436,12 @@ private fun HyperCatApp() {
                             endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
                             model = model, onModel = { model = it; saved = false },
                             apiKey = apiKey, onApiKey = { apiKey = it; saved = false },
+                    ttsLanguage = ttsLanguage, onTtsLanguage = { ttsLanguage = it; chatPrefs.edit().putString("tts_language", it).apply() },
+                    ttsRate = ttsRate, onTtsRate = { ttsRate = it; chatPrefs.edit().putFloat("tts_rate", it).apply() },
+                    ttsPitch = ttsPitch, onTtsPitch = { ttsPitch = it; chatPrefs.edit().putFloat("tts_pitch", it).apply() },
+                            ttsLanguage = ttsLanguage, onTtsLanguage = { ttsLanguage = it; chatPrefs.edit().putString("tts_language", it).apply() },
+                            ttsRate = ttsRate, onTtsRate = { ttsRate = it; chatPrefs.edit().putFloat("tts_rate", it).apply() },
+                            ttsPitch = ttsPitch, onTtsPitch = { ttsPitch = it; chatPrefs.edit().putFloat("tts_pitch", it).apply() },
                             onSave = {
                                 chatPrefs.edit().putString("provider", provider).putString("endpoint", endpoint.trim())
                                     .putString("model", model.trim()).putString("api_key", apiKey).apply()
@@ -593,10 +606,11 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
     var gazeX by remember { mutableStateOf(0f) }
     var gazeY by remember { mutableStateOf(0f) }
     var blinking by remember { mutableStateOf(false) }
+    var touchBlinkTrigger by remember { mutableIntStateOf(0) }
     var lastTouchAt by remember { mutableStateOf(0L) }
     val pupilX by animateFloatAsState(gazeX, animationSpec = tween(260), label = "pupilX")
     val pupilY by animateFloatAsState(gazeY, animationSpec = tween(260), label = "pupilY")
-    val eyelid by animateFloatAsState(if (blinking) 0.06f else 1f, animationSpec = tween(105), label = "eyelid")
+    val eyelid by animateFloatAsState(if (blinking) 0.06f else 1f, animationSpec = tween(70), label = "eyelid")
     val idle = rememberInfiniteTransition(label = "petIdle")
     val breathe by idle.animateFloat(
         initialValue = 0f, targetValue = 1f,
@@ -611,6 +625,13 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
         animationSpec = infiniteRepeatable(tween(1300), RepeatMode.Reverse), label = "eyeSparkle"
     )
 
+    LaunchedEffect(touchBlinkTrigger) {
+        if (touchBlinkTrigger > 0) {
+            blinking = true
+            delay(85L)
+            blinking = false
+        }
+    }
     LaunchedEffect(Unit) {
         while (true) {
             delay(Random.nextLong(2300L, 4301L))
@@ -620,12 +641,12 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
             }
             delay(100L)
             blinking = true
-            delay(115L)
+            delay(85L)
             blinking = false
             if (Random.nextInt(5) == 0) {
-                delay(150L)
+                delay(120L)
                 blinking = true
-                delay(100L)
+                delay(75L)
                 blinking = false
             }
         }
@@ -644,7 +665,7 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
                 val h = size.height.toFloat().coerceAtLeast(1f)
                 gazeX = (((point.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
                 gazeY = (((point.y / h) - 0.47f) * 2.8f).coerceIn(-1f, 1f)
-                blinking = true
+                touchBlinkTrigger++
             }
         }
         .pointerInput(Unit) {
@@ -763,7 +784,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
-    petMood: String, onMood: (String) -> Unit,
+    petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float, onMood: (String) -> Unit,
     showSettingsOnEnter: Boolean,
     onSettingsDrawerShown: () -> Unit,
     settingsContent: @Composable (Modifier) -> Unit
@@ -794,11 +815,12 @@ private fun ChatPage(
             if (status != TextToSpeech.SUCCESS) speechStatus = "语音引擎初始化失败，请检查系统文字转语音服务"
         }
     }
-    LaunchedEffect(ttsReady) {
+    LaunchedEffect(ttsReady, ttsLanguage, ttsRate, ttsPitch) {
         if (ttsReady) {
-            val preferred = speechEngine.isLanguageAvailable(Locale.SIMPLIFIED_CHINESE)
+            val requestedLocale = Locale.forLanguageTag(ttsLanguage)
             val selected = when {
-                preferred >= TextToSpeech.LANG_AVAILABLE -> Locale.SIMPLIFIED_CHINESE
+                speechEngine.isLanguageAvailable(requestedLocale) >= TextToSpeech.LANG_AVAILABLE -> requestedLocale
+                speechEngine.isLanguageAvailable(Locale.SIMPLIFIED_CHINESE) >= TextToSpeech.LANG_AVAILABLE -> Locale.SIMPLIFIED_CHINESE
                 speechEngine.isLanguageAvailable(Locale.CHINESE) >= TextToSpeech.LANG_AVAILABLE -> Locale.CHINESE
                 else -> null
             }
@@ -806,7 +828,8 @@ private fun ChatPage(
                 speechStatus = "系统未安装中文语音包，请在系统文字转语音设置中下载中文语音"
                 ttsReady = false
             } else {
-                speechEngine.setSpeechRate(1.0f)
+                speechEngine.setSpeechRate(ttsRate.coerceIn(0.6f, 1.6f))
+                speechEngine.setPitch(ttsPitch.coerceIn(0.7f, 1.4f))
                 speechEngine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) { isSpeaking = true }
                     override fun onDone(utteranceId: String?) {
@@ -853,6 +876,27 @@ private fun ChatPage(
                 lastCallSpokenText = reply
                 val spokenText = speechText(reply)
                 if (spokenText.isNotBlank()) speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${messages.size}-last")
+            }
+        }
+    }
+    LaunchedEffect(callActive, isSpeaking, isThinking, messages.size, lastCallSpokenText) {
+        val latest = messages.lastOrNull()
+        if (callActive && !isThinking && !isSpeaking && !isListening &&
+            latest != null && !latest.fromUser && latest.text.isNotBlank() &&
+            latest.text == lastCallSpokenText && ttsReady
+        ) {
+            delay(650)
+            if (callActive && !isSpeaking && !isListening) {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                    putExtra(RecognizerIntent.EXTRA_PROMPT, "AI 正在聆听，请继续说话")
+                }
+                isListening = true
+                runCatching { voiceInput.launch(intent) }.onFailure {
+                    isListening = false
+                    speechStatus = "连续语音识别不可用：${it.message ?: "请重新点击麦克风"}"
+                }
             }
         }
     }
@@ -1278,7 +1322,10 @@ private fun VoiceInputButton(isListening: Boolean, onClick: () -> Unit) {
 private fun SettingsPage(
     modifier: Modifier, provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
-    apiKey: String, onApiKey: (String) -> Unit, onSave: () -> Unit, saved: Boolean,
+    apiKey: String, onApiKey: (String) -> Unit,
+    ttsLanguage: String, onTtsLanguage: (String) -> Unit,
+    ttsRate: Float, onTtsRate: (Float) -> Unit, ttsPitch: Float, onTtsPitch: (Float) -> Unit,
+    onSave: () -> Unit, saved: Boolean,
     themeMode: String, onThemeMode: (String) -> Unit,
     currentVersion: String, updateStatus: String, latestRelease: ReleaseInfo?,
     onCheckUpdates: () -> Unit, openUrl: (String) -> Unit
@@ -1396,6 +1443,27 @@ private fun SettingsPage(
                 ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 http://127.0.0.1:1234/v1")
                 ConfigField("模型名称", model, onModel, "例如 qwen2.5 或 gpt-4o-mini")
                 ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
+                Spacer(Modifier.height(14.dp))
+                Text("TTS 语音配置", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("用于回复朗读和 AI 通话播报，默认使用系统语音引擎，不需要额外 API Key。", color = Muted, fontSize = 10.sp)
+                Spacer(Modifier.height(7.dp))
+                Text("朗读语言", color = Muted, fontSize = 11.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    listOf("zh-CN" to "中文普通话", "en-US" to "英语").forEach { (code, label) ->
+                        FilterChip(selected = ttsLanguage == code, onClick = { onTtsLanguage(code) }, label = { Text(label, fontSize = 11.sp) })
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                    Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
+                    Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("音调", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                    Slider(value = ttsPitch, onValueChange = onTtsPitch, valueRange = 0.7f..1.4f, modifier = Modifier.weight(1f))
+                    Text(String.format(Locale.US, "%.1f", ttsPitch), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                }
+                Text("参数会自动保存并用于消息朗读与语音通话；如无声音，请确认系统已安装对应语言的语音数据。", color = Muted, fontSize = 10.sp)
                 Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
                 else modelProfiles.forEach { p ->
