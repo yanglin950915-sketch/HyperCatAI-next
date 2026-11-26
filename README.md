@@ -80,7 +80,7 @@ Agent 可根据用户请求调用 Android 系统能力或外部数据服务，�
 
 ## 版本与构建
 
-当前版本：**0.9.8**（versionCode 27）。
+当前版本：**0.9.9**（versionCode 28）。
 
 GitHub Actions 负责 Android CI、APK 构建、签名校验和版本 Release。正式版本及安装包请查看：
 
