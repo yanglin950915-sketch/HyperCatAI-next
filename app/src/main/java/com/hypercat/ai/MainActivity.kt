@@ -1,6 +1,9 @@
 package com.hypercat.ai
 
 import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.graphics.Bitmap
 import java.io.ByteArrayOutputStream
 import java.util.Base64
@@ -50,6 +53,11 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.runtime.*
+import androidx.core.content.ContextCompat
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -104,6 +112,10 @@ private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val updateCheck = PeriodicWorkRequestBuilder<ReleaseCheckWorker>(12, TimeUnit.HOURS).build()
+        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+            "hypercat-release-check", ExistingPeriodicWorkPolicy.KEEP, updateCheck
+        )
         setContent { HyperCatApp() }
     }
 }
@@ -210,6 +222,16 @@ private fun fetchLatestRelease(): ReleaseInfo {
 @Composable
 private fun HyperCatApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            !context.getSharedPreferences("hypercat_update_state", Context.MODE_PRIVATE).getBoolean("notification_permission_asked", false)
+        ) {
+            context.getSharedPreferences("hypercat_update_state", Context.MODE_PRIVATE).edit().putBoolean("notification_permission_asked", true).apply()
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     var page by remember { mutableStateOf(Page.HOME) }
     var openSettingsDrawer by remember { mutableStateOf(false) }
     var chatDrawerExpanded by remember { mutableStateOf(false) }
