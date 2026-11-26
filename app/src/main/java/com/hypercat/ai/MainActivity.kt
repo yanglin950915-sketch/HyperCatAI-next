@@ -465,12 +465,12 @@ private fun loadChatHistory(context: Context, title: String): List<ChatLine> {
 private fun formatChatForSharing(title: String, messages: List<ChatLine>): String = buildString {
     append("HyperCat AI 对话记录")
     if (title.isNotBlank()) append("：").append(title)
-    append("\\n\\n")
+    append("\n\n")
     messages.forEach { line ->
         if (line.text.isNotBlank()) {
-            append(if (line.fromUser) "我：" else "Agent：").append(line.text).append("\\n\\n")
+            append(if (line.fromUser) "我：" else "Agent：").append(line.text).append("\n\n")
         }
-        if (line.attachments.isNotEmpty()) append("附件：").append(line.attachments.joinToString("、")).append("\\n\\n")
+        if (line.attachments.isNotEmpty()) append("附件：").append(line.attachments.joinToString("、")).append("\n\n")
     }
 }.trim()
 
@@ -1173,7 +1173,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
