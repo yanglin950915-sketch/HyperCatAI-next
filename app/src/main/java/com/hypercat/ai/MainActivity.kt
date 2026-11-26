@@ -191,7 +191,8 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
 
 
 private fun requestSpeechAudio(endpoint: String, apiKey: String, model: String, voice: String, input: String, speed: Float): ByteArray {
-    val base = endpoint.trim().trimEnd('/')
+    val rawBase = endpoint.trim().trimEnd('/')
+    val base = rawBase.removeSuffix("/chat/completions")
     require(base.startsWith("https://") || base.startsWith("http://")) { "TTS 服务地址必须是有效的 HTTP/HTTPS 地址" }
     val apiUrl = when {
         base.endsWith("/audio/speech") -> base
@@ -900,6 +901,9 @@ private fun ChatPage(
             if (status != TextToSpeech.SUCCESS) speechStatus = "语音引擎初始化失败，请检查系统文字转语音服务"
         }
     }
+    LaunchedEffect(ttsMode, ttsProfileName, ttsModel) {
+        if (ttsMode == "cloud") speechStatus = if (selectedTtsProfile != null && ttsModel.isNotBlank()) "云端 TTS 已配置，可测试朗读" else "请在设置中选择 TTS 模型档案并填写模型名称"
+    }
     LaunchedEffect(ttsReady, ttsLanguage, ttsRate, ttsPitch) {
         if (ttsReady) {
             val requestedLocale = Locale.forLanguageTag(ttsLanguage)
@@ -1339,13 +1343,13 @@ private fun ChatPage(
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
     if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
     if (showCallInfo) AlertDialog(
-        onDismissRequest = { callActive = false; isListening = false; speechEngine.stop(); showCallInfo = false },
+        onDismissRequest = { callActive = false; isListening = false; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false },
         title = { Text(if (callActive) "${callMode} AI 通话中" else "AI ${callMode}通话") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     if (callMode == "语音")
-                        "兼容通话模式：使用系统语音识别收集你的发言，交由当前已配置的大模型回答，再通过系统中文语音合成播报。点击麦克风即可开始一轮对话。"
+                        "兼容通话模式：使用系统语音识别收集你的发言，交由当前大模型回答，再通过所选系统语音或云端 TTS 播报。点击麦克风即可开始一轮对话。"
                     else
                         "视频交流模式：拍摄一张当前画面，发送给支持图片输入的已配置模型进行理解，再用语音播报回答。此模式为逐帧拍摄，不是连续视频直播。",
                     color = Muted, fontSize = 12.sp
@@ -1355,7 +1359,7 @@ private fun ChatPage(
                         Text(if (callActive) "通话已启动" else "等待开始", color = Cyan, fontWeight = FontWeight.SemiBold)
                         Text("语音识别：系统服务 · ${if (isListening) "正在聆听" else "待命"}", color = Muted, fontSize = 11.sp)
                         Text("AI 模型：${if (configured) "使用当前聊天模型" else "尚未配置"}", color = Muted, fontSize = 11.sp)
-                        Text("语音播报：${if (ttsReady) "中文语音已就绪" else speechStatus}", color = Muted, fontSize = 11.sp)
+                        Text("语音播报：${if (canSpeak) if (ttsMode == "cloud") "云端 TTS 已配置" else "系统语音已就绪" else speechStatus}", color = Muted, fontSize = 11.sp)
                     }
                 }
             }
@@ -1375,7 +1379,7 @@ private fun ChatPage(
                 } else {
                     TextButton(onClick = {
                         if (!configured) Toast.makeText(context, "请先在设置中配置大模型", Toast.LENGTH_SHORT).show()
-                        else if (!ttsReady) Toast.makeText(context, speechStatus, Toast.LENGTH_SHORT).show()
+                        else if (!canSpeak) Toast.makeText(context, speechStatus, Toast.LENGTH_SHORT).show()
                         else {
                             lastCallSpokenText = ""
                             callActive = true
@@ -1395,6 +1399,7 @@ private fun ChatPage(
                 TextButton(onClick = {
                     callActive = false
                     isListening = false
+                    cloudSpeechJob?.cancel()
                     speechEngine.stop()
                     showCallInfo = false
                 }) { Text(if (callActive) "挂断" else "关闭") }
