@@ -7,10 +7,11 @@ import android.provider.CalendarContract
 import android.Manifest
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.location.LocationListener
 import android.location.Location
 import android.location.Geocoder
 import android.os.Build
-import android.os.CancellationSignal
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,27 +24,64 @@ import java.net.URL
 import java.util.Locale
 
 object AgentDeviceTools {
-    private fun freshestRecentLocation(context: Context): Location? {
+    fun hasLocationPermission(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    fun hasPreciseLocationPermission(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    private fun freshestRecentLocation(context: Context, precise: Boolean): Location? {
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         val now = System.currentTimeMillis()
-        return listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
-            .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
+        val providers = if (precise) listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+            else listOf(LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+        return providers.mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
             .filter { it.latitude.isFinite() && it.longitude.isFinite() && now - it.time in 0L..600_000L }
             .maxByOrNull { it.time }
     }
 
+    private suspend fun requestSingleLocation(manager: LocationManager, provider: String): Location? =
+        withTimeoutOrNull(10_000L) {
+            suspendCancellableCoroutine<Location?> { continuation ->
+                val listener = object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        if (continuation.isActive) continuation.resume(location)
+                        runCatching { manager.removeUpdates(this) }
+                    }
+                    override fun onProviderDisabled(name: String) {
+                        if (continuation.isActive) continuation.resume(null)
+                        runCatching { manager.removeUpdates(this) }
+                    }
+                    override fun onProviderEnabled(name: String) = Unit
+                    @Deprecated("Deprecated in Android")
+                    override fun onStatusChanged(providerName: String?, status: Int, extras: android.os.Bundle?) = Unit
+                }
+                continuation.invokeOnCancellation { runCatching { manager.removeUpdates(listener) } }
+                try {
+                    manager.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper())
+                } catch (_: SecurityException) {
+                    if (continuation.isActive) continuation.resume(null)
+                } catch (_: Exception) {
+                    if (continuation.isActive) continuation.resume(null)
+                }
+            }
+        }
+
     private suspend fun currentDeviceLocation(context: Context): Location? {
+        if (!hasLocationPermission(context)) return null
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            for (provider in listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)) {
-                val enabled = runCatching { manager.isProviderEnabled(provider) }.getOrDefault(false)
-                if (!enabled) continue
-                val location = withTimeoutOrNull(8_000L) {
+        val precise = hasPreciseLocationPermission(context)
+        val providers = if (precise) listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            else listOf(LocationManager.NETWORK_PROVIDER)
+        for (provider in providers) {
+            val enabled = runCatching { manager.isProviderEnabled(provider) }.getOrDefault(false)
+            if (!enabled) continue
+            val location = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                withTimeoutOrNull(10_000L) {
                     suspendCancellableCoroutine<Location?> { continuation ->
-                        val cancellation = CancellationSignal()
-                        continuation.invokeOnCancellation { cancellation.cancel() }
                         try {
-                            manager.getCurrentLocation(provider, cancellation, context.mainExecutor) { result ->
+                            manager.getCurrentLocation(provider, null, context.mainExecutor) { result ->
                                 if (continuation.isActive) continuation.resume(result)
                             }
                         } catch (_: SecurityException) {
@@ -53,12 +91,11 @@ object AgentDeviceTools {
                         }
                     }
                 }
-                if (location != null && location.latitude.isFinite() && location.longitude.isFinite()) return location
-            }
+            } else requestSingleLocation(manager, provider)
+            if (location != null && location.latitude.isFinite() && location.longitude.isFinite()) return location
         }
-        // Older Android versions have no one-shot current-location API here. Only use a
-        // very recent cache entry; never silently reuse a stale city-level position.
-        return freshestRecentLocation(context)?.takeIf { System.currentTimeMillis() - it.time <= 120_000L }
+        // Only fall back to a recent cache entry; never silently reuse stale coordinates.
+        return freshestRecentLocation(context, precise)?.takeIf { System.currentTimeMillis() - it.time <= 120_000L }
     }
 
     private fun resolveNamedAddress(geocoder: Geocoder, requestedPlace: String): android.location.Address? {
@@ -178,7 +215,7 @@ object AgentDeviceTools {
         if (provider == "amap") {
             if (amapKey.isBlank()) return@withContext "高德天气尚未配置 API Key，请在设置 → 天气服务中填写。"
             val place = if (!requestedPlace.isNullOrBlank()) requestedPlace.trim() else {
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+                if (!hasLocationPermission(context))
                     return@withContext "查询当前位置天气需要位置权限，或直接告诉我城市/区县名称。"
                 val loc = currentDeviceLocation(context)
                     ?: return@withContext "无法获取当前实时位置。请开启系统定位并稍后重试，或直接告诉我城市/区县名称。"
@@ -210,7 +247,7 @@ object AgentDeviceTools {
             } catch (e: Exception) { "高德天气查询失败：" + (e.message ?: "网络异常") }
         }
         if (provider == "caiyun" && caiyunToken.isBlank()) return@withContext "彩云天气尚未配置 Token，请在设置 → 天气服务中填写。"
-        if (requestedPlace.isNullOrBlank() && ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+        if (requestedPlace.isNullOrBlank() && !hasLocationPermission(context))
             return@withContext "查询当前位置天气需要位置权限，或直接告诉我城市/区县名称。"
         val geocoder = Geocoder(context, Locale.CHINA)
         val address = try {
