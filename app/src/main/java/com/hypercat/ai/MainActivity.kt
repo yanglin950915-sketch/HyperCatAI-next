@@ -436,9 +436,6 @@ private fun HyperCatApp() {
                             endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
                             model = model, onModel = { model = it; saved = false },
                             apiKey = apiKey, onApiKey = { apiKey = it; saved = false },
-                    ttsLanguage = ttsLanguage, onTtsLanguage = { ttsLanguage = it; chatPrefs.edit().putString("tts_language", it).apply() },
-                    ttsRate = ttsRate, onTtsRate = { ttsRate = it; chatPrefs.edit().putFloat("tts_rate", it).apply() },
-                    ttsPitch = ttsPitch, onTtsPitch = { ttsPitch = it; chatPrefs.edit().putFloat("tts_pitch", it).apply() },
                             ttsLanguage = ttsLanguage, onTtsLanguage = { ttsLanguage = it; chatPrefs.edit().putString("tts_language", it).apply() },
                             ttsRate = ttsRate, onTtsRate = { ttsRate = it; chatPrefs.edit().putFloat("tts_rate", it).apply() },
                             ttsPitch = ttsPitch, onTtsPitch = { ttsPitch = it; chatPrefs.edit().putFloat("tts_pitch", it).apply() },
@@ -473,6 +470,9 @@ private fun HyperCatApp() {
                     endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
                     model = model, onModel = { model = it; saved = false },
                     apiKey = apiKey, onApiKey = { apiKey = it; saved = false },
+                    ttsLanguage = ttsLanguage, onTtsLanguage = { ttsLanguage = it; chatPrefs.edit().putString("tts_language", it).apply() },
+                    ttsRate = ttsRate, onTtsRate = { ttsRate = it; chatPrefs.edit().putFloat("tts_rate", it).apply() },
+                    ttsPitch = ttsPitch, onTtsPitch = { ttsPitch = it; chatPrefs.edit().putFloat("tts_pitch", it).apply() },
                     onSave = {
                         context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit()
                             .putString("provider", provider).putString("endpoint", endpoint.trim())
