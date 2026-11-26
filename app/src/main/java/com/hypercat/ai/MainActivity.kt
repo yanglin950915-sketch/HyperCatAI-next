@@ -11,6 +11,10 @@ import android.os.SystemClock
 import android.graphics.Matrix
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.graphics.Matrix
+import android.os.Handler
+import android.os.Looper
 import android.graphics.Bitmap
 import java.io.ByteArrayOutputStream
 import java.util.Base64
@@ -101,6 +105,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.lifecycle.LifecycleOwner
+import java.util.concurrent.Executors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -1134,10 +1146,13 @@ private fun ChatPage(
             .onFailure { isListening = false; speechStatus = "无法启动语音识别：${it.message}" }
     }
     fun stopInAppRecognition() { if (isListening) runCatching { speechRecognizer.stopListening() } }
-    val callCamera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
-        if (bitmap != null && callActive && callMode == "视频") {
-            onSend("请分析我当前摄像头拍摄到的画面，并结合画面内容与我进行交流。", emptyList(), listOf(bitmap))
-        }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) { callActive = true; speechStatus = "摄像头已启动，正在分析画面" }
+        else Toast.makeText(context, "需要摄像头权限才能进行 AI 视频通话", Toast.LENGTH_SHORT).show()
+    }
+    fun startVideoCall() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        else callActive = true
     }
     LaunchedEffect(callActive, messages.size, isThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak) {
         if (callActive && !isThinking) {
@@ -1588,11 +1603,15 @@ private fun ChatPage(
                 }
                 Spacer(Modifier.height(28.dp))
                 if (callMode == "视频") {
-                    Box(Modifier.fillMaxWidth().weight(0.9f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF151C29)), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CatFace(Modifier.width(230.dp).height(190.dp), if (isThinking) "thinking" else petMood)
+                    Box(Modifier.fillMaxWidth().weight(0.9f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF151C29))) {
+                        if (callActive) {
+                            LiveCameraPreview(isActive = callActive && !isThinking && !isSpeaking && !isListening) { frame ->
+                                onSend("请结合当前视频画面，实时观察并回答我。若画面与上一帧变化不大，请简洁回应。", emptyList(), listOf(frame))
+                            }
+                        } else Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                            CatFace(Modifier.width(220.dp).height(170.dp), petMood)
                             Text("AI 视频伙伴", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                            Text("点下方摄像头按钮发送画面，AI 会结合画面实时回复", color = Color(0xFFADB8C8), fontSize = 11.sp)
+                            Text("启动后会每隔数秒分析一帧画面", color = Color(0xFFADB8C8), fontSize = 11.sp)
                         }
                     }
                 } else {
@@ -1614,9 +1633,8 @@ private fun ChatPage(
                 Spacer(Modifier.height(22.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                     if (callMode == "视频") {
-                        CallControl("摄像头", "📷", enabled = configured) {
-                            callActive=true
-                            runCatching { callCamera.launch(null) }.onFailure { Toast.makeText(context, "无法启动摄像头：${it.message}", Toast.LENGTH_SHORT).show() }
+                        CallControl(if (callActive) "摄像头运行中" else "开始视频", "📷", enabled = configured) {
+                            if (!configured) Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show() else startVideoCall()
                         }
                     } else {
                         CallControl(if (isListening) "聆听中" else "开始说话", "🎙", enabled = configured && canSpeak) {
@@ -1630,10 +1648,52 @@ private fun ChatPage(
                         cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo=false
                     }
                 }
-                if (callMode == "视频") Text("当前为拍摄帧交互模式；连续视频流与实时画面分析仍需接入 CameraX。", color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
+                if (callMode == "视频") Text("视频画面每 4 秒分析一帧；AI 回答或语音交互期间会暂停采帧，避免重复请求。", color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
             }
         }
     }
+}
+
+@Composable
+private fun LiveCameraPreview(isActive: Boolean, onFrame: (Bitmap) -> Unit) {
+    val context = LocalContext.current
+    val lifecycleOwner = context as? LifecycleOwner
+    val latestActive by rememberUpdatedState(isActive)
+    val latestOnFrame by rememberUpdatedState(onFrame)
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val previewView = remember(context) { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
+    val executor = remember { Executors.newSingleThreadExecutor() }
+    DisposableEffect(previewView, lifecycleOwner) {
+        var boundProvider: ProcessCameraProvider? = null
+        val providerFuture = ProcessCameraProvider.getInstance(context)
+        providerFuture.addListener({
+            runCatching {
+                val provider = providerFuture.get()
+                boundProvider = provider
+                val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+                val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
+                var lastFrameAt = 0L
+                analysis.setAnalyzer(executor) { imageProxy ->
+                    try {
+                        val now = SystemClock.elapsedRealtime()
+                        if (latestActive && now - lastFrameAt >= 4000L) {
+                            lastFrameAt = now
+                            val source = imageProxy.toBitmap()
+                            val rotation = imageProxy.imageInfo.rotationDegrees
+                            val bitmap = if (rotation == 0) source else Bitmap.createBitmap(source, 0, 0, source.width, source.height, Matrix().apply { postRotate(rotation.toFloat()) }, true)
+                            mainHandler.post { latestOnFrame(bitmap) }
+                        }
+                    } catch (_: Exception) {
+                    } finally { imageProxy.close() }
+                }
+                val owner = lifecycleOwner ?: error("无法获取摄像头生命周期")
+                provider.unbindAll()
+                provider.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, preview, analysis)
+            }
+        }, ContextCompat.getMainExecutor(context))
+        onDispose { runCatching { boundProvider?.unbindAll() }; executor.shutdown() }
+    }
+    AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 }
 
 @Composable
