@@ -846,6 +846,11 @@ private fun HyperCatApp() {
                     settingsContent = { drawerModifier ->
                         SettingsPage(
                             modifier = drawerModifier,
+                            savedNotes = savedNotes,
+                            onSaveNote = { note -> savedNotes = (listOf(note) + savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
+                            onDeleteNote = { note -> savedNotes = savedNotes.filterNot { it == note }; chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
+                            autoReadReplies = autoReadReplies,
+                            onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() }
                              petName = petName,
                              petMood = petMood,
                              onPetNameChange = { value ->
@@ -898,6 +903,11 @@ private fun HyperCatApp() {
                 )
                 Page.SETTINGS -> SettingsPage(
                     modifier = Modifier.padding(padding),
+                            savedNotes = savedNotes,
+                            onSaveNote = { note -> savedNotes = (listOf(note) + savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
+                            onDeleteNote = { note -> savedNotes = savedNotes.filterNot { it == note }; chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
+                            autoReadReplies = autoReadReplies,
+                            onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() }
                     petName = petName,
                     petMood = petMood,
                     onPetNameChange = { value ->
@@ -2122,6 +2132,8 @@ private fun SettingsPage(
     onSave: () -> Unit, saved: Boolean,
     themeMode: String, onThemeMode: (String) -> Unit,
     currentVersion: String, updateStatus: String, latestRelease: ReleaseInfo?,
+    savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit,
+    autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit,
     onCheckUpdates: () -> Unit, openUrl: (String) -> Unit
 ) {
     var showPetNameDialog by remember { mutableStateOf(false) }
@@ -2130,6 +2142,8 @@ private fun SettingsPage(
     var showMcpDialog by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
     var showDocsDialog by remember { mutableStateOf(false) }
+    var showMemoryDialog by remember { mutableStateOf(false) }
+    var memoryDraft by remember { mutableStateOf("") }
     var showTaskDialog by remember { mutableStateOf(false) }
     var showSecurityDetail by remember { mutableStateOf(false) }
     var showSkillDialog by remember { mutableStateOf(false) }
@@ -2422,6 +2436,22 @@ private fun SettingsPage(
         }
         Text("无障碍权限由 Android 系统管理；HyperCat AI 仅在你主动启用后执行明确的简单操作，不会自动读取密码或验证码。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp))
         Spacer(Modifier.height(22.dp))
+        Text("Agent 偏好与数据", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(15.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("自动朗读回复", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("仅朗读 Agent 新生成的最终答复，不重播历史消息", color = Muted, fontSize = 10.sp)
+                }
+                Switch(checked = autoReadReplies, onCheckedChange = onAutoReadReplies)
+            }
+        }
+        SettingsAction("▤", "长期记忆管理", "查看、添加、删除或清空已保存的记忆（${savedNotes.size} 条）") { memoryDraft = ""; showMemoryDialog = true }
+        SettingsAction("⚙", "Android 系统权限", "管理位置、麦克风、相机、通知等系统权限") {
+            runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        }
+        Spacer(Modifier.height(22.dp))
         Text("扩展能力", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         SettingsAction("◷", "定时任务", "创建一次性提醒，到时间通过系统通知提醒") { showTaskDialog = true }
@@ -2452,6 +2482,28 @@ private fun SettingsPage(
         text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("萌宠名称") }) },
         confirmButton = { TextButton(onClick = { onPetNameChange(petNameDraft); showPetNameDialog = false }) { Text("保存") } },
         dismissButton = { TextButton(onClick = { showPetNameDialog = false }) { Text("取消") } }
+    )
+    if (showMemoryDialog) AlertDialog(
+        onDismissRequest = { showMemoryDialog = false },
+        title = { Text("Agent 长期记忆 · ${savedNotes.size}") },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+                Text("保存的记忆会作为后续对话的背景信息。你也可以在聊天中发送“记住：……”快速添加。", color = Muted, fontSize = 11.sp)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(value = memoryDraft, onValueChange = { memoryDraft = it.take(500) }, label = { Text("添加一条长期记忆") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                Button(onClick = { if (memoryDraft.isNotBlank()) { onSaveNote(memoryDraft.trim()); memoryDraft = "" } }, enabled = memoryDraft.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存记忆") }
+                Text("已保存 ${savedNotes.size} 条", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(vertical = 8.dp))
+                savedNotes.forEach { memory ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(memory, color = MainText, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { onDeleteNote(memory) }) { Text("删除", color = Color(0xFFE07878)) }
+                    }
+                    Divider(color = GlassBorder.copy(alpha = .4f))
+                }
+                if (savedNotes.isNotEmpty()) TextButton(onClick = { savedNotes.toList().forEach(onDeleteNote) }) { Text("清空全部记忆", color = Color(0xFFE07878)) }
+            }
+        },
+        confirmButton = { TextButton(onClick = { showMemoryDialog = false }) { Text("完成") } }
     )
     if (showSkillDialog) AlertDialog(
         onDismissRequest = { showSkillDialog = false },
