@@ -492,9 +492,9 @@ private fun HyperCatApp() {
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
-            !context.getSharedPreferences("hypercat_update_state", Context.MODE_PRIVATE).getBoolean("notification_permission_asked", false)
+            !context.getSharedPreferences("hypercat_update_state", Context.MODE_PRIVATE).getBoolean("agent_notification_permission_asked_v099", false)
         ) {
-            context.getSharedPreferences("hypercat_update_state", Context.MODE_PRIVATE).edit().putBoolean("notification_permission_asked", true).apply()
+            context.getSharedPreferences("hypercat_update_state", Context.MODE_PRIVATE).edit().putBoolean("agent_notification_permission_asked_v099", true).apply()
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
