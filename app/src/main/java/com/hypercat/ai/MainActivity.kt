@@ -200,7 +200,9 @@ private fun requestSpeechAudio(endpoint: String, apiKey: String, model: String, 
     require(parsedBase.protocol.equals("https", true) || parsedBase.protocol.equals("http", true)) {
         "TTS 服务地址必须是有效的 HTTP/HTTPS 地址"
     }
-    val isXiaomiMiMo = model.trim().startsWith("mimo-v2.5-tts", ignoreCase = true)
+    // Detect MiMo by official host as well as model name, so a saved profile with an unexpected model label cannot fall through to /audio/speech.
+    val isXiaomiMiMo = parsedBase.host.equals("api.xiaomimimo.com", ignoreCase = true) ||
+        model.trim().startsWith("mimo-v2.5-tts", ignoreCase = true)
     val endpointPath = parsedBase.path.trimEnd('/')
         .removeSuffix("/chat/completions")
         .removeSuffix("/audio/speech")
