@@ -11,10 +11,6 @@ import android.os.SystemClock
 import android.graphics.Matrix
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
-import android.graphics.Matrix
-import android.os.Handler
-import android.os.Looper
 import android.graphics.Bitmap
 import java.io.ByteArrayOutputStream
 import java.util.Base64
