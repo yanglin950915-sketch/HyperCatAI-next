@@ -1706,7 +1706,7 @@ private fun ChatPage(
                 Spacer(Modifier.height(14.dp))
                 Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF151C29))) {
                     if (videoEnabled) {
-                        LiveCameraPreview(isActive = videoEnabled && callActive && !isThinking && !isSpeaking && !isListening, useFrontCamera = useFrontCamera, onError = { cameraError = it })
+                        LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it })
                         if (cameraError != null) Text(cameraError.orEmpty(), color = Color(0xFFFF9A9A), fontSize = 11.sp,
                             modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp).background(Color.Black.copy(alpha = .65f), RoundedCornerShape(8.dp)).padding(8.dp))
                         Surface(Modifier.align(Alignment.TopEnd).padding(12.dp), color = Color.Black.copy(alpha = .55f), shape = RoundedCornerShape(20.dp)) {
@@ -1753,7 +1753,7 @@ private fun ChatPage(
 }
 
 @Composable
-private fun LiveCameraPreview(isActive: Boolean, useFrontCamera: Boolean, onError: (String) -> Unit) {
+private fun LiveCameraPreview(useFrontCamera: Boolean, onError: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestOnError by rememberUpdatedState(onError)
@@ -1762,7 +1762,7 @@ private fun LiveCameraPreview(isActive: Boolean, useFrontCamera: Boolean, onErro
         scaleType = PreviewView.ScaleType.FILL_CENTER
         implementationMode = PreviewView.ImplementationMode.COMPATIBLE
     } }
-    DisposableEffect(previewView, lifecycleOwner, useFrontCamera, isActive) {
+    DisposableEffect(previewView, lifecycleOwner, useFrontCamera) {
         var boundProvider: ProcessCameraProvider? = null
         var boundPreview: Preview? = null
         val providerFuture = ProcessCameraProvider.getInstance(context)
