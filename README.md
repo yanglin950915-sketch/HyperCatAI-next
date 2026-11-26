@@ -1,41 +1,85 @@
 # HyperCat AI
 
-面向小米 Pro 系列背屏的轻量 AI 萌宠应用。
+**以 AI Agent 为核心的 Android 智能助手，背屏 AI 萌宠是可选的陪伴与交互扩展。**
 
-## 当前项目结构
+HyperCat AI 的主要目标是把大模型对话、语音交互、个人记忆和手机工具能力整合到 Android 应用中，让用户可以通过文字或语音与 Agent 交流，并在明确授权后调用系统功能。小米 Pro 系列背屏萌宠提供个性化、情绪反馈和快捷陪伴体验，但不是项目的核心定位，也不影响主 Agent 功能独立使用。
 
-- Android 主程序：萌宠选择、确认后同步、状态存储。
-- `rearscreen/`：小米背屏 MAML 模板及 Web 表情运行时。
-- `rearscreen/web/js/face-engine.js`：Vector Robot 风格灵感的极简猫咪表情 Canvas 引擎。
-- `rearscreen/web/face-preview.html`：十种情绪的交互式独立预览。
-- `rearscreen/web/js/pet-rig-adapter.js`：通用 GLB 骨骼发现与能力检测器（保留作可选扩展）。
-- `rearscreen/web/js/pet-behavior.js`：统一情绪/动作语义桥。
-- `docs/FACE_ENGINE_SPEC.md`：新猫咪表情引擎设计与集成验收规范。
-- `docs/PET_ENGINE_SPEC.md`：多萌宠 GLB 引擎规范。
+## 项目定位
 
-## 核心视觉方向
+- **主线：AI Agent。** 负责理解用户请求、模型对话、记忆管理、语音交互，以及经授权的手机工具调用。
+- **扩展：背屏 AI 萌宠。** 作为可选的视觉陪伴入口，呈现情绪、动画和互动反馈。
+- **平台：Android。** 以 Kotlin 和 Jetpack Compose 构建，优先保证主屏 Agent 的可用性；小米背屏能力按设备支持情况提供。
 
-不显示猫头轮廓、猫耳、身体或四肢。只显示一双醒目的猫咪风格大眼睛、小鼻子和简洁嘴巴，默认不画胡须；背景纯黑。眼睛采用 Vector Robot 式高对比发光显示语言，并通过眼形、瞳孔、高光、眨眼和视线变化表达情绪。
+## Agent 核心能力
 
-首版表情引擎使用 Canvas 2D，不依赖 Three.js 或 GLB，便于在小米背屏 WebView 中运行并控制资源开销。后续再按实际设备效果调整眼睛比例、颜色、动画速度与五官是否显示。
+### 大模型对话与配置
+- 支持配置兼容 OpenAI API 格式的模型服务。
+- 推理模型与 TTS 语音模型分别配置、选择和管理，拥有独立的模型档案及连接参数。
+- 支持保存多个模型配置，按需切换或删除。
+- 对话支持模型回复、思考内容展示及代码内容的独立呈现等交互体验。
 
-## 当前可预览情绪
+### 记忆与个性化
+- 可通过对话明确要求 Agent 记住信息。
+- 支持查看、添加、删除单条记忆及清空记忆。
+- 已保存的记忆可作为后续对话上下文使用。
 
-idle、happy、curious、thinking、sleepy、sad、angry、surprised、love、sleep。
+### 语音交互与 AI 通话
+- 支持回复语音朗读，并可单独控制自动朗读开关。
+- TTS 与推理模型分开设置；可使用支持的第三方 TTS 服务。
+- 提供应用内语音识别交互和 AI 语音通话界面。
+- AI 视频通话支持摄像头预览，并将间隔采集的画面交给视觉模型分析。
 
-## 背屏同步
+> 当前视频交互采用摄像头预览和间隔采帧分析，并非连续双向视频流或 WebRTC 实时音视频通话。语音识别能力依赖 Android 设备上已安装并启用的识别服务；语音播报则依赖已配置且兼容的 TTS 服务。
 
-主程序确认萌宠后写入 SharedPreferences；背屏通过本应用导出的 ContentProvider 读取：
-`content://com.hypercat.ai.rear.provider/pet-state`。
+### 系统工具
+Agent 可根据用户请求调用 Android 系统能力或外部数据服务，包括：
+- **闹钟：** 调用系统闹钟应用创建/设置闹钟，由用户确认。
+- **日历：** 调用系统日历新建事件页面，由用户确认保存。
+- **天气：** 在获得位置权限后查询当地天气，也可按用户提供的地点查询。
+- **手机基础操作：** 可选接入 Android 无障碍服务，支持返回、主页、通知栏、快捷设置、滑动和按文字点击等简单操作。
 
-## 开发状态
+系统操作必须遵守 Android 权限与用户授权。无障碍服务需要用户在系统设置中主动启用；未授权时不会执行对应操作。无线调试/ADB 控制不应被视为当前版本已具备的能力。
 
-当前分支已加入独立表情渲染器和预览页，但还没有把预览页挂入现有 MAML manifest / Android 页面，也没有完成 Android 构建或真机验证。后续需先在目标 WebView 验证渲染与生命周期，再接入主程序的情绪状态和背屏 Provider。旧版 GLB/Three.js 适配器暂时保留，不作为新表情引擎的依赖。
+## 背屏 AI 萌宠（次要、可选功能）
 
+背屏萌宠是 HyperCat AI 的陪伴式扩展，不是 Agent 的前置条件。其目标是在支持的小米 Pro 系列设备背屏上展示萌宠形象、情绪和互动反馈。
 
-## Android 表情预览接入（开发中）
-- `app/src/main/assets/face-engine.js` 与 `face-preview.html`：将共享表情引擎打包进 APK assets。
-- `PetFacePreview.kt`：Compose WebView 容器，通过受限 JavaScript bridge 回传情绪。
-- `MainActivity.kt`：主屏预览点击情绪后写入 `PetStateStore`，Provider 通知与 MAML 轮询机制继续沿用。
-- `rearscreen/manifest.xml`：旧机器人几何图形已替换为无头部轮廓的极简猫咪大眼表情，触摸时显示开心反馈。
-- 当前 MAML 图形是静态降级表现；HTML Canvas 动画已接入 Android 主程序源码，但还没有在 Android 构建和设备上验证。MAML 背屏的连续动画接入仍需确认当前小米主题宿主可用的 WebView/JS 桥接语法。
+相关实现包括：
+- 多种萌宠形象及状态同步。
+- 触摸互动和情绪反馈。
+- 背屏 MAML 资源与 Web 表情渲染相关代码。
+- 主应用与背屏之间的萌宠状态共享。
+
+背屏呈现效果取决于具体设备、系统版本和背屏宿主环境。即使设备不支持背屏，Agent 的主要对话与工具能力仍是项目的核心使用路径。
+
+## 技术栈
+
+- Kotlin
+- Jetpack Compose
+- Android SDK
+- Coroutines
+- CameraX
+- Android SpeechRecognizer / TextToSpeech 相关系统能力
+- OpenAI-compatible API 接口
+- 小米背屏相关 MAML 资源（可选扩展）
+
+## 权限与安全说明
+
+- 麦克风、摄像头和位置等能力按需申请 Android 系统权限。
+- 无障碍能力由用户在 Android 系统设置中显式启用。
+- 闹钟和日历操作通过系统界面交由用户确认。
+- 请只配置自己有权使用的模型服务和 API 凭据，不要将密钥提交到 Git 仓库。
+- 设备厂商、Android 版本和第三方服务可能影响具体能力是否可用。
+
+## 版本与构建
+
+当前版本：**0.9.1**（versionCode 20）。
+
+GitHub Actions 负责 Android CI、APK 构建、签名校验和版本 Release。正式版本及安装包请查看：
+
+- [GitHub Releases](https://github.com/yanglin950915-sketch/HyperCatAI-next/releases)
+- [Android 构建工作流](https://github.com/yanglin950915-sketch/HyperCatAI-next/actions)
+
+## 项目方向
+
+HyperCat AI 将持续以 **Agent 能力为第一优先级**：提升模型兼容性、记忆能力、语音交互、工具调用和 Android 任务执行体验。背屏萌宠将作为可选的差异化体验同步迭代，但不会取代 Agent 主线。
