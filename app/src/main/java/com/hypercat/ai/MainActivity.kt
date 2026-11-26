@@ -733,7 +733,7 @@ private fun HyperCatApp() {
             containerColor = Bg,
             bottomBar = {
                 if (!(page == Page.CHAT && (chatDrawerExpanded || WindowInsets.isImeVisible))) {
-                NavigationBar(modifier = Modifier.height(72.dp), containerColor = if (darkNow) Color(0xCC0D1726) else Color(0xDDF7FAFD), tonalElevation = 0.dp) {
+                NavigationBar(modifier = Modifier.height(64.dp), containerColor = if (darkNow) Color(0xCC0D1726) else Color(0xDDF7FAFD), tonalElevation = 0.dp) {
                     NavigationBarItem(selected = page == Page.HOME, onClick = { page = Page.HOME },
                         icon = { Icon(Icons.Outlined.Home, contentDescription = "萌宠") }, label = { Text("萌宠") })
                     NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
@@ -1621,14 +1621,14 @@ private fun ChatPage(
         }
     ) {
     Column(modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding(), bottom = if (WindowInsets.isImeVisible) 0.dp else contentPadding.calculateBottomPadding()).imePadding().padding(horizontal = 14.dp)) {
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Spacer(Modifier.height(3.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { drawerScope.launch { drawerState.open() } }) {
                 Box(contentAlignment = Alignment.Center) { Text("☰", color = MainText, fontSize = 18.sp) }
             }
             Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f)) {
-                Text("Agent", color = MainText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text("Agent", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 Text(if (configured) activeModel else "尚未连接模型", color = Muted, fontSize = 10.sp, maxLines = 1)
             }
             Surface(shape = RoundedCornerShape(15.dp), color = Panel2, modifier = Modifier.clickable { showModelPicker = true }) {
@@ -1665,8 +1665,8 @@ private fun ChatPage(
             }
         }
         if (messages.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
-            Text("有什么可以帮你？", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            Text("选择常用任务，或直接输入想法。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp, bottom = 6.dp))
+            Text("有什么可以帮你？", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Text("选择常用任务，或直接输入想法。", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 1.dp, bottom = 4.dp))
             val suggestions = listOf(
                 "总结内容" to "请帮我总结以下内容，提炼重点：",
                 "翻译文本" to "请将下面内容准确翻译成中文：",
@@ -1674,17 +1674,17 @@ private fun ChatPage(
                 "代码助手" to "请分析下面的代码并给出修复建议："
             )
             suggestions.chunked(2).forEach { rowItems ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     rowItems.forEach { (label, prompt) ->
                         Surface(
-                            modifier = Modifier.weight(1f).padding(bottom = 6.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
+                            modifier = Modifier.weight(1f).padding(bottom = 4.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
                             color = Panel, shape = RoundedCornerShape(15.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
                         ) {
-                            Column(Modifier.padding(horizontal = 9.dp, vertical = 6.dp)) {
-                                Text("✦", color = Cyan, fontSize = 10.sp)
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                Text("✦", color = Cyan, fontSize = 9.sp)
                                 Spacer(Modifier.height(2.dp))
-                                Text(label, color = MainText, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                Text(label, color = MainText, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -1830,7 +1830,7 @@ private fun ChatPage(
                 Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedFiles = emptyList() })
             }
         }
-        Column(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 1.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 15.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {

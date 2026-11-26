@@ -184,11 +184,21 @@ object AgentDeviceTools {
 
     fun extractWeatherPlace(text: String): String {
         var place = text.trim()
+        // Remove conversational greetings only at the beginning, before extracting the place.
+        // This prevents phrases such as "你好，今天新加坡天气怎么样" from becoming "你好新加坡".
+        place = place.replace(
+            Regex("(?i)^\\s*(?:(?:你好|您好|嗨|哈喽|hello|hi|早上好|下午好|晚上好)[呀啊喂，,。.!！?？\\s]*)+"),
+            ""
+        )
+        place = place.replace(
+            Regex("^\\s*(?:(?:请问|麻烦问一下|麻烦帮我|请帮我|帮我|我想知道|我想查询|我想查)[，,。.!！?？\\s]*)+"),
+            ""
+        )
         listOf(
-            "请问", "帮我查询", "帮我查一下", "帮我查", "查询一下", "查询", "查一下", "查下",
+            "帮我查询", "帮我查一下", "帮我查", "查询一下", "查询", "查一下", "查下",
             "告诉我", "我想知道", "我想查", "看看", "现在", "今天", "明天", "后天",
             "天气预报", "天气", "气温", "温度", "多少度", "怎么样", "如何", "的天气", "的",
-            "吧", "呢", "吗"
+            "附近", "当地", "这边", "吧", "呢", "吗"
         ).sortedByDescending { it.length }.forEach { place = place.replace(it, "") }
         place = place.replace(Regex("[，。！？、,.!?：:;；\\s]"), "").trim()
         return place.takeIf { it.length >= 2 && it.any { c -> c.isLetter() } }.orEmpty()
