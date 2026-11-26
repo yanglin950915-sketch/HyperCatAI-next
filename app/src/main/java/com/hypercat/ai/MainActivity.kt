@@ -498,6 +498,18 @@ private fun HyperCatApp() {
     SideEffect { appDarkState = darkNow }
     val messages = remember { mutableStateListOf<ChatLine>() }
     var isThinking by remember { mutableStateOf(false) }
+    val weatherPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        scope.launch {
+            isThinking = true
+            try {
+                val result = if (granted) withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context) }
+                    else "未授权位置权限，无法获取当地天气。你也可以直接告诉我城市名称。"
+                messages.add(ChatLine(result, false))
+            } catch (error: Exception) {
+                messages.add(ChatLine("天气查询失败：${error.message ?: "请稍后重试"}", false))
+            } finally { isThinking = false }
+        }
+    }
     val modelProfiles = remember { mutableStateListOf<ModelProfile>() }
     val ttsProfiles = remember { mutableStateListOf<TtsProfile>() }
     var savedNotes by remember { mutableStateOf(emptyList<String>()) }
@@ -613,17 +625,30 @@ private fun HyperCatApp() {
                                 }
                             }
                             draft = ""
-                            if (!saved || endpoint.isBlank() || model.isBlank()) messages.add(ChatLine("请先在设置中完成模型配置，再发送消息。", false))
-                            else {
-                                val requestHistory = messages.toList()
-                                scope.launch {
-                                    isThinking = true
-                                    try {
-                                        val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                        messages.add(ChatLine(reply.text, false, reasoning = reply.reasoning)); petMood = inferMood(reply.text)
-                                    } catch (error: Exception) {
-                                        messages.add(ChatLine("模型请求未成功：${error.message ?: "网络或服务异常"}", false))
-                                    } finally { isThinking = false }
+                            if (value.contains("天气") || value.contains("气温")) {
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                                    scope.launch {
+                                        isThinking = true
+                                        try { messages.add(ChatLine(withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context) }, false)) }
+                                        catch (error: Exception) { messages.add(ChatLine("天气查询失败：${error.message ?: "请稍后重试"}", false)) }
+                                        finally { isThinking = false }
+                                    }
+                                } else weatherPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                            } else {
+                                val localAction = AgentDeviceTools.handleSystemAction(context, value)
+                                if (localAction != null) messages.add(ChatLine(localAction, false))
+                                else if (!saved || endpoint.isBlank() || model.isBlank()) messages.add(ChatLine("请先在设置中完成模型配置，再发送消息。", false))
+                                else {
+                                    val requestHistory = messages.toList()
+                                    scope.launch {
+                                        isThinking = true
+                                        try {
+                                            val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
+                                            messages.add(ChatLine(reply.text, false, reasoning = reply.reasoning)); petMood = inferMood(reply.text)
+                                        } catch (error: Exception) {
+                                            messages.add(ChatLine("模型请求未成功：${error.message ?: "网络或服务异常"}", false))
+                                        } finally { isThinking = false }
+                                    }
                                 }
                             }
                         }
@@ -1103,7 +1128,11 @@ private fun ChatPage(
     val latestOnDraft by rememberUpdatedState(onDraft)
     val latestDraft by rememberUpdatedState(draft)
     val latestCallActive by rememberUpdatedState(callActive)
-    val speechRecognizer = remember(context) { SpeechRecognizer.createSpeechRecognizer(context) }
+    val speechRecognizer = remember(context) {
+        if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context))
+            SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+        else SpeechRecognizer.createSpeechRecognizer(context)
+    }
     DisposableEffect(speechRecognizer) {
         speechRecognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) { isListening = true; speechStatus = "正在聆听…" }
@@ -1111,7 +1140,21 @@ private fun ChatPage(
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { isListening = false }
-            override fun onError(error: Int) { isListening = false; if (latestCallActive) speechStatus = "语音识别暂时中断（$error）" }
+            override fun onError(error: Int) {
+                isListening = false
+                val reason = when (error) {
+                    SpeechRecognizer.ERROR_AUDIO -> "麦克风音频采集失败"
+                    SpeechRecognizer.ERROR_CLIENT -> "语音识别服务被中断"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "麦克风权限不足"
+                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "语音识别网络不可用"
+                    SpeechRecognizer.ERROR_NO_MATCH -> "没有听清，请靠近麦克风再说一次"
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "语音识别服务正忙，请稍后重试"
+                    SpeechRecognizer.ERROR_SERVER -> "语音识别服务器暂时不可用"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有检测到语音，请再次说话"
+                    else -> "语音识别异常（$error）"
+                }
+                if (latestCallActive) speechStatus = reason
+            }
             override fun onResults(results: Bundle?) {
                 isListening = false
                 val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
@@ -1133,7 +1176,12 @@ private fun ChatPage(
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO); return
         }
-        if (!SpeechRecognizer.isRecognitionAvailable(context)) { Toast.makeText(context, "当前设备没有可用的语音识别服务", Toast.LENGTH_SHORT).show(); return }
+        if (!SpeechRecognizer.isRecognitionAvailable(context) &&
+            !(Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context))) {
+            speechStatus = "设备未安装可用的语音识别服务，请安装/启用系统语音识别服务后重试"
+            Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+            return
+        }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
@@ -1143,21 +1191,23 @@ private fun ChatPage(
             .onFailure { isListening = false; speechStatus = "无法启动语音识别：${it.message}" }
     }
     fun stopInAppRecognition() { if (isListening) runCatching { speechRecognizer.stopListening() } }
+    var cameraError by remember { mutableStateOf<String?>(null) }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) { callActive = true; speechStatus = "摄像头已启动，正在分析画面" }
+        if (granted) { cameraError = null; callActive = true; speechStatus = "摄像头已启动，正在分析画面"; startInAppRecognition() }
         else Toast.makeText(context, "需要摄像头权限才能进行 AI 视频通话", Toast.LENGTH_SHORT).show()
     }
     fun startVideoCall() {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        else callActive = true
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        else { cameraError = null; callActive = true; startInAppRecognition() }
     }
     LaunchedEffect(callActive, messages.size, isThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak) {
         if (callActive && !isThinking) {
             val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
-            if (reply.isNotBlank() && reply != lastCallSpokenText && canSpeak) {
+            if (reply.isNotBlank() && reply != lastCallSpokenText) {
                 lastCallSpokenText = reply
                 val spokenText = speechText(reply)
-                if (spokenText.isNotBlank()) {
+                if (spokenText.isNotBlank() && canSpeak) {
                     if (ttsMode == "cloud") {
                         val profile = selectedTtsProfile
                         if (profile != null) {
@@ -1182,16 +1232,10 @@ private fun ChatPage(
         val latest = messages.lastOrNull()
         if (callActive && !isThinking && !isSpeaking && !isListening &&
             latest != null && !latest.fromUser && latest.text.isNotBlank() &&
-            latest.text == lastCallSpokenText && canSpeak
+            latest.text == lastCallSpokenText
         ) {
             delay(650)
             if (callActive && !isSpeaking && !isListening) {
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
-                    putExtra(RecognizerIntent.EXTRA_PROMPT, "AI 正在聆听，请继续说话")
-                }
-                isListening = true
                 startInAppRecognition()
             }
         }
@@ -1623,9 +1667,14 @@ private fun ChatPage(
                 if (callMode == "视频") {
                     Box(Modifier.fillMaxWidth().weight(0.9f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF151C29))) {
                         if (callActive) {
-                            LiveCameraPreview(isActive = callActive && !isThinking && !isSpeaking && !isListening) { frame ->
+                            LiveCameraPreview(
+                                isActive = callActive && !isThinking && !isSpeaking && !isListening,
+                                onError = { cameraError = it }
+                            ) { frame ->
                                 onSend("请结合当前视频画面，实时观察并回答我。若画面与上一帧变化不大，请简洁回应。", emptyList(), listOf(frame))
                             }
+                            if (cameraError != null) Text(cameraError.orEmpty(), color = Color(0xFFFF9A9A), fontSize = 11.sp,
+                                modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp))
                         } else Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             CatFace(Modifier.width(220.dp).height(170.dp), petMood)
                             Text("AI 视频伙伴", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
@@ -1654,10 +1703,13 @@ private fun ChatPage(
                         CallControl(if (callActive) "摄像头运行中" else "开始视频", "📷", enabled = configured) {
                             if (!configured) Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show() else startVideoCall()
                         }
-                    } else {
-                        CallControl(if (isListening) "聆听中" else "开始说话", "🎙", enabled = configured && canSpeak) {
+                        CallControl(if (isListening) "聆听中" else "语音对话", "🎙", enabled = configured) {
                             if (!configured) Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show()
-                            else if (!canSpeak) Toast.makeText(context, speechStatus, Toast.LENGTH_SHORT).show()
+                            else { callActive = true; startInAppRecognition() }
+                        }
+                    } else {
+                        CallControl(if (isListening) "聆听中" else "开始说话", "🎙", enabled = configured) {
+                            if (!configured) Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show()
                             else { lastCallSpokenText = ""; callActive = true; startInAppRecognition() }
                         }
                     }
@@ -1673,11 +1725,12 @@ private fun ChatPage(
 }
 
 @Composable
-private fun LiveCameraPreview(isActive: Boolean, onFrame: (Bitmap) -> Unit) {
+private fun LiveCameraPreview(isActive: Boolean, onError: (String) -> Unit, onFrame: (Bitmap) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = context as? LifecycleOwner
     val latestActive by rememberUpdatedState(isActive)
     val latestOnFrame by rememberUpdatedState(onFrame)
+    val latestOnError by rememberUpdatedState(onError)
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val previewView = remember(context) { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
     val executor = remember { Executors.newSingleThreadExecutor() }
@@ -1685,7 +1738,7 @@ private fun LiveCameraPreview(isActive: Boolean, onFrame: (Bitmap) -> Unit) {
         var boundProvider: ProcessCameraProvider? = null
         val providerFuture = ProcessCameraProvider.getInstance(context)
         providerFuture.addListener({
-            runCatching {
+            try {
                 val provider = providerFuture.get()
                 boundProvider = provider
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
@@ -1706,7 +1759,14 @@ private fun LiveCameraPreview(isActive: Boolean, onFrame: (Bitmap) -> Unit) {
                 }
                 val owner = lifecycleOwner ?: error("无法获取摄像头生命周期")
                 provider.unbindAll()
-                provider.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, preview, analysis)
+                val selector = when {
+                    provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
+                    provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
+                    else -> error("设备未检测到可用摄像头")
+                }
+                provider.bindToLifecycle(owner, selector, preview, analysis)
+            } catch (error: Exception) {
+                mainHandler.post { latestOnError("摄像头启动失败：${error.message ?: error.javaClass.simpleName}。请检查系统相机权限并关闭占用摄像头的应用。") }
             }
         }, ContextCompat.getMainExecutor(context))
         onDispose { runCatching { boundProvider?.unbindAll() }; executor.shutdown() }
@@ -1994,6 +2054,11 @@ private fun SettingsPage(
             }
         }
         Text("重要：当前开关仅保存应用内授权偏好，尚未接入对应的底层执行拦截器，因此不能视为已经具备完整安全防护。实际访问受保护目录、相机、麦克风等仍须 Android 系统授权；后续接入执行层时应再次校验授权状态。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
+        Spacer(Modifier.height(12.dp))
+        SettingsAction("⌘", "手机操作权限", "启用无障碍服务后，可执行返回、主页、通知栏、滑动和按文字点击") {
+            runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        }
+        Text("无障碍权限由 Android 系统管理；HyperCat AI 仅在你主动启用后执行明确的简单操作，不会自动读取密码或验证码。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp))
         Spacer(Modifier.height(22.dp))
         Text("扩展能力", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
