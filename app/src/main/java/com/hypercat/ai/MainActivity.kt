@@ -328,12 +328,12 @@ private suspend fun playSpeechAudio(context: Context, bytes: ByteArray) {
     } finally { withContext(Dispatchers.IO) { file.delete() } }
 }
 
-private suspend fun speakWithCloudTts(context: Context, profile: ModelProfile, model: String, voice: String, text: String, speed: Float) {
+private suspend fun speakWithCloudTts(context: Context, profile: TtsProfile, model: String, voice: String, text: String, speed: Float) {
     val audio = withContext(Dispatchers.IO) { requestSpeechAudio(profile.endpoint, profile.apiKey, model, voice, text, speed) }
     playSpeechAudio(context, audio)
 }
 
-private fun safeTtsDiagnostic(error: Exception, profile: ModelProfile, model: String): String {
+private fun safeTtsDiagnostic(error: Exception, profile: TtsProfile, model: String): String {
     val raw = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
     val redacted = (if (profile.apiKey.isNotBlank()) raw.replace(profile.apiKey, "[API Key 已隐藏]") else raw)
         .replace(Regex("(?i)(api[-_ ]?key|authorization)(\\s*[:=]\\s*)[^\\s,;]+"), "$1$2[已隐藏]")
@@ -389,6 +389,7 @@ private fun inferMood(reply: String): String = when {
 }
 private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "")
 private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String)
+private data class TtsProfile(val name: String, val endpoint: String, val apiKey: String)
 private data class SkillProfile(val name: String, val description: String, val instructions: String)
 private data class ThirdPartyPlugin(val name: String, val description: String, val endpoint: String, val method: String, val apiKey: String, val enabled: Boolean = false)
 private data class ReleaseInfo(val version: String, val notes: String, val url: String)
@@ -443,6 +444,8 @@ private fun HyperCatApp() {
     var ttsPitch by remember { mutableFloatStateOf(1.0f) }
     var ttsMode by remember { mutableStateOf("system") }
     var ttsProfileName by remember { mutableStateOf("") }
+    var ttsEndpoint by remember { mutableStateOf("") }
+    var ttsApiKey by remember { mutableStateOf("") }
     var ttsModel by remember { mutableStateOf("tts-1") }
     var ttsVoice by remember { mutableStateOf("alloy") }
     var saved by remember { mutableStateOf(false) }
@@ -478,6 +481,7 @@ private fun HyperCatApp() {
     val messages = remember { mutableStateListOf<ChatLine>() }
     var isThinking by remember { mutableStateOf(false) }
     val modelProfiles = remember { mutableStateListOf<ModelProfile>() }
+    val ttsProfiles = remember { mutableStateListOf<TtsProfile>() }
     var savedNotes by remember { mutableStateOf(emptyList<String>()) }
     val chatPrefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     var recentPrompts by remember {
@@ -495,10 +499,14 @@ private fun HyperCatApp() {
         ttsPitch = prefs.getFloat("tts_pitch", 1.0f).coerceIn(0.7f, 1.4f)
         ttsMode = prefs.getString("tts_mode", "system") ?: "system"
         ttsProfileName = prefs.getString("tts_profile_name", "") ?: ""
+        ttsEndpoint = prefs.getString("tts_endpoint", "") ?: ""
+        ttsApiKey = prefs.getString("tts_api_key", "") ?: ""
         ttsModel = prefs.getString("tts_model", "tts-1") ?: "tts-1"
         ttsVoice = prefs.getString("tts_voice", "alloy") ?: "alloy"
         saved = endpoint.isNotBlank() && model.isNotBlank()
         runCatching { val array = org.json.JSONArray(prefs.getString("model_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); modelProfiles.add(ModelProfile(item.optString("name"), item.optString("provider"), item.optString("endpoint"), item.optString("model"), item.optString("apiKey"))) } }
+        runCatching { val array = org.json.JSONArray(prefs.getString("tts_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); ttsProfiles.add(TtsProfile(item.optString("name"), item.optString("endpoint"), item.optString("apiKey"))) } }
+        if (ttsProfiles.isEmpty()) modelProfiles.firstOrNull { it.name == ttsProfileName }?.let { old -> val p=TtsProfile(old.name,old.endpoint,old.apiKey); ttsProfiles.add(p); ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; prefs.edit().putString("tts_profiles",org.json.JSONArray().put(JSONObject().put("name",p.name).put("endpoint",p.endpoint).put("apiKey",p.apiKey)).toString()).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() }
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
         petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
         themeMode = prefs.getString("theme_mode", "system") ?: "system"
@@ -565,7 +573,7 @@ private fun HyperCatApp() {
                     messages = messages,
                     isThinking = isThinking,
                     recentPrompts = recentPrompts,
-                    modelProfiles = modelProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
+                    modelProfiles = modelProfiles.toList(), ttsProfiles = ttsProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
                     onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
                     savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
                     draft = draft,
@@ -605,8 +613,13 @@ private fun HyperCatApp() {
                             modifier = drawerModifier,
                             provider = provider, onProvider = { provider = it },
                             modelProfiles = modelProfiles.toList(),
+                            ttsProfiles = ttsProfiles.toList(),
                             onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
                             onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
+                            onDeleteProfile = { p -> modelProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                            onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey)) }; ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; chatPrefs.edit().putString("tts_profiles",a.toString()).putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() },
+                            onSelectTtsProfile = { p -> ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; chatPrefs.edit().putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() },
+                            onDeleteTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply(); if (ttsProfileName==p.name) { ttsProfileName=""; ttsMode="system"; chatPrefs.edit().putString("tts_profile_name","").putString("tts_mode","system").apply() } },
                             endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
                             model = model, onModel = { model = it; saved = false },
                             apiKey = apiKey, onApiKey = { apiKey = it; saved = false },
@@ -615,6 +628,8 @@ private fun HyperCatApp() {
                             ttsPitch = ttsPitch, onTtsPitch = { ttsPitch = it; chatPrefs.edit().putFloat("tts_pitch", it).apply() },
                     ttsMode = ttsMode, onTtsMode = { ttsMode = it; chatPrefs.edit().putString("tts_mode", it).apply() },
                     ttsProfileName = ttsProfileName, onTtsProfileName = { ttsProfileName = it; chatPrefs.edit().putString("tts_profile_name", it).apply() },
+                    ttsEndpoint = ttsEndpoint, onTtsEndpoint = { ttsEndpoint=it; chatPrefs.edit().putString("tts_endpoint",it).apply() },
+                    ttsApiKey = ttsApiKey, onTtsApiKey = { ttsApiKey=it; chatPrefs.edit().putString("tts_api_key",it).apply() },
                     ttsModel = ttsModel, onTtsModel = { ttsModel = it; chatPrefs.edit().putString("tts_model", it).apply() },
                     ttsVoice = ttsVoice, onTtsVoice = { ttsVoice = it; chatPrefs.edit().putString("tts_voice", it).apply() },
                             onSave = {
@@ -643,8 +658,13 @@ private fun HyperCatApp() {
                     modifier = Modifier.padding(padding),
                     provider = provider, onProvider = { provider = it },
                     modelProfiles = modelProfiles.toList(),
+                    ttsProfiles = ttsProfiles.toList(),
                     onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
                     onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
+                    onDeleteProfile = { p -> modelProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                    onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey)) }; ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; chatPrefs.edit().putString("tts_profiles",a.toString()).putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() },
+                    onSelectTtsProfile = { p -> ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; chatPrefs.edit().putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() },
+                    onDeleteTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply(); if (ttsProfileName==p.name) { ttsProfileName=""; ttsMode="system"; chatPrefs.edit().putString("tts_profile_name","").putString("tts_mode","system").apply() } },
                     endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
                     model = model, onModel = { model = it; saved = false },
                     apiKey = apiKey, onApiKey = { apiKey = it; saved = false },
@@ -653,6 +673,8 @@ private fun HyperCatApp() {
                     ttsPitch = ttsPitch, onTtsPitch = { ttsPitch = it; chatPrefs.edit().putFloat("tts_pitch", it).apply() },
                     ttsMode = ttsMode, onTtsMode = { ttsMode = it; chatPrefs.edit().putString("tts_mode", it).apply() },
                     ttsProfileName = ttsProfileName, onTtsProfileName = { ttsProfileName = it; chatPrefs.edit().putString("tts_profile_name", it).apply() },
+                    ttsEndpoint = ttsEndpoint, onTtsEndpoint = { ttsEndpoint=it; chatPrefs.edit().putString("tts_endpoint",it).apply() },
+                    ttsApiKey = ttsApiKey, onTtsApiKey = { ttsApiKey=it; chatPrefs.edit().putString("tts_api_key",it).apply() },
                     ttsModel = ttsModel, onTtsModel = { ttsModel = it; chatPrefs.edit().putString("tts_model", it).apply() },
                     ttsVoice = ttsVoice, onTtsVoice = { ttsVoice = it; chatPrefs.edit().putString("tts_voice", it).apply() },
                     onSave = {
@@ -964,7 +986,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
     ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, onMood: (String) -> Unit,
@@ -993,7 +1015,7 @@ private fun ChatPage(
     var isSpeaking by remember { mutableStateOf(false) }
     var cloudSpeechJob by remember { mutableStateOf<Job?>(null) }
     val speechScope = rememberCoroutineScope()
-    val selectedTtsProfile = modelProfiles.firstOrNull { it.name == ttsProfileName }
+    val selectedTtsProfile = ttsProfiles.firstOrNull { it.name == ttsProfileName }
     val canSpeak = if (ttsMode == "cloud") selectedTtsProfile != null && ttsModel.isNotBlank() else ttsReady
     var speechStatus by remember { mutableStateOf("语音引擎初始化中") }
     var ttsDiagnostic by remember { mutableStateOf<String?>(null) }
@@ -1556,12 +1578,13 @@ private fun VoiceInputButton(isListening: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun SettingsPage(
-    modifier: Modifier, provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit,
+    modifier: Modifier, provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit, onDeleteProfile: (ModelProfile) -> Unit,
+    ttsProfiles: List<TtsProfile>, onAddTtsProfile: (TtsProfile) -> Unit, onSelectTtsProfile: (TtsProfile) -> Unit, onDeleteTtsProfile: (TtsProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
     apiKey: String, onApiKey: (String) -> Unit,
     ttsLanguage: String, onTtsLanguage: (String) -> Unit,
     ttsRate: Float, onTtsRate: (Float) -> Unit, ttsPitch: Float, onTtsPitch: (Float) -> Unit,
-    ttsMode: String, onTtsMode: (String) -> Unit, ttsProfileName: String, onTtsProfileName: (String) -> Unit,
+    ttsMode: String, onTtsMode: (String) -> Unit, ttsProfileName: String, onTtsProfileName: (String) -> Unit, ttsEndpoint: String, onTtsEndpoint: (String) -> Unit, ttsApiKey: String, onTtsApiKey: (String) -> Unit,
     ttsModel: String, onTtsModel: (String) -> Unit, ttsVoice: String, onTtsVoice: (String) -> Unit,
     onSave: () -> Unit, saved: Boolean,
     themeMode: String, onThemeMode: (String) -> Unit,
@@ -1690,17 +1713,15 @@ private fun SettingsPage(
                     FilterChip(selected = ttsMode == "cloud", onClick = { onTtsMode("cloud") }, label = { Text("云端模型 TTS") })
                 }
                 if (ttsMode == "cloud") {
-                    Text("选择用于语音合成的模型档案（复用档案中的接口地址和 API Key）", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
-                    if (modelProfiles.isEmpty()) Text("请先保存一个模型档案，再回来选择。", color = Color(0xFFE0A45B), fontSize = 11.sp)
-                    modelProfiles.forEach { profile ->
-                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onTtsProfileName(profile.name) }.padding(vertical = 7.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(profile.name, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                Text(profile.endpoint, color = Muted, fontSize = 9.sp, maxLines = 1)
-                            }
-                            RadioButton(selected = ttsProfileName == profile.name, onClick = { onTtsProfileName(profile.name) })
-                        }
-                    }
+                    Text("TTS 服务连接独立于推理模型配置。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
+                    ConfigField("TTS API Base URL", ttsEndpoint, onTtsEndpoint, "例如 https://api.xiaomimimo.com/v1")
+                    ConfigField("TTS API Key", ttsApiKey, onTtsApiKey, "TTS 服务密钥", secret = true)
+                    ttsProfiles.forEach { profile -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).clickable { onSelectTtsProfile(profile) }.padding(7.dp)) { Text(profile.name, color = MainText, fontSize = 12.sp); Text(profile.endpoint, color = Muted, fontSize = 9.sp, maxLines = 1) }
+                        RadioButton(selected = ttsProfileName == profile.name, onClick = { onSelectTtsProfile(profile) })
+                        IconButton(onClick = { onDeleteTtsProfile(profile) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除 TTS 模型", tint = Color(0xFFE07878)) }
+                    } }
+                    OutlinedButton(onClick = { val n = "TTS-${ttsProfiles.size + 1}"; if (ttsEndpoint.isNotBlank()) onAddTtsProfile(TtsProfile(n, ttsEndpoint.trim(), ttsApiKey)) }, enabled = ttsEndpoint.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存当前 TTS 配置") }
                     ConfigField("TTS 模型名称", ttsModel, onTtsModel, "例如 tts-1 或服务商提供的语音模型")
                     ConfigField("TTS 音色", ttsVoice, onTtsVoice, "例如 alloy、nova、shimmer")
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1731,12 +1752,10 @@ private fun SettingsPage(
                 Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
                 else modelProfiles.forEach { p ->
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSelectProfile(p) }.padding(vertical = 9.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(p.name, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp)
-                        }
-                        Text("设为当前  ›", color = Cyan, fontSize = 11.sp)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).clickable { onSelectProfile(p) }.padding(vertical = 9.dp, horizontal = 4.dp)) { Text(p.name, color = MainText, fontSize = 13.sp); Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp) }
+                        Text("设为当前", color = Cyan, fontSize = 11.sp)
+                        IconButton(onClick = { onDeleteProfile(p) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除推理模型", tint = Color(0xFFE07878)) }
                     }
                 }
                 OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(24) }, label = { Text("档案名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
