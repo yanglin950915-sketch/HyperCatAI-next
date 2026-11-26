@@ -89,91 +89,151 @@ object AgentDeviceTools {
 
     suspend fun currentWeather(context: Context, requestedPlace: String? = null): String = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
-        val key = prefs.getString("amap_weather_key", "").orEmpty().trim()
-        if (key.isBlank()) return@withContext "中国天气服务尚未配置：请打开 HyperCat AI 设置 → 天气服务，填写高德地图 Web 服务 API Key。可在 https://console.amap.com/dev/key/app 创建。"
-
-        val placeName: String
-        if (!requestedPlace.isNullOrBlank()) {
-            placeName = requestedPlace.trim()
-        } else {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
-                return@withContext "查询当前位置天气需要位置权限。请允许大致位置，或直接告诉我城市/区县名称。"
-            val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            val location = runCatching {
-                listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
-                    .firstNotNullOfOrNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
-            }.getOrNull() ?: return@withContext "暂时获取不到设备位置。请开启定位服务后重试，或直接告诉我城市/区县名称。"
-            val geocoder = Geocoder(context, Locale.CHINA)
-            val address = runCatching {
-                @Suppress("DEPRECATION")
-                geocoder.getFromLocation(location.latitude, location.longitude, 1)?.firstOrNull()
-            }.getOrNull()
-            placeName = listOf(address?.adminArea, address?.locality, address?.subLocality, address?.subAdminArea)
-                .filterNotNull().map { it.trim() }.filter { it.isNotBlank() }.distinct().joinToString("")
-                .ifBlank { return@withContext "无法识别当前位置所属的城市和区县。请开启定位权限，或直接告诉我城市/区县名称。" }
-        }
-
-        fun getJson(url: String): JSONObject {
-            val connection = URL(url).openConnection() as HttpURLConnection
+        val provider = prefs.getString("weather_provider", "openmeteo") ?: "openmeteo"
+        val amapKey = prefs.getString("amap_weather_key", "").orEmpty().trim()
+        val caiyunToken = prefs.getString("caiyun_weather_token", "").orEmpty().trim()
+        fun json(url: String): JSONObject {
+            val c = URL(url).openConnection() as HttpURLConnection
             try {
-                connection.connectTimeout = 12000
-                connection.readTimeout = 12000
-                connection.setRequestProperty("Accept", "application/json")
-                val status = connection.responseCode
-                val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-                val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                if (status !in 200..299) throw IllegalStateException("天气服务 HTTP $status")
+                c.connectTimeout = 15000; c.readTimeout = 15000
+                c.setRequestProperty("Accept", "application/json")
+                val code = c.responseCode
+                val body = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (code !in 200..299) throw IllegalStateException("HTTP " + code + ": " + body.take(160))
                 return JSONObject(body)
-            } finally { connection.disconnect() }
+            } finally { c.disconnect() }
         }
-
-        try {
-            // Resolve the requested city/district to an AMap administrative code first.
-            val geo = getJson("https://restapi.amap.com/v3/geocode/geo?address=${encode(placeName)}&key=${encode(key)}")
-            if (geo.optString("status") != "1") {
-                val info = geo.optString("info", "地点解析失败")
-                return@withContext "无法识别天气查询区域“$placeName”：$info。请尝试补充省份或城市名称。"
+        if (provider == "amap") {
+            if (amapKey.isBlank()) return@withContext "高德天气尚未配置 API Key，请在设置 → 天气服务中填写。"
+            val place = if (!requestedPlace.isNullOrBlank()) requestedPlace.trim() else {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+                    return@withContext "查询当前位置天气需要位置权限，或直接告诉我城市/区县名称。"
+                val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                val loc = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER).firstNotNullOfOrNull { p -> runCatching { lm.getLastKnownLocation(p) }.getOrNull() }
+                    ?: return@withContext "暂时获取不到设备位置，请开启定位或直接告诉我城市名称。"
+                val a = runCatching { @Suppress("DEPRECATION") Geocoder(context, Locale.CHINA).getFromLocation(loc.latitude, loc.longitude, 1)?.firstOrNull() }.getOrNull()
+                listOf(a?.adminArea, a?.locality, a?.subLocality, a?.subAdminArea).filterNotNull().filter { it.isNotBlank() }.distinct().joinToString("")
+                    .ifBlank { return@withContext "无法识别当前位置区域，请直接告诉我城市/区县名称。" }
             }
-            val geocodes = geo.optJSONArray("geocodes")
-            val resolved = geocodes?.optJSONObject(0)
-                ?: return@withContext "没有找到“$placeName”对应的行政区域，请补充更完整的城市或区县名称。"
-            val adcode = resolved.optString("adcode")
-            if (adcode.isBlank() || adcode == "[]" || adcode == "100000")
-                return@withContext "已识别地点“$placeName”，但没有取得有效的市/区县编码。请补充更具体的区域名称。"
-            val province = resolved.optString("province")
-            val city = resolved.optString("city").ifBlank { resolved.optString("district") }
-            val district = resolved.optString("district")
-            val fullPlace = listOf(province, city, district).filter { it.isNotBlank() }.distinct().joinToString("")
-
-            val weather = getJson("https://restapi.amap.com/v3/weather/weatherInfo?city=${encode(adcode)}&extensions=all&key=${encode(key)}")
-            if (weather.optString("status") != "1") {
-                val info = weather.optString("info", "天气数据查询失败")
-                return@withContext "已定位到$fullPlace，但天气服务暂时无法返回数据：$info。"
-            }
-            val live = weather.optJSONArray("lives")?.optJSONObject(0)
-            val forecast = weather.optJSONArray("forecasts")?.optJSONObject(0)
-            if (live == null && forecast == null) return@withContext "天气服务暂未返回${fullPlace}的天气数据，请稍后重试。"
-
-            val result = StringBuilder("天气区域：$fullPlace（行政区划编码 $adcode）")
-            if (live != null) {
-                result.append("\\n当前天气：${live.optString("weather", "未知")}，气温 ${live.optString("temperature", "未知")}°C")
-                result.append("，湿度 ${live.optString("humidity", "未知")}%")
-                result.append("，风向 ${live.optString("winddirection", "未知")}，风力 ${live.optString("windpower", "未知")}级")
-                result.append("\\n实况发布时间：${live.optString("reporttime", "未知")}")
-            }
-            val casts = forecast?.optJSONArray("casts")
-            if (casts != null && casts.length() > 0) {
-                result.append("\\n未来天气预报：")
-                for (i in 0 until minOf(casts.length(), 4)) {
-                    val day = casts.optJSONObject(i) ?: continue
-                    result.append("\\n${day.optString("date")}：白天${day.optString("dayweather")} ${day.optString("daytemp")}°C；夜间${day.optString("nightweather")} ${day.optString("nighttemp")}°C；风向${day.optString("daywind")}，风力${day.optString("daypower")}级")
+            return@withContext try {
+                val g = json("https://restapi.amap.com/v3/geocode/geo?address=" + encode(place) + "&key=" + encode(amapKey))
+                if (g.optString("status") != "1") return@withContext "高德无法识别区域：" + g.optString("info")
+                val geo = g.optJSONArray("geocodes")?.optJSONObject(0) ?: return@withContext "没有找到区域：" + place
+                val adcode = geo.optString("adcode")
+                if (adcode.isBlank() || adcode == "100000") return@withContext "未取得有效市/区县编码，请补充更具体的区域名称。"
+                val name = listOf(geo.optString("province"), geo.optString("city").ifBlank { geo.optString("district") }, geo.optString("district")).filter { it.isNotBlank() }.distinct().joinToString("")
+                val w = json("https://restapi.amap.com/v3/weather/weatherInfo?city=" + encode(adcode) + "&extensions=all&key=" + encode(amapKey))
+                if (w.optString("status") != "1") return@withContext "高德天气查询失败：" + w.optString("info")
+                val live = w.optJSONArray("lives")?.optJSONObject(0)
+                val casts = w.optJSONArray("forecasts")?.optJSONObject(0)?.optJSONArray("casts")
+                val out = StringBuilder("天气区域：" + name)
+                if (live != null) out.append("\n当前天气：" + live.optString("weather") + "，气温 " + live.optString("temperature") + "°C，湿度 " + live.optString("humidity") + "%")
+                if (casts != null) {
+                    out.append("\n未来天气预报：")
+                    for (i in 0 until minOf(4, casts.length())) {
+                        val d = casts.optJSONObject(i) ?: continue
+                        out.append("\n" + d.optString("date") + "：白天" + d.optString("dayweather") + " " + d.optString("daytemp") + "°C；夜间" + d.optString("nightweather") + " " + d.optString("nighttemp") + "°C")
+                    }
                 }
-                result.append("\\n预报发布时间：${forecast.optString("reporttime", "未知")}")
-            }
-            result.append("\\n数据来源：高德地图天气服务")
-            result.toString()
-        } catch (error: Exception) {
-            "天气查询失败：${error.message ?: "网络连接异常"}。请检查网络和高德天气 API Key。"
+                out.append("\n数据来源：高德地图天气服务").toString()
+            } catch (e: Exception) { "高德天气查询失败：" + (e.message ?: "网络异常") }
         }
-    }
-}
+        if (provider == "caiyun" && caiyunToken.isBlank()) return@withContext "彩云天气尚未配置 Token，请在设置 → 天气服务中填写。"
+        if (requestedPlace.isNullOrBlank() && ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+            return@withContext "查询当前位置天气需要位置权限，或直接告诉我城市/区县名称。"
+        val geocoder = Geocoder(context, Locale.CHINA)
+        val address = try {
+            if (!requestedPlace.isNullOrBlank()) {
+                @Suppress("DEPRECATION")
+                geocoder.getFromLocationName(requestedPlace.trim(), 1)?.firstOrNull()
+            } else {
+                val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                val loc = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER).firstNotNullOfOrNull { p -> runCatching { lm.getLastKnownLocation(p) }.getOrNull() }
+                    ?: return@withContext "暂时获取不到设备位置，请开启定位或直接告诉我城市名称。"
+                @Suppress("DEPRECATION")
+                geocoder.getFromLocation(loc.latitude, loc.longitude, 1)?.firstOrNull()
+                    ?: android.location.Address(Locale.CHINA).apply { latitude = loc.latitude; longitude = loc.longitude }
+            }
+        } catch (e: Exception) { return@withContext "地点解析失败：" + (e.message ?: "系统地理编码不可用") }
+            ?: return@withContext "无法识别地点“" + (requestedPlace ?: "当前位置") + "”的坐标，请补充省份、城市和区县名称。"
+        val lat = address.latitude
+        val lon = address.longitude
+        if (!lat.isFinite() || !lon.isFinite() || lat !in -90.0..90.0 || lon !in -180.0..180.0)
+            return@withContext "地点坐标无效，请重新提供城市或区县名称。"
+        val placeName = listOf(address.adminArea, address.locality, address.subLocality, address.subAdminArea).filterNotNull().filter { it.isNotBlank() }.distinct().joinToString("").ifBlank { requestedPlace ?: "当前位置" }
+        if (provider == "caiyun") {
+            // WGS84 -> GCJ-02 conversion for mainland China, as required by Caiyun v2.x.
+            fun transform(x: Double, y: Double, latitude: Boolean): Double {
+                var v = if (latitude) -100.0 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*kotlin.math.sqrt(kotlin.math.abs(x)) else 300.0 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*kotlin.math.sqrt(kotlin.math.abs(x))
+                v += (20*kotlin.math.sin(6*x*Math.PI) + 20*kotlin.math.sin(2*x*Math.PI))*2/3
+                v += (20*kotlin.math.sin(y*Math.PI) + 40*kotlin.math.sin(y/3*Math.PI))*2/3
+                v += (if (latitude) 160*kotlin.math.sin(y/12*Math.PI) + 320*kotlin.math.sin(y*Math.PI/30) else 150*kotlin.math.sin(x/12*Math.PI) + 300*kotlin.math.sin(x/30*Math.PI))*2/3
+                return v
+            }
+            val inChina = lon in 72.004..137.8347 && lat in 0.8293..55.8271
+            val pair = if (!inChina) lon to lat else {
+                val a = 6378245.0; val ee = 0.00669342162296594323
+                val x = lon - 105.0; val y = lat - 35.0
+                var dLat = transform(x,y,true); var dLon = transform(x,y,false)
+                val rad = lat / 180 * Math.PI
+                val magic = 1 - ee*kotlin.math.sin(rad)*kotlin.math.sin(rad)
+                val root = kotlin.math.sqrt(magic)
+                dLat = dLat*180/((a*(1-ee))/(magic*root)*Math.PI)
+                dLon = dLon*180/(a/root*kotlin.math.cos(rad)*Math.PI)
+                (lon+dLon) to (lat+dLat)
+            }
+            return@withContext try {
+                val data = json("https://api.caiyunapp.com/v2.6/" + encode(caiyunToken) + "/" + pair.first + "," + pair.second + "/weather?alert=true&dailysteps=5&lang=zh_CN")
+                if (data.optString("status") != "ok") return@withContext "彩云天气返回失败：" + data.optString("error", "请检查 Token 或套餐权限")
+                val result = data.optJSONObject("result") ?: return@withContext "彩云天气没有返回有效数据。"
+                val live = result.optJSONObject("realtime") ?: return@withContext "彩云天气暂未返回实时天气。"
+                val names = mapOf("CLEAR_DAY" to "晴", "CLEAR_NIGHT" to "晴", "PARTLY_CLOUDY_DAY" to "多云", "PARTLY_CLOUDY_NIGHT" to "多云", "CLOUDY" to "阴", "LIGHT_RAIN" to "小雨", "MODERATE_RAIN" to "中雨", "HEAVY_RAIN" to "大雨", "STORM_RAIN" to "暴雨", "FOG" to "雾", "LIGHT_SNOW" to "小雪", "MODERATE_SNOW" to "中雪", "HEAVY_SNOW" to "大雪", "STORM_SNOW" to "暴雪", "WIND" to "大风", "LIGHT_HAZE" to "轻度霾", "MODERATE_HAZE" to "中度霾", "HEAVY_HAZE" to "重度霾")
+                val sky = live.optString("skycon")
+                val temp = live.optDouble("temperature", Double.NaN)
+                val out = StringBuilder("天气区域：" + placeName + "\n当前天气：" + (names[sky] ?: sky) + "，气温 " + if (temp.isNaN()) "未知" else "%.1f".format(Locale.ROOT,temp) + "°C")
+                val feels = live.optDouble("apparent_temperature", Double.NaN)
+                if (!feels.isNaN()) out.append("，体感 " + "%.1f".format(Locale.ROOT,feels) + "°C")
+                val humidity = live.optDouble("humidity", Double.NaN)
+                if (!humidity.isNaN()) out.append("，湿度 " + (humidity*100).toInt() + "%")
+                val wind = live.optJSONObject("wind")
+                if (wind != null) out.append("，风速 " + wind.optDouble("speed",0.0) + " m/s")
+                result.optString("forecast_keypoint").takeIf { it.isNotBlank() }?.let { out.append("\n天气提示：" + it) }
+                val daily = result.optJSONObject("daily")
+                val skyArray = daily?.optJSONArray("skycon")
+                val temps = daily?.optJSONArray("temperature")
+                if (skyArray != null) {
+                    out.append("\n未来天气预报：")
+                    for (i in 0 until minOf(5,skyArray.length())) {
+                        val day = skyArray.optJSONObject(i) ?: continue
+                        val t = temps?.optJSONObject(i)
+                        out.append("\n" + day.optString("date") + "：" + (names[day.optString("value")] ?: day.optString("value")) + "，" + (t?.optDouble("min")?.toInt()?.toString() ?: "?") + "～" + (t?.optDouble("max")?.toInt()?.toString() ?: "?") + "°C")
+                    }
+                }
+                val alerts = result.optJSONObject("alert")?.optJSONArray("content")
+                if (alerts != null && alerts.length() > 0) {
+                    out.append("\n天气预警：")
+                    for (i in 0 until minOf(3,alerts.length())) { val a = alerts.optJSONObject(i) ?: continue; out.append("\n" + a.optString("title") + "：" + a.optString("description")) }
+                }
+                out.append("\n数据来源：彩云天气").toString()
+            } catch (e: Exception) { "彩云天气查询失败：" + (e.message ?: "网络异常") + "。请检查 Token。" }
+        }
+        // Original Open-Meteo service is retained and requires no API key.
+        try {
+            val data = json("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&timezone=auto")
+            val current = data.optJSONObject("current") ?: return@withContext "Open-Meteo 暂未返回当前天气。"
+            val code = current.optInt("weather_code",-1)
+            val desc = when (code) { 0 -> "晴朗"; 1,2 -> "多云"; 3 -> "阴"; 45,48 -> "有雾"; 51,53,55 -> "毛毛雨"; 61,63,65,80,81,82 -> "降雨"; 71,73,75,77,85,86 -> "降雪"; 95,96,99 -> "雷暴"; else -> "未知" }
+            val out = StringBuilder("天气区域：" + placeName + "\n当前天气：" + desc + "\n气温：" + current.optString("temperature_2m") + "°C；体感：" + current.optString("apparent_temperature") + "°C\n湿度：" + current.optString("relative_humidity_2m") + "%；风速：" + current.optString("wind_speed_10m") + " km/h；降水：" + current.optString("precipitation") + " mm")
+            val daily = data.optJSONObject("daily")
+            val dates = daily?.optJSONArray("time"); val highs = daily?.optJSONArray("temperature_2m_max"); val lows = daily?.optJSONArray("temperature_2m_min"); val codes = daily?.optJSONArray("weather_code")
+            if (dates != null) {
+                out.append("\n未来天气预报：")
+                for (i in 0 until minOf(5,dates.length())) {
+                    val c = codes?.optInt(i,-1) ?: -1
+                    val d = when (c) { 0 -> "晴"; 1,2 -> "多云"; 3 -> "阴"; 45,48 -> "雾"; 51,53,55 -> "毛毛雨"; 61,63,65,80,81,82 -> "降雨"; 71,73,75,77,85,86 -> "降雪"; 95,96,99 -> "雷暴"; else -> "未知" }
+                    out.append("\n" + dates.optString(i) + "：" + d + "，" + lows?.optDouble(i)?.toInt() + "～" + highs?.optDouble(i)?.toInt() + "°C")
+                }
+            }
+            out.append("\n数据来源：Open-Meteo").toString()
+        } catch (e: Exception) { "Open-Meteo 天气查询失败：" + (e.message ?: "网络异常") }
+    }}
