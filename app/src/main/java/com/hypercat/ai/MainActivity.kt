@@ -1,6 +1,7 @@
 package com.hypercat.ai
 
 import android.content.Context
+import android.widget.Toast
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -970,8 +971,10 @@ private fun ChatPage(
                                         Spacer(Modifier.width(3.dp)); Text("分享", color = actionTint, fontSize = 10.sp)
                                     }
                                     if (!line.fromUser) {
-                                        TextButton(enabled = ttsReady || isSpeaking, onClick = {
-                                            if (isSpeaking) {
+                                        TextButton(enabled = true, onClick = {
+                                            if (!ttsReady && !isSpeaking) {
+                                                Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+                                            } else if (isSpeaking) {
                                                 speechEngine.stop()
                                                 isSpeaking = false
                                                 speechStatus = "已停止朗读"
