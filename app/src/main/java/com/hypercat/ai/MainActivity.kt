@@ -238,6 +238,7 @@ private fun HyperCatApp() {
     }
     SideEffect { appDarkState = darkNow }
     val messages = remember { mutableStateListOf<ChatLine>() }
+    var isThinking by remember { mutableStateOf(false) }
     val modelProfiles = remember { mutableStateListOf<ModelProfile>() }
     var savedNotes by remember { mutableStateOf(emptyList<String>()) }
     val chatPrefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
@@ -317,6 +318,7 @@ private fun HyperCatApp() {
                     contentPadding = padding,
                     onDrawerVisibility = { chatDrawerExpanded = it },
                     messages = messages,
+                    isThinking = isThinking,
                     recentPrompts = recentPrompts,
                     modelProfiles = modelProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
                     onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
@@ -332,10 +334,15 @@ private fun HyperCatApp() {
                             if (!saved || endpoint.isBlank() || model.isBlank()) messages.add(ChatLine("请先在设置中完成模型配置，再发送消息。", false))
                             else {
                                 val requestHistory = messages.toList()
-                                scope.launch { try {
-                                    val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory) }
-                                    messages.add(ChatLine(reply, false)); petMood = inferMood(reply)
-                                } catch (error: Exception) { messages.add(ChatLine("模型请求未成功：${error.message ?: "网络或服务异常"}", false)) } }
+                                scope.launch {
+                                    isThinking = true
+                                    try {
+                                        val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory) }
+                                        messages.add(ChatLine(reply, false)); petMood = inferMood(reply)
+                                    } catch (error: Exception) {
+                                        messages.add(ChatLine("模型请求未成功：${error.message ?: "网络或服务异常"}", false))
+                                    } finally { isThinking = false }
+                                }
                             }
                         }
                     },
@@ -651,7 +658,7 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, onMood: (String) -> Unit,
     showSettingsOnEnter: Boolean,
@@ -683,7 +690,6 @@ private fun ChatPage(
     var recentSort by remember { mutableStateOf("最新") }
     var showModelPicker by remember { mutableStateOf(false) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val voiceInput = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         isListening = false
         val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
@@ -830,6 +836,13 @@ private fun ChatPage(
                     }
                 }
             }
+            if (isThinking && searchQuery.isBlank()) item {
+                Row(Modifier.fillMaxWidth().padding(start = 42.dp, top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Cyan)
+                    Spacer(Modifier.width(9.dp))
+                    Text("正在思考…", color = Muted, fontSize = 12.sp)
+                }
+            }
         }
         if (selectedPhotos.isNotEmpty()) {
             Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -854,7 +867,6 @@ private fun ChatPage(
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 Surface(Modifier.size(40.dp).clickable { cameraCapture.launch(null) }, color = Panel2, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PhotoCamera, contentDescription = "拍照", tint = Cyan) } }
-                Surface(Modifier.size(40.dp).clickable { imagePicker.launch("image/*") }, color = Panel2, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加图片", tint = Muted) } }
                 Surface(Modifier.size(40.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted) }
                 }
@@ -1397,7 +1409,7 @@ private fun ConfigField(label: String, value: String, onValue: (String) -> Unit,
     Surface(color = Panel, shape = RoundedCornerShape(14.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp)) {
             if (secret) {
-                BasicTextField(value, onValue, modifier = Modifier.fillMaxWidth(), textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp),
+                BasicTextField(value, onValue, modifier = Modifier.fillMaxWidth(), textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp),
                     visualTransformation = PasswordVisualTransformation(), decorationBox = { inner -> if (value.isEmpty()) Text(hint, color = Muted, fontSize = 13.sp); inner() })
             } else {
                 BasicTextField(value, onValue, modifier = Modifier.fillMaxWidth(), textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp),
