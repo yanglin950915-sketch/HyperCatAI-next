@@ -107,7 +107,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.util.concurrent.Executors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
@@ -1129,9 +1129,15 @@ private fun ChatPage(
     val latestDraft by rememberUpdatedState(draft)
     val latestCallActive by rememberUpdatedState(callActive)
     val speechRecognizer = remember(context) {
-        if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context))
+        // Prefer the device's configured recognition service (often has the user's language pack).
+        // Use on-device recognition only when no default recognition service is available.
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        } else if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
             SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-        else SpeechRecognizer.createSpeechRecognizer(context)
+        } else {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        }
     }
     DisposableEffect(speechRecognizer) {
         speechRecognizer.setRecognitionListener(object : RecognitionListener {
@@ -1727,7 +1733,7 @@ private fun ChatPage(
 @Composable
 private fun LiveCameraPreview(isActive: Boolean, onError: (String) -> Unit, onFrame: (Bitmap) -> Unit) {
     val context = LocalContext.current
-    val lifecycleOwner = context as? LifecycleOwner
+    val lifecycleOwner = LocalLifecycleOwner.current
     val latestActive by rememberUpdatedState(isActive)
     val latestOnFrame by rememberUpdatedState(onFrame)
     val latestOnError by rememberUpdatedState(onError)
@@ -1736,6 +1742,8 @@ private fun LiveCameraPreview(isActive: Boolean, onError: (String) -> Unit, onFr
     val executor = remember { Executors.newSingleThreadExecutor() }
     DisposableEffect(previewView, lifecycleOwner) {
         var boundProvider: ProcessCameraProvider? = null
+        var boundPreview: Preview? = null
+        var boundAnalysis: ImageAnalysis? = null
         val providerFuture = ProcessCameraProvider.getInstance(context)
         providerFuture.addListener({
             try {
@@ -1743,6 +1751,8 @@ private fun LiveCameraPreview(isActive: Boolean, onError: (String) -> Unit, onFr
                 boundProvider = provider
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
                 val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
+                boundPreview = preview
+                boundAnalysis = analysis
                 var lastFrameAt = 0L
                 analysis.setAnalyzer(executor) { imageProxy ->
                     try {
@@ -1757,8 +1767,7 @@ private fun LiveCameraPreview(isActive: Boolean, onError: (String) -> Unit, onFr
                     } catch (_: Exception) {
                     } finally { imageProxy.close() }
                 }
-                val owner = lifecycleOwner ?: error("无法获取摄像头生命周期")
-                provider.unbindAll()
+                val owner = lifecycleOwner
                 val selector = when {
                     provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
                     provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
@@ -1769,7 +1778,15 @@ private fun LiveCameraPreview(isActive: Boolean, onError: (String) -> Unit, onFr
                 mainHandler.post { latestOnError("摄像头启动失败：${error.message ?: error.javaClass.simpleName}。请检查系统相机权限并关闭占用摄像头的应用。") }
             }
         }, ContextCompat.getMainExecutor(context))
-        onDispose { runCatching { boundProvider?.unbindAll() }; executor.shutdown() }
+        onDispose {
+            runCatching {
+                val provider = boundProvider
+                val preview = boundPreview
+                val analysis = boundAnalysis
+                if (provider != null && preview != null && analysis != null) provider.unbind(preview, analysis)
+            }
+            executor.shutdown()
+        }
     }
     AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 }
