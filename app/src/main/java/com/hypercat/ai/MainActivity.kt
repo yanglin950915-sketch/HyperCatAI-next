@@ -109,6 +109,8 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import java.util.concurrent.Executors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
@@ -435,6 +437,11 @@ private fun inferMood(reply: String): String = when {
     else -> "normal"
 }
 private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "")
+
+private fun appendAgentReply(context: Context, messages: MutableList<ChatLine>, text: String, reasoning: String = "") {
+    messages.add(ChatLine(text, false, reasoning = reasoning))
+    AgentReplyNotifications.showIfBackground(context, text)
+}
 private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String)
 private data class TtsProfile(val name: String, val endpoint: String, val apiKey: String)
 private data class SkillProfile(val name: String, val description: String, val instructions: String)
@@ -469,6 +476,18 @@ private fun fetchLatestRelease(): ReleaseInfo {
 @Composable
 private fun HyperCatApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> HyperCatAppVisibility.isForeground = true
+                Lifecycle.Event.ON_STOP -> HyperCatAppVisibility.isForeground = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -527,15 +546,18 @@ private fun HyperCatApp() {
     SideEffect { appDarkState = darkNow }
     val messages = remember { mutableStateListOf<ChatLine>() }
     var isThinking by remember { mutableStateOf(false) }
-    val weatherPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    val weatherPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
         scope.launch {
             isThinking = true
             try {
-                val result = if (granted) withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context) }
-                    else "未授权位置权限，无法获取当地天气。你也可以直接告诉我城市名称。"
-                messages.add(ChatLine(result, false))
+                val hasLocation = AgentDeviceTools.hasLocationPermission(context)
+                val precise = AgentDeviceTools.hasPreciseLocationPermission(context)
+                val result = if (hasLocation) withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context) }
+                    else "未授予位置权限，无法获取当地天气。请在系统权限弹窗中允许位置访问，或直接告诉我城市名称。"
+                val display = if (hasLocation && !precise) "提示：目前只获得大致位置权限，天气区域可能不够准确。请在应用权限中开启“精确位置”。\\n$result" else result
+                appendAgentReply(context, messages, display)
             } catch (error: Exception) {
-                messages.add(ChatLine("天气查询失败：${error.message ?: "请稍后重试"}", false))
+                appendAgentReply(context, messages, "天气查询失败：${error.message ?: "请稍后重试"}")
             } finally { isThinking = false }
         }
     }
@@ -657,17 +679,17 @@ private fun HyperCatApp() {
                             draft = ""
                             if (value.contains("天气") || value.contains("气温") || value.contains("温度")) {
                                 val requestedPlace = AgentDeviceTools.extractWeatherPlace(value)
-                                if (requestedPlace.isNotBlank() || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                                if (requestedPlace.isNotBlank() || AgentDeviceTools.hasPreciseLocationPermission(context)) {
                                     scope.launch {
                                         isThinking = true
-                                        try { messages.add(ChatLine(withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context, requestedPlace.ifBlank { null }) }, false)) }
-                                        catch (error: Exception) { messages.add(ChatLine("天气查询失败：${error.message ?: "请稍后重试"}", false)) }
+                                        try { appendAgentReply(context, messages, withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context, requestedPlace.ifBlank { null }) }) }
+                                        catch (error: Exception) { appendAgentReply(context, messages, "天气查询失败：${error.message ?: "请稍后重试"}") }
                                         finally { isThinking = false }
                                     }
-                                } else weatherPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                                } else weatherPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                             } else {
                                 val localAction = AgentDeviceTools.handleSystemAction(context, value)
-                                if (localAction != null) messages.add(ChatLine(localAction, false))
+                                if (localAction != null) appendAgentReply(context, messages, localAction)
                                 else if (!saved || endpoint.isBlank() || model.isBlank()) messages.add(ChatLine("请先在设置中完成模型配置，再发送消息。", false))
                                 else {
                                     val requestHistory = messages.toList()
@@ -675,9 +697,9 @@ private fun HyperCatApp() {
                                         isThinking = true
                                         try {
                                             val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                            messages.add(ChatLine(reply.text, false, reasoning = reply.reasoning)); petMood = inferMood(reply.text)
+                                            appendAgentReply(context, messages, reply.text, reply.reasoning); petMood = inferMood(reply.text)
                                         } catch (error: Exception) {
-                                            messages.add(ChatLine("模型请求未成功：${error.message ?: "网络或服务异常"}", false))
+                                            appendAgentReply(context, messages, "模型请求未成功：${error.message ?: "网络或服务异常"}")
                                         } finally { isThinking = false }
                                     }
                                 }
@@ -693,7 +715,7 @@ private fun HyperCatApp() {
                                     val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
                                     messages.add(ChatLine(reply.text, false, reasoning = reply.reasoning)); petMood = inferMood(reply.text)
                                 } catch (error: Exception) {
-                                    messages.add(ChatLine("通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}", false))
+                                    appendAgentReply(context, messages, "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}")
                                 } finally { isThinking = false }
                             }
                         }
