@@ -605,6 +605,7 @@ private fun HyperCatApp() {
                     messages = messages,
                     isThinking = isThinking,
                     recentPrompts = recentPrompts,
+                    onDeleteRecentPrompt = { prompt -> recentPrompts = recentPrompts.filterNot { it == prompt }; chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply() },
                     modelProfiles = modelProfiles.toList(), ttsProfiles = ttsProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
                     onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
                     savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
@@ -1041,7 +1042,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
     ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit,
@@ -1067,6 +1068,7 @@ private fun ChatPage(
     var videoEnabled by remember { mutableStateOf(false) }
     var useFrontCamera by remember { mutableStateOf(true) }
     var lastCallSpokenText by remember { mutableStateOf("") }
+    var recognitionStartJob by remember { mutableStateOf<Job?>(null) }
     var isListening by remember { mutableStateOf(false) }
     var ttsReady by remember { mutableStateOf(false) }
     var isSpeaking by remember { mutableStateOf(false) }
@@ -1169,13 +1171,19 @@ private fun ChatPage(
                             delay(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1200L else 700L)
                             if (latestCallActive && latestMicEnabled && !isListening && !isSpeaking && !isThinking) {
                                 runCatching {
+                                    speechRecognizer.cancel()
+                                    delay(250L)
+                                    if (!latestCallActive || !latestMicEnabled || isSpeaking || isThinking) return@launch
                                     speechRecognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                                         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                                         putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-CN")
+                                        putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
                                         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                                        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+                                        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
                                     })
-                                    isListening = true
                                 }.onFailure { speechStatus = "语音识别重试失败：${it.message ?: "请检查系统语音服务"}" }
                             }
                         }
@@ -1188,9 +1196,12 @@ private fun ChatPage(
                 if (spoken.isNotBlank()) {
                     if (latestCallActive && latestMicEnabled) latestOnSend(spoken, emptyList(), emptyList())
                     else if (!latestCallActive) latestOnDraft(if (latestDraft.isBlank()) spoken else "${latestDraft} ${spoken}")
-                }
+                } else if (latestCallActive) speechStatus = "没有识别到清晰语音，请再说一次"
             }
-            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onPartialResults(partialResults: Bundle?) {
+                val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                if (partial.isNotBlank() && latestCallActive) speechStatus = "正在识别：$partial"
+            }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
         onDispose { runCatching { speechRecognizer.cancel() }; speechRecognizer.destroy() }
@@ -1212,10 +1223,28 @@ private fun ChatPage(
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-CN")
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
         }
-        runCatching { speechRecognizer.startListening(intent); isListening = true }
-            .onFailure { isListening = false; speechStatus = "无法启动语音识别：${it.message}" }
+        isListening = false
+        if (callActive) {
+            recognitionStartJob?.cancel()
+            runCatching { speechRecognizer.cancel() }
+            speechStatus = "正在启动语音识别，请开始说话…"
+            recognitionStartJob = speechScope.launch {
+                delay(300L)
+                if (!callActive || !micEnabled || isSpeaking || isThinking) return@launch
+                runCatching { speechRecognizer.startListening(intent) }
+                    .onFailure { speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}" }
+            }
+        } else {
+            runCatching { speechRecognizer.startListening(intent) }
+                .onFailure { speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}" }
+        }
     }
     val callMicPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
@@ -1406,9 +1435,8 @@ private fun ChatPage(
         LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    CatFace(Modifier.width(220.dp).height(170.dp), petMood)
-                    Text("嗨，我是$petName。", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("你可以在这里和我聊天。", color = Muted, fontSize = 13.sp)
+                    Text("开始与 Agent 对话", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Text("输入消息，或使用语音与 Agent 交流。", color = Muted, fontSize = 13.sp)
                 }
             }
             items(messages.filter { searchQuery.isBlank() || it.text.contains(searchQuery, ignoreCase = true) }) { line ->
@@ -1596,10 +1624,14 @@ private fun ChatPage(
                                         }
                                     }
                                     items(orderedRecent) { prompt ->
-                                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onDraft(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 12.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8276D9)))), contentAlignment = Alignment.Center) { Text(petName.take(1), color = Color.White, fontWeight = FontWeight.Bold) }
-                                            Spacer(Modifier.width(10.dp))
-                                            Column(Modifier.weight(1f)) { Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold); Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 2) }
+                                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(vertical = 8.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f).clickable { onDraft(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 4.dp)) {
+                                                Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                                Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 2)
+                                            }
+                                            IconButton(onClick = { onDeleteRecentPrompt(prompt) }, modifier = Modifier.size(40.dp)) {
+                                                Icon(Icons.Outlined.Delete, contentDescription = "删除这条最近对话", tint = Color(0xFFE07878), modifier = Modifier.size(19.dp))
+                                            }
                                         }
                                         Divider(color = GlassBorder.copy(alpha = .4f))
                                     }
@@ -1714,8 +1746,7 @@ private fun ChatPage(
                         }
                     } else {
                         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            CatFace(Modifier.width(230.dp).height(190.dp), if (isThinking) "thinking" else petMood)
-                            Text(petName, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            Text("HyperCat AI", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
                             Text(if (isSpeaking) "AI 正在回答…" else if (isListening) "正在聆听…" else if (isThinking) "正在思考…" else "语音通话已连接", color = Color(0xFFADB8C8), fontSize = 13.sp)
                         }
                     }
