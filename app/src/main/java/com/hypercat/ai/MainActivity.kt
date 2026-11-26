@@ -1559,14 +1559,14 @@ private fun ChatPage(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     rowItems.forEach { (label, prompt) ->
                         Surface(
-                            modifier = Modifier.weight(1f).padding(bottom = 8.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
+                            modifier = Modifier.weight(1f).padding(bottom = 6.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
                             color = Panel, shape = RoundedCornerShape(15.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
                         ) {
-                            Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
-                                Text("✦", color = Cyan, fontSize = 14.sp)
-                                Spacer(Modifier.height(5.dp))
-                                Text(label, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Column(Modifier.padding(horizontal = 10.dp, vertical = 9.dp)) {
+                                Text("✦", color = Cyan, fontSize = 12.sp)
+                                Spacer(Modifier.height(3.dp))
+                                Text(label, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
