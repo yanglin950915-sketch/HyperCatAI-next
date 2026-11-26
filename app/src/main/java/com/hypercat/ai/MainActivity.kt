@@ -498,6 +498,18 @@ private fun HyperCatApp() {
     SideEffect { appDarkState = darkNow }
     val messages = remember { mutableStateListOf<ChatLine>() }
     var isThinking by remember { mutableStateOf(false) }
+    val weatherPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        scope.launch {
+            isThinking = true
+            try {
+                val result = if (granted) withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context) }
+                    else "未授权位置权限，无法获取当地天气。你也可以直接告诉我城市名称。"
+                messages.add(ChatLine(result, false))
+            } catch (error: Exception) {
+                messages.add(ChatLine("天气查询失败：${error.message ?: "请稍后重试"}", false))
+            } finally { isThinking = false }
+        }
+    }
     val modelProfiles = remember { mutableStateListOf<ModelProfile>() }
     val ttsProfiles = remember { mutableStateListOf<TtsProfile>() }
     var savedNotes by remember { mutableStateOf(emptyList<String>()) }
@@ -613,19 +625,32 @@ private fun HyperCatApp() {
                                 }
                             }
                             draft = ""
-                            if (!saved || endpoint.isBlank() || model.isBlank()) messages.add(ChatLine("请先在设置中完成模型配置，再发送消息。", false))
-                            else {
-                                val requestHistory = messages.toList()
-                                scope.launch {
-                                    isThinking = true
-                                    try {
-                                        val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                        messages.add(ChatLine(reply.text, false, reasoning = reply.reasoning)); petMood = inferMood(reply.text)
-                                    } catch (error: Exception) {
-                                        messages.add(ChatLine("模型请求未成功：${error.message ?: "网络或服务异常"}", false))
-                                    } finally { isThinking = false }
+                            if (value.contains("天气") || value.contains("气温")) {
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                                    scope.launch {
+                                        isThinking = true
+                                        try { messages.add(ChatLine(withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context) }, false)) }
+                                        catch (error: Exception) { messages.add(ChatLine("天气查询失败：${error.message ?: "请稍后重试"}", false)) }
+                                        finally { isThinking = false }
+                                    }
+                                } else weatherPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                            } else {
+                                val localAction = AgentDeviceTools.handleSystemAction(context, value)
+                                if (localAction != null) messages.add(ChatLine(localAction, false))
+                                else if (!saved || endpoint.isBlank() || model.isBlank()) messages.add(ChatLine("请先在设置中完成模型配置，再发送消息。", false))
+                                else {
+                                    val requestHistory = messages.toList()
+                                    scope.launch {
+                                        isThinking = true
+                                        try {
+                                            val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
+                                            messages.add(ChatLine(reply.text, false, reasoning = reply.reasoning)); petMood = inferMood(reply.text)
+                                        } catch (error: Exception) {
+                                            messages.add(ChatLine("模型请求未成功：${error.message ?: "网络或服务异常"}", false))
+                                        } finally { isThinking = false }
+                                    }
                                 }
-                            }
+                            }                            }
                         }
                     },
                     openSettings = { page = Page.CHAT; openSettingsDrawer = true },
