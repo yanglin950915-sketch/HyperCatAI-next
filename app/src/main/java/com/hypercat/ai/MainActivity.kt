@@ -1501,33 +1501,44 @@ private fun ChatPage(
         }
     }
     var lastAutoReadText by remember { mutableStateOf("") }
+    var autoReadPendingReply by remember { mutableStateOf(false) }
     LaunchedEffect(autoReadReplies, callActive, messages.size, isThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate) {
-        if (autoReadReplies && !callActive && !isThinking) {
-            val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
-            if (reply.isNotBlank() && reply != lastAutoReadText) {
-                lastAutoReadText = reply
-                val spokenText = speechText(reply)
-                if (spokenText.isNotBlank()) {
-                    if (ttsMode == "cloud") {
-                        val profile = selectedTtsProfile
-                        if (profile != null) {
-                            cloudSpeechJob?.cancel()
-                            cloudSpeechJob = speechScope.launch {
-                                isSpeaking = true
-                                try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "自动朗读完成" }
-                                catch (cancelled: CancellationException) { speechStatus = "已停止朗读"; throw cancelled }
-                                catch (error: Exception) { speechStatus = "自动朗读失败：${error.message ?: "TTS 服务异常"}"; ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel) }
-                                finally { isSpeaking = false }
-                            }
-                        } else speechStatus = "自动朗读未启动：请先选择 TTS 模型"
-                    } else if (ttsReady) {
-                        val chunks = splitSpeechText(spokenText)
-                        val prefix = "hypercat-auto-${System.nanoTime()}"
-                        isSpeaking = true
-                        chunks.forEachIndexed { index, chunk ->
-                            val id = prefix + if (index == chunks.lastIndex) "-last" else "-$index"
-                            speechEngine.speak(chunk, if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id)
+        // Only auto-read a reply produced by a request in the active session.
+        // Opening/restoring a conversation must never replay its historical last message.
+        if (isThinking) {
+            if (autoReadReplies && !callActive) autoReadPendingReply = true
+            return@LaunchedEffect
+        }
+        if (!autoReadReplies || callActive) {
+            autoReadPendingReply = false
+            return@LaunchedEffect
+        }
+        if (!autoReadPendingReply) return@LaunchedEffect
+        autoReadPendingReply = false
+        val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
+        if (reply.isNotBlank() && reply != lastAutoReadText) {
+            lastAutoReadText = reply
+            val spokenText = speechText(reply)
+            if (spokenText.isNotBlank()) {
+                if (ttsMode == "cloud") {
+                    val profile = selectedTtsProfile
+                    if (profile != null) {
+                        cloudSpeechJob?.cancel()
+                        cloudSpeechJob = speechScope.launch {
+                            isSpeaking = true
+                            try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "自动朗读完成" }
+                            catch (cancelled: CancellationException) { speechStatus = "已停止朗读"; throw cancelled }
+                            catch (error: Exception) { speechStatus = "自动朗读失败：${error.message ?: "TTS 服务异常"}"; ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel) }
+                            finally { isSpeaking = false }
                         }
+                    } else speechStatus = "自动朗读未启动：请先选择 TTS 模型"
+                } else if (ttsReady) {
+                    val chunks = splitSpeechText(spokenText)
+                    val prefix = "hypercat-auto-${System.nanoTime()}"
+                    isSpeaking = true
+                    chunks.forEachIndexed { index, chunk ->
+                        val id = prefix + if (index == chunks.lastIndex) "-last" else "-${index}"
+                        speechEngine.speak(chunk, if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id)
                     }
                 }
             }
