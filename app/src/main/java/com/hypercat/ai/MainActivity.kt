@@ -845,7 +845,7 @@ private fun ChatPage(
                         speechStatus = "朗读失败（错误码 $errorCode），请检查系统语音引擎"
                     }
                 })
-                speechStatus = "中文朗读已就绪"
+                speechStatus = if (selected.language == "zh") "中文朗读已就绪" else "语音朗读已就绪"
             }
         }
     }
@@ -875,7 +875,14 @@ private fun ChatPage(
             if (reply.isNotBlank() && reply != lastCallSpokenText && ttsReady) {
                 lastCallSpokenText = reply
                 val spokenText = speechText(reply)
-                if (spokenText.isNotBlank()) speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${messages.size}-last")
+                if (spokenText.isNotBlank()) {
+                    isSpeaking = true
+                    val result = speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${messages.size}-last")
+                    if (result == TextToSpeech.ERROR) {
+                        isSpeaking = false
+                        speechStatus = "通话语音播报失败，请检查系统 TTS 语音数据"
+                    }
+                }
             }
         }
     }
@@ -1273,6 +1280,7 @@ private fun ChatPage(
                         if (!configured) Toast.makeText(context, "请先在设置中配置大模型", Toast.LENGTH_SHORT).show()
                         else if (!ttsReady) Toast.makeText(context, speechStatus, Toast.LENGTH_SHORT).show()
                         else {
+                            lastCallSpokenText = ""
                             callActive = true
                             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
