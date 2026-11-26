@@ -12,6 +12,7 @@ import android.content.Intent
 import android.net.Uri
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -179,6 +180,38 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
         if (tagged != null) answer = answer.removeRange(tagged.range).trim()
         return ModelReply(answer, reasoning)
     } finally { connection.disconnect() }
+}
+
+private fun speechText(source: String): String {
+    return source
+        .replace(Regex("```[\\w+-]*"), "代码段：")
+        .replace("```", "。")
+        .replace(Regex("!\\[([^]]*)]\\([^)]*\\)"), "$1")
+        .replace(Regex("\\[([^]]+)]\\([^)]*\\)"), "$1")
+        .replace(Regex("^\\s{0,3}#{1,6}\\s*", RegexOption.MULTILINE), "")
+        .replace(Regex("[*_~\\x60]"), "")
+        .replace(Regex("^\\s*[-+]\\s+", RegexOption.MULTILINE), "")
+        .replace(Regex("^\\s*\\d+[.)、]\\s*", RegexOption.MULTILINE), "")
+        .replace(Regex("\\n{3,}"), "\\n\\n")
+        .trim()
+}
+
+private fun splitSpeechText(text: String, maxLength: Int = 2800): List<String> {
+    if (text.length <= maxLength) return listOf(text)
+    val chunks = mutableListOf<String>()
+    var remaining = text
+    while (remaining.isNotEmpty()) {
+        if (remaining.length <= maxLength) {
+            chunks += remaining.trim()
+            break
+        }
+        var cut = remaining.lastIndexOfAny(charArrayOf('。', '！', '？', '；', '\\n'), maxLength)
+        if (cut < maxLength / 2) cut = maxLength
+        else cut += 1
+        chunks += remaining.substring(0, cut).trim()
+        remaining = remaining.substring(cut).trimStart()
+    }
+    return chunks.filter { it.isNotBlank() }
 }
 
 private fun inferMood(reply: String): String = when {
@@ -750,8 +783,46 @@ private fun ChatPage(
     var callMode by remember { mutableStateOf("语音") }
     var isListening by remember { mutableStateOf(false) }
     var ttsReady by remember { mutableStateOf(false) }
-    val speechEngine = remember(context) { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
-    LaunchedEffect(ttsReady) { if (ttsReady) speechEngine.language = Locale.SIMPLIFIED_CHINESE }
+    var isSpeaking by remember { mutableStateOf(false) }
+    var speechStatus by remember { mutableStateOf("语音引擎初始化中") }
+    val speechEngine = remember(context) {
+        TextToSpeech(context) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (status != TextToSpeech.SUCCESS) speechStatus = "语音引擎初始化失败，请检查系统文字转语音服务"
+        }
+    }
+    LaunchedEffect(ttsReady) {
+        if (ttsReady) {
+            val preferred = speechEngine.isLanguageAvailable(Locale.SIMPLIFIED_CHINESE)
+            val selected = when {
+                preferred >= TextToSpeech.LANG_AVAILABLE -> Locale.SIMPLIFIED_CHINESE
+                speechEngine.isLanguageAvailable(Locale.CHINESE) >= TextToSpeech.LANG_AVAILABLE -> Locale.CHINESE
+                else -> null
+            }
+            if (selected == null || speechEngine.setLanguage(selected) < TextToSpeech.LANG_AVAILABLE) {
+                speechStatus = "系统未安装中文语音包，请在系统文字转语音设置中下载中文语音"
+                ttsReady = false
+            } else {
+                speechEngine.setSpeechRate(1.0f)
+                speechEngine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) { isSpeaking = true }
+                    override fun onDone(utteranceId: String?) {
+                        if (utteranceId?.endsWith("-last") == true) isSpeaking = false
+                    }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        isSpeaking = false
+                        speechStatus = "朗读失败，请检查系统语音引擎或语音数据"
+                    }
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        isSpeaking = false
+                        speechStatus = "朗读失败（错误码 $errorCode），请检查系统语音引擎"
+                    }
+                })
+                speechStatus = "中文朗读已就绪"
+            }
+        }
+    }
     DisposableEffect(speechEngine) { onDispose { speechEngine.stop(); speechEngine.shutdown() } }
     var showRemember by remember { mutableStateOf(false) }
     var noteDraft by remember { mutableStateOf("") }
@@ -899,12 +970,35 @@ private fun ChatPage(
                                         Spacer(Modifier.width(3.dp)); Text("分享", color = actionTint, fontSize = 10.sp)
                                     }
                                     if (!line.fromUser) {
-                                        TextButton(enabled = ttsReady, onClick = {
-                                            if (speechEngine.isSpeaking) speechEngine.stop()
-                                            else speechEngine.speak(line.text, TextToSpeech.QUEUE_FLUSH, null, "hypercat-${System.nanoTime()}")
+                                        TextButton(enabled = ttsReady || isSpeaking, onClick = {
+                                            if (isSpeaking) {
+                                                speechEngine.stop()
+                                                isSpeaking = false
+                                                speechStatus = "已停止朗读"
+                                            } else {
+                                                val spokenText = speechText(line.text)
+                                                if (spokenText.isBlank()) {
+                                                    speechStatus = "这条回复没有可朗读的文字"
+                                                } else {
+                                                    val chunks = splitSpeechText(spokenText)
+                                                    val requestPrefix = "hypercat-${System.nanoTime()}"
+                                                    speechEngine.stop()
+                                                    isSpeaking = true
+                                                    speechStatus = "正在朗读"
+                                                    chunks.forEachIndexed { index, chunk ->
+                                                        val utteranceId = requestPrefix + if (index == chunks.lastIndex) "-last" else "-${index}"
+                                                        val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+                                                        val result = speechEngine.speak(chunk, queueMode, null, utteranceId)
+                                                        if (result == TextToSpeech.ERROR) {
+                                                            isSpeaking = false
+                                                            speechStatus = "朗读请求失败，请检查系统文字转语音引擎"
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
-                                            Icon(if (speechEngine.isSpeaking) Icons.Outlined.Stop else Icons.Outlined.VolumeUp, contentDescription = if (speechEngine.isSpeaking) "停止朗读" else "语音播放", modifier = Modifier.size(13.dp), tint = actionTint)
-                                            Spacer(Modifier.width(3.dp)); Text(if (speechEngine.isSpeaking) "停止" else "朗读", color = actionTint, fontSize = 10.sp)
+                                            Icon(if (isSpeaking) Icons.Outlined.Stop else Icons.Outlined.VolumeUp, contentDescription = if (isSpeaking) "停止朗读" else "语音播放", modifier = Modifier.size(13.dp), tint = actionTint)
+                                            Spacer(Modifier.width(3.dp)); Text(if (isSpeaking) "停止" else "朗读", color = actionTint, fontSize = 10.sp)
                                         }
                                     }
                                 }
