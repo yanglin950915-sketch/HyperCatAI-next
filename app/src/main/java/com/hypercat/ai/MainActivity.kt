@@ -1239,8 +1239,9 @@ private fun ChatPage(
                                         delay(500L)
                                         replacement
                                     } else {
-                                        activeRecognizer.cancel()
-                                        delay(300L)
+                                        // onError already terminates the current recognition session.
+                                        // Calling cancel() here can itself trigger ERROR_CLIENT on some OEM services.
+                                        delay(350L)
                                         activeRecognizer
                                     }
                                     if (!latestCallActive || !latestMicEnabled) return@launch
@@ -1323,7 +1324,8 @@ private fun ChatPage(
         isListening = false
         if (callActive) {
             recognitionStartJob?.cancel()
-            runCatching { speechRecognizer.cancel() }
+            // The previous session has already delivered onResults/onError before this restart.
+            // Avoid cancel() on an idle SpeechRecognizer: some OEM services report ERROR_CLIENT.
             speechStatus = "正在启动语音识别，请开始说话…"
             recognitionStartJob = speechScope.launch {
                 delay(300L)
