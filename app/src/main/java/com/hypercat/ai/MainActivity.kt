@@ -2,6 +2,7 @@ package com.hypercat.ai
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.media.AudioManager
 import android.media.AudioAttributes
 import android.widget.Toast
 import android.Manifest
@@ -654,6 +655,20 @@ private fun HyperCatApp() {
                             }
                         }
                     },
+                    onCallInitiative = { prompt ->
+                        if (saved && endpoint.isNotBlank() && model.isNotBlank() && !isThinking) {
+                            val requestHistory = messages.toList() + ChatLine(prompt, true)
+                            scope.launch {
+                                isThinking = true
+                                try {
+                                    val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
+                                    messages.add(ChatLine(reply.text, false, reasoning = reply.reasoning)); petMood = inferMood(reply.text)
+                                } catch (error: Exception) {
+                                    messages.add(ChatLine("通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}", false))
+                                } finally { isThinking = false }
+                            }
+                        }
+                    },
                     openSettings = { page = Page.CHAT; openSettingsDrawer = true },
                     configured = saved,
                     petName = petName,
@@ -1043,7 +1058,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @Composable
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
-    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
+    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
     ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit,
     showSettingsOnEnter: Boolean,
@@ -1133,6 +1148,8 @@ private fun ChatPage(
     val latestDraft by rememberUpdatedState(draft)
     val latestCallActive by rememberUpdatedState(callActive)
     val latestMicEnabled by rememberUpdatedState(micEnabled)
+    val latestOnCallInitiative by rememberUpdatedState(onCallInitiative)
+    var pendingRecognitionStart by remember { mutableStateOf(false) }
     val speechRecognizer = remember(context) {
         // Prefer the device's configured recognition service (often has the user's language pack).
         // Use on-device recognition only when no default recognition service is available.
@@ -1146,15 +1163,15 @@ private fun ChatPage(
     }
     DisposableEffect(speechRecognizer) {
         speechRecognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) { isListening = true; speechStatus = "正在聆听…" }
-            override fun onBeginningOfSpeech() { isListening = true }
+            override fun onReadyForSpeech(params: Bundle?) { isListening = true; speechStatus = "麦克风已启动，正在聆听…" }
+            override fun onBeginningOfSpeech() { isListening = true; speechStatus = "已检测到你的声音，正在识别…" }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() { isListening = false }
+            override fun onEndOfSpeech() { isListening = false; if (latestCallActive) speechStatus = "已收到语音，正在处理…" }
             override fun onError(error: Int) {
                 isListening = false
                 val reason = when (error) {
-                    SpeechRecognizer.ERROR_AUDIO -> "麦克风音频采集失败"
+                    SpeechRecognizer.ERROR_AUDIO -> "麦克风音频采集失败，请检查系统麦克风隐私开关或其他应用占用"
                     SpeechRecognizer.ERROR_CLIENT -> "语音识别服务被中断"
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "麦克风权限不足"
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "语音识别网络不可用"
@@ -1166,6 +1183,10 @@ private fun ChatPage(
                 }
                 if (latestCallActive) {
                     speechStatus = reason
+                    if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        speechStatus = "系统未授予录音权限，正在请求麦克风权限…"
+                        micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
                     if (latestMicEnabled && error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                         speechScope.launch {
                             delay(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1200L else 700L)
@@ -1207,12 +1228,24 @@ private fun ChatPage(
         onDispose { runCatching { speechRecognizer.cancel() }; speechRecognizer.destroy() }
     }
     val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) Toast.makeText(context, "麦克风已授权，请再次按住说话", Toast.LENGTH_SHORT).show()
-        else Toast.makeText(context, "需要麦克风权限才能语音输入", Toast.LENGTH_SHORT).show()
+        if (granted) {
+            Toast.makeText(context, "麦克风录音权限已开启", Toast.LENGTH_SHORT).show()
+            if (callActive) pendingRecognitionStart = true
+        } else {
+            speechStatus = "麦克风权限被拒绝，请到系统设置中允许 HyperCat AI 使用麦克风"
+            Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+        }
     }
     fun startInAppRecognition() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            speechStatus = "尚未获得麦克风录音权限，正在请求授权…"
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO); return
+        }
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        if (audioManager.isMicrophoneMute) {
+            speechStatus = "系统麦克风隐私开关当前为关闭状态，请在快捷设置中开启麦克风访问"
+            isListening = false
+            return
         }
         if (!SpeechRecognizer.isRecognitionAvailable(context) &&
             !(Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context))) {
@@ -1250,7 +1283,15 @@ private fun ChatPage(
         if (granted) {
             callActive = true; micEnabled = true; videoEnabled = false
             showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
-        } else Toast.makeText(context, "AI 通话需要麦克风权限", Toast.LENGTH_LONG).show()
+            latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+        } else Toast.makeText(context, "AI 通话需要麦克风录音权限，请在系统设置中允许", Toast.LENGTH_LONG).show()
+    }
+    LaunchedEffect(pendingRecognitionStart) {
+        if (pendingRecognitionStart) {
+            pendingRecognitionStart = false
+            delay(350L)
+            if (callActive && micEnabled) startInAppRecognition()
+        }
     }
     fun stopInAppRecognition() { if (isListening) runCatching { speechRecognizer.stopListening() } }
     var cameraError by remember { mutableStateOf<String?>(null) }
@@ -1265,6 +1306,7 @@ private fun ChatPage(
         } else {
             callActive = true; micEnabled = true; videoEnabled = false
             showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
+            latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
         }
     }
     fun toggleVideo() {
@@ -1296,6 +1338,19 @@ private fun ChatPage(
                         if (result == TextToSpeech.ERROR) { isSpeaking = false; speechStatus = "通话语音播报失败，请检查系统 TTS 语音数据" }
                     }
                 }
+            }
+        }
+    }
+    LaunchedEffect(callActive, messages.size, isThinking, isSpeaking, isListening) {
+        if (callActive && !isThinking && !isSpeaking && !isListening) {
+            delay(Random.nextLong(22000L, 42000L))
+            if (callActive && !isThinking && !isSpeaking && !isListening) {
+                val followUps = listOf(
+                    "通话中用户暂时没有说话。请结合刚才的聊天内容，自然地问一个轻松、相关的问题，避免催促。",
+                    "用户可能正在思考。请用一句简短、友好的话自然延续刚才的话题，不要重复之前的开场白。",
+                    "请像真实语音伙伴一样主动补充一个与当前话题相关的小建议或有趣信息，控制在两句话以内。"
+                )
+                latestOnCallInitiative(followUps.random())
             }
         }
     }
@@ -1560,16 +1615,18 @@ private fun ChatPage(
         Column(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 10.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
-                BasicTextField(value = draft, onValueChange = onDraft,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp, max = 144.dp).padding(horizontal = 15.dp, vertical = 14.dp),
-                    textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
-                    decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$petName…", color = Muted, fontSize = 14.sp); inner() })
+                Row(Modifier.fillMaxWidth().padding(start = 15.dp, end = 8.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    BasicTextField(value = draft, onValueChange = onDraft,
+                        modifier = Modifier.weight(1f).heightIn(min = 42.dp, max = 132.dp).padding(vertical = 10.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
+                        decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$petName…", color = Muted, fontSize = 14.sp); inner() })
+                    Surface(Modifier.size(40.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted) }
+                    }
+                }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 Surface(Modifier.size(40.dp).clickable { cameraCapture.launch(null) }, color = Panel2, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PhotoCamera, contentDescription = "拍照", tint = Cyan) } }
-                Surface(Modifier.size(40.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
-                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted) }
-                }
                 Surface(Modifier.clip(RoundedCornerShape(14.dp)).clickable { startUnifiedCall() }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Call, contentDescription = "AI 通话", tint = Cyan, modifier = Modifier.size(17.dp))
@@ -1586,7 +1643,7 @@ private fun ChatPage(
                     }
                 }
             }
-            if (isListening) Text("正在聆听…松开麦克风结束并识别", color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
+            if (isListening) Text("通话/语音输入：麦克风正在采集声音", color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
         }
     }
         AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding(),
