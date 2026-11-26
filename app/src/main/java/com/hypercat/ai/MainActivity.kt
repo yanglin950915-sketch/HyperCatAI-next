@@ -74,6 +74,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -657,7 +658,7 @@ private fun ChatPage(
     onSettingsDrawerShown: () -> Unit,
     settingsContent: @Composable (Modifier) -> Unit
 ) {
-    val context = LocalContext.current
+    val context: Context = LocalContext.current
     var drawerSection by remember { mutableStateOf("recent") }
     var selectedFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var selectedPhotos by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
