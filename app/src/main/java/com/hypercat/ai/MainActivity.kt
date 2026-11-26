@@ -269,7 +269,7 @@ private fun requestSpeechAudio(endpoint: String, apiKey: String, model: String, 
                 .replace(Regex("<[^>]*>"), " ")
                 .replace(Regex("\\s+"), " ")
                 .trim()
-                .take(280)
+                .take(1600)
             val hostPath = runCatching { URL(apiUrl).let { "${it.host}${it.path}" } }.getOrDefault("未知地址")
             val diagnostics = buildString {
                 append("请求：").append(hostPath)
@@ -337,10 +337,12 @@ private fun safeTtsDiagnostic(error: Exception, profile: ModelProfile, model: St
     val raw = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
     val redacted = (if (profile.apiKey.isNotBlank()) raw.replace(profile.apiKey, "[API Key 已隐藏]") else raw)
         .replace(Regex("(?i)(api[-_ ]?key|authorization)(\\s*[:=]\\s*)[^\\s,;]+"), "$1$2[已隐藏]")
+    val safeEndpoint = (if (profile.apiKey.isNotBlank()) profile.endpoint.replace(profile.apiKey, "[API Key 已隐藏]") else profile.endpoint)
+        .replace(Regex("(?i)([?&](?:api[-_]?key|token|access_token)=)[^&]+"), "$1[已隐藏]")
     return buildString {
         appendLine("模型档案：").appendLine(profile.name)
         appendLine("TTS 模型：").appendLine(model)
-        appendLine("配置的 API Base URL：").appendLine(profile.endpoint)
+        appendLine("配置的 API Base URL：").appendLine(safeEndpoint)
         appendLine()
         append(redacted)
     }
