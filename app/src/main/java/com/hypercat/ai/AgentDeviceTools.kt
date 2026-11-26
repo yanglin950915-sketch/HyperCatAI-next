@@ -152,7 +152,7 @@ object AgentDeviceTools {
             }
             val live = weather.optJSONArray("lives")?.optJSONObject(0)
             val forecast = weather.optJSONArray("forecasts")?.optJSONObject(0)
-            if (live == null && forecast == null) return@withContext "天气服务暂未返回$fullPlace的天气数据，请稍后重试。"
+            if (live == null && forecast == null) return@withContext "天气服务暂未返回${fullPlace}的天气数据，请稍后重试。"
 
             val result = StringBuilder("天气区域：$fullPlace（行政区划编码 $adcode）")
             if (live != null) {
