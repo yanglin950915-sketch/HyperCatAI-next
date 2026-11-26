@@ -1583,18 +1583,6 @@ private fun ChatPage(
             Spacer(Modifier.width(6.dp))
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { showClear = true }) {
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Delete, contentDescription = "清理当前对话", tint = MainText, modifier = Modifier.size(20.dp)) }
-        if (selectedMessageIndices.isNotEmpty()) {
-            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("已选 ${selectedMessageIndices.size} 条", color = Cyan, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                TextButton(onClick = { selectedMessageIndices = messages.indices.toSet() }) { Text("全选") }
-                TextButton(onClick = {
-                    val chosen = selectedMessageIndices.sorted().mapNotNull { messages.getOrNull(it) }
-                    shareChatText(context, formatChatForSharing(currentSessionTitle, chosen), "分享所选消息")
-                    selectedMessageIndices = emptySet()
-                }) { Text("分享") }
-                TextButton(onClick = { selectedMessageIndices = emptySet() }) { Text("取消") }
-            }
-        }
             }
         }
         Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1639,6 +1627,14 @@ private fun ChatPage(
                         }
                     }
                 }
+            }
+        }
+        if (selectedMessageIndices.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("已选 ${selectedMessageIndices.size} 条", color = Cyan, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { selectedMessageIndices = messages.indices.toSet() }) { Text("全选") }
+                TextButton(onClick = { val chosen = selectedMessageIndices.sorted().mapNotNull { messages.getOrNull(it) }; shareChatText(context, formatChatForSharing(currentSessionTitle, chosen), "分享所选消息"); selectedMessageIndices = emptySet() }) { Text("分享") }
+                TextButton(onClick = { selectedMessageIndices = emptySet() }) { Text("取消") }
             }
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
