@@ -2,6 +2,7 @@ package com.hypercat.ai
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.media.AudioAttributes
 import android.widget.Toast
 import android.Manifest
 import android.content.pm.PackageManager
@@ -265,6 +266,13 @@ private suspend fun playSpeechAudio(context: Context, bytes: ByteArray) {
     try {
         suspendCancellableCoroutine<Unit> { continuation ->
             val player = MediaPlayer()
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            player.setVolume(1.0f, 1.0f)
             fun release() { runCatching { player.reset() }; runCatching { player.release() } }
             player.setOnPreparedListener { media -> runCatching { media.start() }.onFailure {
                 release(); if (continuation.isActive) continuation.resumeWithException(it)
@@ -1010,7 +1018,10 @@ private fun ChatPage(
                         if (profile != null) {
                             isSpeaking = true; speechStatus = "正在请求云端语音…"
                             try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "云端语音播报完成" }
-                            catch (error: Exception) { speechStatus = "云端 TTS 失败：${error.message ?: "请检查模型、接口和密钥"}" }
+                            catch (error: Exception) {
+                                                                speechStatus = "云端 TTS 失败：${error.message ?: "请检查模型、接口和密钥"}"
+                                                                Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+                                                            }
                             finally { isSpeaking = false }
                         }
                     } else {
@@ -1195,7 +1206,10 @@ private fun ChatPage(
                                                         cloudSpeechJob = speechScope.launch {
                                                             isSpeaking = true; speechStatus = "正在请求云端语音…"
                                                             try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "云端语音播报完成" }
-                                                            catch (error: Exception) { speechStatus = "云端 TTS 失败：${error.message ?: "请检查模型、接口和密钥"}" }
+                                                            catch (error: Exception) {
+                                                                speechStatus = "云端 TTS 失败：${error.message ?: "请检查模型、接口和密钥"}"
+                                                                Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+                                                            }
                                                             finally { isSpeaking = false }
                                                         }
                                                     }
