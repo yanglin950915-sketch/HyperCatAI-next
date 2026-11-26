@@ -1742,6 +1742,8 @@ private fun LiveCameraPreview(isActive: Boolean, onError: (String) -> Unit, onFr
     val executor = remember { Executors.newSingleThreadExecutor() }
     DisposableEffect(previewView, lifecycleOwner) {
         var boundProvider: ProcessCameraProvider? = null
+        var boundPreview: Preview? = null
+        var boundAnalysis: ImageAnalysis? = null
         val providerFuture = ProcessCameraProvider.getInstance(context)
         providerFuture.addListener({
             try {
@@ -1749,6 +1751,8 @@ private fun LiveCameraPreview(isActive: Boolean, onError: (String) -> Unit, onFr
                 boundProvider = provider
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
                 val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
+                boundPreview = preview
+                boundAnalysis = analysis
                 var lastFrameAt = 0L
                 analysis.setAnalyzer(executor) { imageProxy ->
                     try {
@@ -1774,7 +1778,15 @@ private fun LiveCameraPreview(isActive: Boolean, onError: (String) -> Unit, onFr
                 mainHandler.post { latestOnError("摄像头启动失败：${error.message ?: error.javaClass.simpleName}。请检查系统相机权限并关闭占用摄像头的应用。") }
             }
         }, ContextCompat.getMainExecutor(context))
-        onDispose { runCatching { boundProvider?.unbind(preview, analysis) }; executor.shutdown() }
+        onDispose {
+            runCatching {
+                val provider = boundProvider
+                val preview = boundPreview
+                val analysis = boundAnalysis
+                if (provider != null && preview != null && analysis != null) provider.unbind(preview, analysis)
+            }
+            executor.shutdown()
+        }
     }
     AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 }
