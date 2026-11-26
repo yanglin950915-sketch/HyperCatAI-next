@@ -20,8 +20,8 @@ android {
         applicationId = "com.hypercat.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 30
-        versionName = "0.9.11"
+        versionCode = 31
+        versionName = "0.9.12"
     }
     signingConfigs {
         create("stable") {
