@@ -192,17 +192,33 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
 
 
 private fun requestSpeechAudio(endpoint: String, apiKey: String, model: String, voice: String, input: String, speed: Float): ByteArray {
-    val rawBase = endpoint.trim().trimEnd('/')
-    val base = rawBase.removeSuffix("/chat/completions").removeSuffix("/audio/speech")
-    require(base.startsWith("https://") || base.startsWith("http://")) { "TTS 服务地址必须是有效的 HTTP/HTTPS 地址" }
+    val rawBase = endpoint.trim()
+    require(rawBase.isNotBlank()) { "TTS 服务地址不能为空" }
+    val parsedBase = runCatching { URL(rawBase) }.getOrElse {
+        throw IllegalArgumentException("TTS 服务地址格式无效，请填写 https:// 开头的 API 基础地址", it)
+    }
+    require(parsedBase.protocol.equals("https", true) || parsedBase.protocol.equals("http", true)) {
+        "TTS 服务地址必须是有效的 HTTP/HTTPS 地址"
+    }
     val isXiaomiMiMo = model.trim().startsWith("mimo-v2.5-tts", ignoreCase = true)
+    val endpointPath = parsedBase.path.trimEnd('/')
+        .removeSuffix("/chat/completions")
+        .removeSuffix("/audio/speech")
     val apiUrl = if (isXiaomiMiMo) {
-        if (base.endsWith("/v1")) "$base/chat/completions" else "$base/v1/chat/completions"
+        // Xiaomi's official host has one canonical endpoint. Ignore accidental
+        // path suffixes in the saved profile so /v1 is never duplicated.
+        if (parsedBase.host.equals("api.xiaomimimo.com", ignoreCase = true)) {
+            "https://api.xiaomimimo.com/v1/chat/completions"
+        } else {
+            val versionedPath = if (endpointPath.endsWith("/v1")) endpointPath else "${endpointPath}/v1"
+            URL(parsedBase.protocol, parsedBase.host, parsedBase.port, "${versionedPath}/chat/completions").toString()
+        }
     } else {
+        val baseUrl = URL(parsedBase.protocol, parsedBase.host, parsedBase.port, endpointPath).toString().trimEnd('/')
         when {
-            base.endsWith("/audio/speech") -> base
-            base.endsWith("/v1") -> "$base/audio/speech"
-            else -> "$base/v1/audio/speech"
+            parsedBase.path.endsWith("/audio/speech") -> URL(parsedBase.protocol, parsedBase.host, parsedBase.port, parsedBase.path).toString()
+            endpointPath.endsWith("/v1") -> "$baseUrl/audio/speech"
+            else -> "$baseUrl/v1/audio/speech"
         }
     }
     val payload = if (isXiaomiMiMo) {
@@ -227,7 +243,8 @@ private fun requestSpeechAudio(endpoint: String, apiKey: String, model: String, 
     }
     val connection = URL(apiUrl).openConnection() as HttpURLConnection
     try {
-        connection.requestMethod = "POST"; connection.connectTimeout = 15000; connection.readTimeout = 90000; connection.doOutput = true
+        connection.requestMethod = "POST"; connection.connectTimeout = 20000; connection.readTimeout = 90000; connection.doOutput = true
+        connection.setRequestProperty("Connection", "close")
         connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
         connection.setRequestProperty("Accept", if (isXiaomiMiMo) "application/json" else "audio/mpeg, audio/*")
         if (apiKey.isNotBlank()) {
@@ -238,8 +255,27 @@ private fun requestSpeechAudio(endpoint: String, apiKey: String, model: String, 
         val code = connection.responseCode
         if (code !in 200..299) {
             val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            val message = runCatching { JSONObject(detail).optJSONObject("error")?.optString("message") }.getOrNull()
-            throw IllegalStateException("云端 TTS 请求失败（HTTP $code）${message?.takeIf { it.isNotBlank() } ?: detail.take(240)}")
+            val contentType = connection.getHeaderField("Content-Type").orEmpty()
+            val server = connection.getHeaderField("Server").orEmpty()
+            val message = runCatching {
+                val json = JSONObject(detail)
+                json.optJSONObject("error")?.optString("message")
+                    ?.takeIf { it.isNotBlank() && it != "null" }
+                    ?: json.optString("message").takeIf { it.isNotBlank() && it != "null" }
+            }.getOrNull()
+            val safeDetail = message ?: detail
+                .replace(Regex("<[^>]*>"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+                .take(280)
+            val hostPath = runCatching { URL(apiUrl).let { "${it.host}${it.path}" } }.getOrDefault("未知地址")
+            val diagnostics = buildString {
+                append("请求：").append(hostPath)
+                if (contentType.isNotBlank()) append("；类型：").append(contentType.take(80))
+                if (server.isNotBlank()) append("；服务器：").append(server.take(60))
+                if (safeDetail.isNotBlank()) append("；详情：").append(safeDetail)
+            }
+            throw IllegalStateException("云端 TTS 请求失败（HTTP $code）：$diagnostics")
         }
         val responseBytes = connection.inputStream.use { it.readBytes() }
         if (responseBytes.isEmpty()) throw IllegalStateException("TTS 服务返回了空音频")
