@@ -668,7 +668,7 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
 
 @Composable
 private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: androidx.compose.ui.platform.ClipboardManager) {
-    val fence = String.fromCharCode(96).repeat(3)
+    val fence = "```"
     val codePattern = Regex("(?s)" + fence + "([^\\n]*)\\n(.*?)" + fence)
     val matches = codePattern.findAll(text).toList()
     if (matches.isEmpty()) {
