@@ -1174,7 +1174,7 @@ private fun ChatPage(
     var showSearch by remember { mutableStateOf(false) }
     var showRecent by remember { mutableStateOf(false) }
     var showClear by remember { mutableStateOf(false) }
-    var selectedMessageForShare by remember { mutableStateOf<ChatLine?>(null) }
+    var selectedMessageIndices by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
     var callActive by remember { mutableStateOf(false) }
@@ -1629,6 +1629,14 @@ private fun ChatPage(
                 }
             }
         }
+        if (selectedMessageIndices.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("已选 ${selectedMessageIndices.size} 条", color = Cyan, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { selectedMessageIndices = messages.indices.toSet() }) { Text("全选") }
+                TextButton(onClick = { val chosen = selectedMessageIndices.sorted().mapNotNull { messages.getOrNull(it) }; shareChatText(context, formatChatForSharing(currentSessionTitle, chosen), "分享所选消息"); selectedMessageIndices = emptySet() }) { Text("分享") }
+                TextButton(onClick = { selectedMessageIndices = emptySet() }) { Text("取消") }
+            }
+        }
         LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1636,14 +1644,15 @@ private fun ChatPage(
                     Text("输入消息，或使用语音与 Agent 交流。", color = Muted, fontSize = 13.sp)
                 }
             }
-            items(messages.filter { searchQuery.isBlank() || it.text.contains(searchQuery, ignoreCase = true) }) { line ->
+            items(messages.mapIndexed { index, message -> index to message }.filter { searchQuery.isBlank() || it.second.text.contains(searchQuery, ignoreCase = true) }) { (messageIndex, line) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
                     if (!line.fromUser) {
                         Box(Modifier.padding(end = 8.dp).size(34.dp).clip(RoundedCornerShape(11.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8C7BFF)))), contentAlignment = Alignment.Center) {
                             Text(petName.take(1), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                    Surface(modifier = (if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = {}, onLongClick = { selectedMessageForShare = line }), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
+                    if (selectedMessageIndices.isNotEmpty()) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
+                    Surface(modifier = (if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices) Cyan else GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
                             if (line.reasoning.isNotBlank() && !line.fromUser) {
                                 var reasoningExpanded by remember(line) { mutableStateOf(true) }
@@ -1929,21 +1938,6 @@ private fun ChatPage(
         },
         confirmButton = { TextButton(onClick = { if (noteDraft.isNotBlank()) onSaveNote(noteDraft.trim()); noteDraft = ""; showRemember = false }) { Text("保存记忆") } },
         dismissButton = { TextButton(onClick = { showRemember = false }) { Text("完成") } }
-    )
-    if (selectedMessageForShare != null) AlertDialog(
-        onDismissRequest = { selectedMessageForShare = null },
-        title = { Text("消息操作") },
-        text = { Text("分享这条${if (selectedMessageForShare!!.fromUser) "提问" else "回复"}，或同时分享对应问答。", color = Muted) },
-        confirmButton = {
-            TextButton(onClick = {
-                val selected = selectedMessageForShare!!
-                val index = messages.indexOf(selected)
-                val pair = if (!selected.fromUser && index > 0 && messages[index - 1].fromUser) listOf(messages[index - 1], selected) else listOf(selected)
-                shareChatText(context, formatChatForSharing(currentSessionTitle, pair), "分享消息")
-                selectedMessageForShare = null
-            }) { Text("分享") }
-        },
-        dismissButton = { TextButton(onClick = { selectedMessageForShare = null }) { Text("取消") } }
     )
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("清理当前对话") },
         text = { Text("确定清空当前页面的全部消息吗？此操作不会删除最近对话记录。", color = Muted) },
