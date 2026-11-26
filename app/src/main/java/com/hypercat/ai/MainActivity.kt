@@ -713,7 +713,7 @@ private fun HyperCatApp() {
                                 isThinking = true
                                 try {
                                     val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                    messages.add(ChatLine(reply.text, false, reasoning = reply.reasoning)); petMood = inferMood(reply.text)
+                                    appendAgentReply(context, messages, reply.text, reply.reasoning); petMood = inferMood(reply.text)
                                 } catch (error: Exception) {
                                     appendAgentReply(context, messages, "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}")
                                 } finally { isThinking = false }
