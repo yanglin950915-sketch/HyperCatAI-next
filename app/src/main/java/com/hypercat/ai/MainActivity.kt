@@ -1471,10 +1471,7 @@ private fun ChatPage(
                             catch (cancelled: CancellationException) {
                                 speechStatus = "已停止朗读"
                                 throw cancelled
-                            } catch (cancelled: CancellationException) {
-                                                                speechStatus = "已停止朗读"
-                                                                throw cancelled
-                                                            } catch (error: Exception) {
+                            } catch (error: Exception) {
                                 speechStatus = "云端 TTS 失败，点击查看完整诊断"
                                 ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
                             }
@@ -1713,8 +1710,11 @@ private fun ChatPage(
                                                         cloudSpeechJob = speechScope.launch {
                                                             isSpeaking = true; speechStatus = "正在请求云端语音…"
                                                             try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "云端语音播报完成" }
-                                                            catch (error: Exception) {
-                                speechStatus = "云端 TTS 失败，点击查看完整诊断"
+                                                            catch (cancelled: CancellationException) {
+                                                                speechStatus = "已停止朗读"
+                                                                throw cancelled
+                                                            } catch (error: Exception) {
+                                                                speechStatus = "云端 TTS 失败，点击查看完整诊断"
                                 ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
                             }
                                                             finally { isSpeaking = false }
