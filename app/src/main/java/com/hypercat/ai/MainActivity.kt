@@ -1150,6 +1150,7 @@ private fun ChatPage(
     val latestMicEnabled by rememberUpdatedState(micEnabled)
     val latestOnCallInitiative by rememberUpdatedState(onCallInitiative)
     var pendingRecognitionStart by remember { mutableStateOf(false) }
+    var pendingMicPermissionRequest by remember { mutableStateOf(false) }
     val speechRecognizer = remember(context) {
         // Prefer the device's configured recognition service (often has the user's language pack).
         // Use on-device recognition only when no default recognition service is available.
@@ -1185,7 +1186,7 @@ private fun ChatPage(
                     speechStatus = reason
                     if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                         speechStatus = "系统未授予录音权限，正在请求麦克风权限…"
-                        micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        pendingMicPermissionRequest = true
                     }
                     if (latestMicEnabled && error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                         speechScope.launch {
@@ -1234,6 +1235,12 @@ private fun ChatPage(
         } else {
             speechStatus = "麦克风权限被拒绝，请到系统设置中允许 HyperCat AI 使用麦克风"
             Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+        }
+    }
+    LaunchedEffect(pendingMicPermissionRequest) {
+        if (pendingMicPermissionRequest) {
+            pendingMicPermissionRequest = false
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
     fun startInAppRecognition() {
