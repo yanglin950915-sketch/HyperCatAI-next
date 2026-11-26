@@ -84,11 +84,11 @@ object AgentDeviceTools {
                             manager.getCurrentLocation(provider, null, context.mainExecutor) { result ->
                                 if (continuation.isActive) continuation.resume(result)
                             }
-                    } catch (_: SecurityException) {
-                        if (continuation.isActive) continuation.resume(null)
-                    } catch (_: Exception) {
-                        if (continuation.isActive) continuation.resume(null)
-                    }
+                        } catch (_: SecurityException) {
+                            if (continuation.isActive) continuation.resume(null)
+                        } catch (_: Exception) {
+                            if (continuation.isActive) continuation.resume(null)
+                        }
                     }
                 }
             } else requestSingleLocation(manager, provider)
