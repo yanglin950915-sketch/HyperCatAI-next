@@ -2018,7 +2018,9 @@ private fun SettingsPage(
     var mcpEndpoint by remember { mutableStateOf("") }
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
+    var weatherProvider by remember { mutableStateOf(prefs.getString("weather_provider", "openmeteo") ?: "openmeteo") }
     var amapWeatherKey by remember { mutableStateOf(prefs.getString("amap_weather_key", "") ?: "") }
+    var caiyunWeatherToken by remember { mutableStateOf(prefs.getString("caiyun_weather_token", "") ?: "") }
     val pluginImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("无法读取插件清单")
@@ -2056,7 +2058,9 @@ private fun SettingsPage(
     }
     LaunchedEffect(Unit) {
         pluginEnabled = prefs.getBoolean("plugins_enabled", false)
+        weatherProvider = prefs.getString("weather_provider", "openmeteo") ?: "openmeteo"
         amapWeatherKey = prefs.getString("amap_weather_key", "") ?: ""
+        caiyunWeatherToken = prefs.getString("caiyun_weather_token", "") ?: ""
         runCatching {
             val array = org.json.JSONArray(prefs.getString("third_party_plugins", "[]") ?: "[]")
             for (i in 0 until array.length()) {
@@ -2169,16 +2173,37 @@ private fun SettingsPage(
             }
         }
         Spacer(Modifier.height(22.dp))
-        Text("天气服务（中国大陆）", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        Text("使用高德地图行政区划编码识别城市/区县，再查询对应区域的实时天气和未来 4 天预报。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+        Text("天气服务", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text("三种天气服务共存，独立保存配置；选择后 Agent 会使用对应服务查询天气。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
         Surface(color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                ConfigField("高德地图 Web 服务 API Key", amapWeatherKey, {
-                    amapWeatherKey = it
-                    prefs.edit().putString("amap_weather_key", it.trim()).apply()
-                }, "粘贴高德开放平台创建的 Key", secret = true)
-                Text("申请入口：https://console.amap.com/dev/key/app", color = Cyan, fontSize = 10.sp)
-                Text("创建应用并添加“Web 服务”类型 Key。Key 仅保存在本机应用配置中，不要提交到 GitHub。", color = Muted, fontSize = 10.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("openmeteo" to "原有天气", "amap" to "高德地图", "caiyun" to "彩云天气").forEach { (id, label) ->
+                        FilterChip(selected = weatherProvider == id, onClick = {
+                            weatherProvider = id
+                            prefs.edit().putString("weather_provider", id).apply()
+                        }, modifier = Modifier.weight(1f), label = { Text(label, fontSize = 11.sp, maxLines = 1) })
+                    }
+                }
+                when (weatherProvider) {
+                    "amap" -> {
+                        ConfigField("高德地图 Web 服务 API Key", amapWeatherKey, {
+                            amapWeatherKey = it
+                            prefs.edit().putString("amap_weather_key", it.trim()).apply()
+                        }, "粘贴高德开放平台创建的 Key", secret = true)
+                        Text("申请入口：https://console.amap.com/dev/key/app", color = Cyan, fontSize = 10.sp)
+                        Text("需要创建“Web 服务”类型 Key。仅保存在本机。", color = Muted, fontSize = 10.sp)
+                    }
+                    "caiyun" -> {
+                        ConfigField("彩云天气 Token", caiyunWeatherToken, {
+                            caiyunWeatherToken = it
+                            prefs.edit().putString("caiyun_weather_token", it.trim()).apply()
+                        }, "粘贴彩云天气 API Token", secret = true)
+                        Text("申请入口：https://platform.caiyunapp.com/", color = Cyan, fontSize = 10.sp)
+                        Text("使用彩云天气 v2.6 综合接口；分钟级降水、预警等数据是否返回取决于 Token 套餐权限。Token 仅保存在本机。", color = Muted, fontSize = 10.sp)
+                    }
+                    else -> Text("原有 Open-Meteo 服务，无需 API Key。保留原有定位天气查询能力。", color = Muted, fontSize = 11.sp)
+                }
             }
         }
         Spacer(Modifier.height(18.dp))
