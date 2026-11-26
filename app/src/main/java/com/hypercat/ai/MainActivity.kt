@@ -110,10 +110,14 @@ class MainActivity : ComponentActivity() {
 
 private enum class Page { HOME, CHAT, SETTINGS }
 
-private fun requestModelReply(context: Context, endpoint: String, model: String, apiKey: String, history: List<ChatLine>): String {
+private data class ModelReply(val text: String, val reasoning: String = "")
+
+private fun requestModelReply(context: Context, endpoint: String, model: String, apiKey: String, history: List<ChatLine>): ModelReply {
     val base = endpoint.trim().trimEnd('/')
     val apiUrl = when { base.endsWith("/chat/completions") -> base; base.endsWith("/v1") -> "$base/chat/completions"; else -> "$base/v1/chat/completions" }
     val requestMessages = org.json.JSONArray()
+    requestMessages.put(JSONObject().put("role", "system").put("content",
+        "请根据问题复杂度，在最终答复前提供简明、可核验的“思路说明”：用2-4条概述采用的方法、关键依据或排查步骤，不输出隐式思维链、私人内心独白或冗长逐字推理；简单问题可简短说明。随后给出清晰结论。代码请使用标准 Markdown 三反引号代码块，并标注语言。"))
     history.forEach { line ->
         if (line.text.isNotBlank() || line.photos.isNotEmpty() || line.imageUris.isNotEmpty()) {
             val role = if (line.fromUser) "user" else "assistant"
@@ -151,11 +155,17 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
         }
         val message = JSONObject(responseText).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message") ?: throw IllegalStateException("模型返回内容格式不正确")
         val value = message.opt("content")
-        return when (value) {
+        var answer = when (value) {
             is String -> value
             is org.json.JSONArray -> (0 until value.length()).mapNotNull { value.optJSONObject(it)?.optString("text") }.filter { it.isNotBlank() }.joinToString("\n")
             else -> "模型已返回，但没有可显示的文字内容。"
         }.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
+        var reasoning = listOf("reasoning_content", "reasoning", "analysis")
+            .firstNotNullOfOrNull { key -> message.optString(key).takeIf { it.isNotBlank() && it != "null" } }.orEmpty()
+        val tagged = Regex("(?s)<思路说明>(.*?)</思路说明>").find(answer)
+        if (reasoning.isBlank() && tagged != null) reasoning = tagged.groupValues[1].trim()
+        if (tagged != null) answer = answer.removeRange(tagged.range).trim()
+        return ModelReply(answer, reasoning)
     } finally { connection.disconnect() }
 }
 
@@ -166,7 +176,7 @@ private fun inferMood(reply: String): String = when {
     listOf("思考", "考虑", "分析", "让我想想").any { reply.contains(it) } -> "thinking"
     else -> "normal"
 }
-private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList())
+private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "")
 private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String)
 private data class SkillProfile(val name: String, val description: String, val instructions: String)
 private data class ThirdPartyPlugin(val name: String, val description: String, val endpoint: String, val method: String, val apiKey: String, val enabled: Boolean = false)
@@ -338,7 +348,7 @@ private fun HyperCatApp() {
                                     isThinking = true
                                     try {
                                         val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory) }
-                                        messages.add(ChatLine(reply, false)); petMood = inferMood(reply)
+                                        messages.add(ChatLine(reply.text, false, reasoning = reply.reasoning)); petMood = inferMood(reply.text)
                                     } catch (error: Exception) {
                                         messages.add(ChatLine("模型请求未成功：${error.message ?: "网络或服务异常"}", false))
                                     } finally { isThinking = false }
@@ -655,6 +665,43 @@ private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
     }
 }
 
+
+@Composable
+private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: androidx.compose.ui.platform.ClipboardManager) {
+    val fence = String.fromCharCode(96).repeat(3)
+    val codePattern = Regex("(?s)" + fence + "([^\\n]*)\\n(.*?)" + fence)
+    val matches = codePattern.findAll(text).toList()
+    if (matches.isEmpty()) {
+        Text(text, color = textColor, fontSize = 14.sp, lineHeight = 20.sp)
+        return
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        var cursor = 0
+        matches.forEach { match ->
+            val prose = text.substring(cursor, match.range.first).trim()
+            if (prose.isNotBlank()) Text(prose, color = textColor, fontSize = 14.sp, lineHeight = 20.sp)
+            val language = match.groupValues[1].trim().ifBlank { "CODE" }
+            val code = match.groupValues[2].trimEnd()
+            Surface(color = if (appDarkState) Color(0xFF090D12) else Color(0xFFF0F3F7), shape = RoundedCornerShape(12.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(language.uppercase(), color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { clipboardManager.setText(AnnotatedString(code)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                            Icon(Icons.Outlined.ContentCopy, contentDescription = "复制代码", tint = Cyan, modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("复制代码", color = Cyan, fontSize = 10.sp)
+                        }
+                    }
+                    Text(code, color = if (appDarkState) Color(0xFFE2EAF2) else Color(0xFF1E293B), fontSize = 12.sp, lineHeight = 17.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                }
+            }
+            cursor = match.range.last + 1
+        }
+        val tail = text.substring(cursor).trim()
+        if (tail.isNotBlank()) Text(tail, color = textColor, fontSize = 14.sp, lineHeight = 20.sp)
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChatPage(
@@ -796,8 +843,23 @@ private fun ChatPage(
                     }
                     Surface(modifier = if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+                            if (line.reasoning.isNotBlank() && !line.fromUser) {
+                                var reasoningExpanded by remember(line) { mutableStateOf(true) }
+                                Surface(color = if (appDarkState) Color(0xFF24231F) else Color(0xFFFFF7E8), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(10.dp)) {
+                                        Row(Modifier.fillMaxWidth().clickable { reasoningExpanded = !reasoningExpanded }, verticalAlignment = Alignment.CenterVertically) {
+                                            Text("✧ 思路说明", color = if (appDarkState) Color(0xFFE5C98D) else Color(0xFF8A6425), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                            Text(if (reasoningExpanded) "收起⌃" else "展开⌄", color = Muted, fontSize = 10.sp)
+                                        }
+                                        AnimatedVisibility(visible = reasoningExpanded) {
+                                            Text(line.reasoning, color = if (appDarkState) Color(0xFFD8D1C3) else Color(0xFF5C503D), fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(9.dp))
+                            }
                             if (line.text.isNotBlank()) {
-                                Text(line.text, color = if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), fontSize = 14.sp, lineHeight = 20.sp)
+                                MarkdownMessage(line.text, if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), clipboardManager)
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                                     val actionTint = if (line.fromUser) Color.White.copy(alpha=.82f) else Cyan
                                     TextButton(onClick = { clipboardManager.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
