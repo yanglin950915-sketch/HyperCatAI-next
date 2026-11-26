@@ -3,6 +3,16 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val signingStoreFile = providers.environmentVariable("HYPERCAT_KEYSTORE_PATH").orNull
+    ?: error("Missing HYPERCAT_KEYSTORE_PATH. Configure the stable HyperCat AI signing secrets.")
+val signingStorePassword = providers.environmentVariable("HYPERCAT_KEYSTORE_PASSWORD").orNull
+    ?: error("Missing HYPERCAT_KEYSTORE_PASSWORD.")
+val signingKeyAlias = providers.environmentVariable("HYPERCAT_KEY_ALIAS").orNull
+    ?: error("Missing HYPERCAT_KEY_ALIAS.")
+val signingKeyPassword = providers.environmentVariable("HYPERCAT_KEY_PASSWORD").orNull
+    ?: error("Missing HYPERCAT_KEY_PASSWORD.")
+
 android {
     namespace = "com.hypercat.ai"
     compileSdk = 35
@@ -10,8 +20,24 @@ android {
         applicationId = "com.hypercat.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.6.2"
+        versionCode = 9
+        versionName = "0.6.3"
+    }
+    signingConfigs {
+        create("stable") {
+            storeFile = file(signingStoreFile)
+            storePassword = signingStorePassword
+            keyAlias = signingKeyAlias
+            keyPassword = signingKeyPassword
+        }
+    }
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("stable")
+        }
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("stable")
+        }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
