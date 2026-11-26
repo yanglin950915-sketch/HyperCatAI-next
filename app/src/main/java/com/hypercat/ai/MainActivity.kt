@@ -1506,7 +1506,7 @@ private fun ChatPage(
             )
         }
     ) {
-    Column(modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding(), bottom = if (WindowInsets.isImeVisible) 0.dp else contentPadding.calculateBottomPadding()).padding(horizontal = 14.dp)) {
+    Column(modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding(), bottom = if (WindowInsets.isImeVisible) 0.dp else contentPadding.calculateBottomPadding()).imePadding().padding(horizontal = 14.dp)) {
         Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { drawerScope.launch { drawerState.open() } }) {
@@ -1698,7 +1698,7 @@ private fun ChatPage(
                 Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedFiles = emptyList() })
             }
         }
-        Column(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 10.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
                 Row(Modifier.fillMaxWidth().padding(start = 15.dp, end = 8.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
