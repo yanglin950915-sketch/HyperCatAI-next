@@ -650,7 +650,7 @@ private fun HyperCatApp() {
                                         } finally { isThinking = false }
                                     }
                                 }
-                            }                            }
+                            }
                         }
                     },
                     openSettings = { page = Page.CHAT; openSettingsDrawer = true },
