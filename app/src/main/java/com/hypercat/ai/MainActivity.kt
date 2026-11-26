@@ -1825,7 +1825,7 @@ private fun ChatPage(
                                 Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text("最近对话", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                        Text("选择一条记录，将内容放回输入框继续编辑", color = Muted, fontSize = 11.sp)
+                                        Text("选择一条记录，重新打开完整问答并继续聊天", color = Muted, fontSize = 11.sp)
                                     }
                                     IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭最近对话", tint = Muted) }
                                 }
