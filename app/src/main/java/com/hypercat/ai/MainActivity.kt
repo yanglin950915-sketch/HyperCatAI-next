@@ -335,8 +335,7 @@ private suspend fun speakWithCloudTts(context: Context, profile: ModelProfile, m
 
 private fun safeTtsDiagnostic(error: Exception, profile: ModelProfile, model: String): String {
     val raw = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
-    val redacted = raw
-        .replace(profile.apiKey, if (profile.apiKey.isNotBlank()) "[API Key 已隐藏]" else "")
+    val redacted = (if (profile.apiKey.isNotBlank()) raw.replace(profile.apiKey, "[API Key 已隐藏]") else raw)
         .replace(Regex("(?i)(api[-_ ]?key|authorization)(\\s*[:=]\\s*)[^\\s,;]+"), "$1$2[已隐藏]")
     return buildString {
         appendLine("模型档案：").appendLine(profile.name)
