@@ -116,6 +116,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -546,19 +547,43 @@ private fun versionIsNewer(latest: String, current: String): Boolean {
     return false
 }
 private fun fetchLatestRelease(): ReleaseInfo {
-    val connection = URL("https://api.github.com/repos/yanglin950915-sketch/HyperCatAI-next/releases/latest").openConnection() as HttpURLConnection
+    val apiConnection = (URL("https://api.github.com/repos/yanglin950915-sketch/HyperCatAI-next/releases/latest").openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 10000
+        readTimeout = 10000
+        setRequestProperty("Accept", "application/vnd.github+json")
+        setRequestProperty("User-Agent", "HyperCatAI-Android")
+    }
     try {
-        connection.requestMethod = "GET"
-        connection.connectTimeout = 10000
-        connection.readTimeout = 10000
-        connection.setRequestProperty("Accept", "application/vnd.github+json")
-        connection.setRequestProperty("User-Agent", "HyperCatAI-Android")
-        if (connection.responseCode !in 200..299) throw IllegalStateException("GitHub 暂无可用的正式 Release（HTTP ${connection.responseCode}）")
-        val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-        val tag = json.optString("tag_name", "").ifBlank { json.optString("name", "") }
-        if (tag.isBlank()) throw IllegalStateException("Release 未设置版本标签")
-        return ReleaseInfo(tag, json.optString("body", "").take(1200), json.optString("html_url", "https://github.com/yanglin950915-sketch/HyperCatAI-next/releases"))
-    } finally { connection.disconnect() }
+        val code = apiConnection.responseCode
+        if (code in 200..299) {
+            val json = JSONObject(apiConnection.inputStream.bufferedReader().use { it.readText() })
+            val tag = json.optString("tag_name", "").ifBlank { json.optString("name", "") }
+            if (tag.isBlank()) throw IllegalStateException("GitHub Release 未设置版本标签")
+            return ReleaseInfo(tag, json.optString("body", "").take(1200), json.optString("html_url", "https://github.com/yanglin950915-sketch/HyperCatAI-next/releases"))
+        }
+        if (code != 403 && code != 429) {
+            val detail = apiConnection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty().take(240)
+            throw IllegalStateException("GitHub Releases 请求失败（HTTP $code）${detail.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""}")
+        }
+    } finally { apiConnection.disconnect() }
+
+    // GitHub API may return 403 when its unauthenticated rate limit is exhausted.
+    // The public latest-release page redirects to the current tag and does not use the API quota.
+    val webConnection = (URL("https://github.com/yanglin950915-sketch/HyperCatAI-next/releases/latest").openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 10000
+        readTimeout = 10000
+        instanceFollowRedirects = true
+        setRequestProperty("User-Agent", "HyperCatAI-Android")
+    }
+    try {
+        val code = webConnection.responseCode
+        if (code !in 200..299) throw IllegalStateException("GitHub 更新服务暂不可用（API 限流，网页回退 HTTP $code）")
+        val tag = webConnection.url.path.substringAfterLast('/').takeIf { it.matches(Regex("v?\\d+\\.\\d+\\.\\d+.*")) }
+            ?: throw IllegalStateException("无法从 GitHub 最新 Release 页面识别版本号")
+        return ReleaseInfo(tag, "", "https://github.com/yanglin950915-sketch/HyperCatAI-next/releases/tag/$tag")
+    } finally { webConnection.disconnect() }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1443,7 +1468,10 @@ private fun ChatPage(
                         if (profile != null) {
                             isSpeaking = true; speechStatus = "正在请求云端语音…"
                             try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate, AudioAttributes.USAGE_VOICE_COMMUNICATION); speechStatus = "云端语音播报完成" }
-                            catch (error: Exception) {
+                            catch (cancelled: CancellationException) {
+                                speechStatus = "已停止朗读"
+                                throw cancelled
+                            } catch (error: Exception) {
                                 speechStatus = "云端 TTS 失败，点击查看完整诊断"
                                 ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
                             }
@@ -1487,6 +1515,7 @@ private fun ChatPage(
                             cloudSpeechJob = speechScope.launch {
                                 isSpeaking = true
                                 try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "自动朗读完成" }
+                                catch (cancelled: CancellationException) { speechStatus = "已停止朗读"; throw cancelled }
                                 catch (error: Exception) { speechStatus = "自动朗读失败：${error.message ?: "TTS 服务异常"}"; ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel) }
                                 finally { isSpeaking = false }
                             }
@@ -1681,8 +1710,11 @@ private fun ChatPage(
                                                         cloudSpeechJob = speechScope.launch {
                                                             isSpeaking = true; speechStatus = "正在请求云端语音…"
                                                             try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "云端语音播报完成" }
-                                                            catch (error: Exception) {
-                                speechStatus = "云端 TTS 失败，点击查看完整诊断"
+                                                            catch (cancelled: CancellationException) {
+                                                                speechStatus = "已停止朗读"
+                                                                throw cancelled
+                                                            } catch (error: Exception) {
+                                                                speechStatus = "云端 TTS 失败，点击查看完整诊断"
                                 ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
                             }
                                                             finally { isSpeaking = false }

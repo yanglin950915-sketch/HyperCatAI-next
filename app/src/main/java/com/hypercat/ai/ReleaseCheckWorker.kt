@@ -19,19 +19,9 @@ import java.net.URL
 
 class ReleaseCheckWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
     override fun doWork(): Result {
-        var connection: HttpURLConnection? = null
         return try {
-            val conn = (URL(RELEASE_API).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 10000
-                readTimeout = 10000
-                setRequestProperty("Accept", "application/vnd.github+json")
-                setRequestProperty("User-Agent", "HyperCatAI-Android")
-            }
-            connection = conn
-            if (conn.responseCode !in 200..299) return Result.retry()
-            val release = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
-            val tag = release.optString("tag_name").ifBlank { release.optString("name") }
+            val release = fetchLatestRelease()
+            val tag = release.first
             if (tag.isBlank()) return Result.retry()
             val current = applicationContext.packageManager
                 .getPackageInfo(applicationContext.packageName, 0).versionName ?: "0.0.0"
@@ -59,7 +49,7 @@ class ReleaseCheckWorker(context: Context, params: WorkerParameters) : Worker(co
                 applicationContext, 7301, launchIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            val notes = release.optString("body").replace(Regex("\\s+"), " ").take(110)
+            val notes = release.second.replace(Regex("\\s+"), " ").take(110)
             val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
                 .setContentTitle("HyperCat AI 发现新版本 $tag")
@@ -74,8 +64,46 @@ class ReleaseCheckWorker(context: Context, params: WorkerParameters) : Worker(co
             Result.success()
         } catch (_: Exception) {
             Result.retry()
+        }
+    }
+
+    private fun fetchLatestRelease(): Pair<String, String> {
+        val apiConnection = (URL(RELEASE_API).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 10000
+            readTimeout = 10000
+            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("User-Agent", "HyperCatAI-Android")
+        }
+        try {
+            val code = apiConnection.responseCode
+            if (code in 200..299) {
+                val release = JSONObject(apiConnection.inputStream.bufferedReader().use { it.readText() })
+                val tag = release.optString("tag_name").ifBlank { release.optString("name") }
+                if (tag.isNotBlank()) return tag to release.optString("body")
+                throw IllegalStateException("Release 未设置版本标签")
+            }
+            if (code != 403 && code != 429) throw IllegalStateException("GitHub Releases HTTP $code")
         } finally {
-            connection?.disconnect()
+            apiConnection.disconnect()
+        }
+
+        // Avoid a hard dependency on the unauthenticated GitHub API rate limit.
+        val webConnection = (URL(LATEST_RELEASE_PAGE).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 10000
+            readTimeout = 10000
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "HyperCatAI-Android")
+        }
+        try {
+            if (webConnection.responseCode !in 200..299) throw IllegalStateException("GitHub latest Release page unavailable")
+            val tag = webConnection.url.path.substringAfterLast('/')
+                .takeIf { it.matches(Regex("v?\\d+\\.\\d+\\.\\d+.*")) }
+                ?: throw IllegalStateException("Cannot parse latest Release tag")
+            return tag to ""
+        } finally {
+            webConnection.disconnect()
         }
     }
 
@@ -93,6 +121,7 @@ class ReleaseCheckWorker(context: Context, params: WorkerParameters) : Worker(co
 
     companion object {
         private const val RELEASE_API = "https://api.github.com/repos/yanglin950915-sketch/HyperCatAI-next/releases/latest"
+        private const val LATEST_RELEASE_PAGE = "https://github.com/yanglin950915-sketch/HyperCatAI-next/releases/latest"
         private const val CHANNEL_ID = "hypercat_app_updates"
         private const val NOTIFICATION_ID = 7301
     }
