@@ -1196,6 +1196,16 @@ private fun ChatPage(
                                     speechRecognizer.cancel()
                                     delay(250L)
                                     if (!latestCallActive || !latestMicEnabled || isSpeaking || isThinking) return@launch
+                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                                        speechStatus = "录音权限已失效，请重新授权麦克风"
+                                        pendingMicPermissionRequest = true
+                                        return@launch
+                                    }
+                                    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                                    if (audioManager.isMicrophoneMute) {
+                                        speechStatus = "系统麦克风隐私开关已关闭，请开启麦克风访问"
+                                        return@launch
+                                    }
                                     speechRecognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                                         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                                         putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
@@ -1328,6 +1338,9 @@ private fun ChatPage(
                 lastCallSpokenText = reply
                 val spokenText = speechText(reply)
                 if (spokenText.isNotBlank() && canSpeak) {
+                    // Release the recognition session while the Agent is speaking to avoid acoustic echo being transcribed as user speech.
+                    runCatching { speechRecognizer.cancel() }
+                    isListening = false
                     if (ttsMode == "cloud") {
                         val profile = selectedTtsProfile
                         if (profile != null) {
