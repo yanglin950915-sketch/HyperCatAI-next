@@ -174,7 +174,7 @@ private fun createCallRecognitionIntent(context: Context) =
         putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
     }
 
-private enum class Page { HOME, CHAT, SETTINGS }
+private enum class Page { CHAT, SETTINGS }
 
 private data class ModelReply(val text: String, val reasoning: String = "")
 
@@ -587,7 +587,7 @@ private fun HyperCatApp() {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
-    var page by remember { mutableStateOf(Page.HOME) }
+    var page by remember { mutableStateOf(Page.CHAT) }
     var openSettingsDrawer by remember { mutableStateOf(false) }
     var chatDrawerExpanded by remember { mutableStateOf(false) }
     var provider by remember { mutableStateOf("OpenAI 兼容接口") }
@@ -729,33 +729,8 @@ private fun HyperCatApp() {
         primary = Color(0xFF168DA6), secondary = Color(0xFF7461C8), background = Bg, surface = Panel,
         onPrimary = Color.White, onSurface = Color(0xFF142235)
     )) {
-        Scaffold(
-            containerColor = Bg,
-            bottomBar = {
-                if (!(page == Page.CHAT && (chatDrawerExpanded || WindowInsets.isImeVisible))) {
-                NavigationBar(modifier = Modifier.height(64.dp), containerColor = if (darkNow) Color(0xCC0D1726) else Color(0xDDF7FAFD), tonalElevation = 0.dp) {
-                    NavigationBarItem(selected = page == Page.HOME, onClick = { page = Page.HOME },
-                        icon = { Icon(Icons.Outlined.Home, contentDescription = "萌宠") }, label = { Text("萌宠") })
-                    NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
-                        icon = { Icon(Icons.Outlined.Forum, contentDescription = "Agent") }, label = { Text("Agent") })
-                }
-                }
-            }
-        ) { padding ->
+        Scaffold(containerColor = Bg) { padding ->
             when (page) {
-                Page.HOME -> HomePage(
-                    modifier = Modifier.padding(padding),
-                    configured = saved,
-                    petName = petName,
-                    petMood = petMood,
-                    onPetNameChange = { value ->
-                        val clean = value.trim().take(16).ifBlank { "小橘" }
-                        petName = clean
-                        context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit().putString("pet_name", clean).apply()
-                    },
-                    openChat = { page = Page.CHAT },
-                    openSettings = { page = Page.CHAT; openSettingsDrawer = true }
-                )
                 Page.CHAT -> ChatPage(
                     modifier = Modifier,
                     contentPadding = padding,
@@ -846,6 +821,13 @@ private fun HyperCatApp() {
                     settingsContent = { drawerModifier ->
                         SettingsPage(
                             modifier = drawerModifier,
+                             petName = petName,
+                             petMood = petMood,
+                             onPetNameChange = { value ->
+                                 val clean = value.trim().take(16).ifBlank { "小橘" }
+                                 petName = clean
+                                 chatPrefs.edit().putString("pet_name", clean).apply()
+                             },
                             provider = provider, onProvider = { provider = it },
                             modelProfiles = modelProfiles.toList(),
                             ttsProfiles = ttsProfiles.toList(),
@@ -891,6 +873,13 @@ private fun HyperCatApp() {
                 )
                 Page.SETTINGS -> SettingsPage(
                     modifier = Modifier.padding(padding),
+                    petName = petName,
+                    petMood = petMood,
+                    onPetNameChange = { value ->
+                        val clean = value.trim().take(16).ifBlank { "小橘" }
+                        petName = clean
+                        chatPrefs.edit().putString("pet_name", clean).apply()
+                    },
                     provider = provider, onProvider = { provider = it },
                     modelProfiles = modelProfiles.toList(),
                     ttsProfiles = ttsProfiles.toList(),
@@ -958,86 +947,6 @@ private fun HyperCatApp() {
             )
         }
     }
-}
-
-@Composable
-private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, petMood: String, onPetNameChange: (String) -> Unit, openChat: () -> Unit, openSettings: () -> Unit) {
-    var showNameDialog by remember { mutableStateOf(false) }
-    var nameDraft by remember(petName) { mutableStateOf(petName) }
-    Column(
-        modifier.fillMaxSize()
-            .background(Brush.verticalGradient(listOf(if (appDarkState) Color(0xFF090909) else Color(0xFFEAF2F8), Bg)))
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 22.dp)
-    ) {
-        Spacer(Modifier.height(22.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("HYPERCAT", color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-                Text("你的 AI 伙伴", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
-            }
-            Surface(shape = CircleShape, color = Panel2, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
-                Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
-                    Text("✦", color = Cyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(30.dp),
-            color = if (appDarkState) Color(0xFF111111) else Color.White,
-            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
-            shadowElevation = 12.dp
-        ) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("YOUR COMPANION", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
-                        Text("今天也一起探索吧", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    Text("在线陪伴", color = if (configured) Color(0xFF65DDAE) else Muted, fontSize = 10.sp)
-                }
-                Spacer(Modifier.height(12.dp))
-                Box(Modifier.fillMaxWidth().height(236.dp), contentAlignment = Alignment.Center) {
-                    CatFace(Modifier.fillMaxWidth(.92f).fillMaxHeight(.92f), petMood)
-                }
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(petName, color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    Spacer(Modifier.width(8.dp))
-                    Surface(Modifier.size(30.dp).clickable { nameDraft = petName; showNameDialog = true }, color = Panel2, shape = CircleShape) {
-                        Box(contentAlignment = Alignment.Center) { Text("✎", color = Cyan, fontSize = 14.sp) }
-                    }
-                }
-                Text("轻触表情，看看我的反应", color = Muted, fontSize = 12.sp)
-                Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (configured) Color(0xFF65DDAE) else Color(0xFFFFC46B)))
-                    Spacer(Modifier.width(7.dp))
-                    Text(if (configured) "模型已就绪" else "连接模型后即可开始使用", color = Muted, fontSize = 11.sp)
-                }
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = openChat, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) {
-            Text("和 $petName 聊一聊", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(8.dp))
-            Text("→", fontSize = 18.sp)
-        }
-        Spacer(Modifier.height(9.dp))
-        OutlinedButton(onClick = openSettings, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(17.dp)) {
-            Text("模型与服务设置", fontSize = 13.sp)
-        }
-    }
-    if (showNameDialog) AlertDialog(
-        onDismissRequest = { showNameDialog = false },
-        title = { Text("给萌宠取个名字") },
-        text = { OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) }, singleLine = true, label = { Text("萌宠名称") }) },
-        confirmButton = { TextButton(onClick = { onPetNameChange(nameDraft); showNameDialog = false }) { Text("保存") } },
-        dismissButton = { TextButton(onClick = { showNameDialog = false }) { Text("取消") } }
-    )
 }
 
 @Composable
@@ -1864,7 +1773,7 @@ private fun ChatPage(
             if (isListening) Text("通话/语音输入：麦克风正在采集声音", color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
         }
     }
-        AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding(),
+        AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()) {
                     Surface(modifier = Modifier.fillMaxSize(), color = Panel, shape = RoundedCornerShape(0.dp)) {
@@ -2164,7 +2073,8 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 
 @Composable
 private fun SettingsPage(
-    modifier: Modifier, provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit, onDeleteProfile: (ModelProfile) -> Unit,
+    modifier: Modifier, petName: String, petMood: String, onPetNameChange: (String) -> Unit,
+    provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit, onDeleteProfile: (ModelProfile) -> Unit,
     ttsProfiles: List<TtsProfile>, onAddTtsProfile: (TtsProfile) -> Unit, onSelectTtsProfile: (TtsProfile) -> Unit, onDeleteTtsProfile: (TtsProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
     apiKey: String, onApiKey: (String) -> Unit,
@@ -2177,6 +2087,8 @@ private fun SettingsPage(
     currentVersion: String, updateStatus: String, latestRelease: ReleaseInfo?,
     onCheckUpdates: () -> Unit, openUrl: (String) -> Unit
 ) {
+    var showPetNameDialog by remember { mutableStateOf(false) }
+    var petNameDraft by remember(petName) { mutableStateOf(petName) }
     var showPluginDialog by remember { mutableStateOf(false) }
     var showMcpDialog by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
@@ -2279,6 +2191,25 @@ private fun SettingsPage(
         Spacer(Modifier.height(22.dp))
         Text("设置", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Text("外观、扩展能力与应用信息", color = Muted, fontSize = 12.sp)
+        Spacer(Modifier.height(16.dp))
+        Text("萌宠伙伴", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(top = 9.dp),
+            color = Panel, shape = RoundedCornerShape(20.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(Modifier.fillMaxWidth().height(168.dp), contentAlignment = Alignment.Center) {
+                    CatFace(Modifier.fillMaxWidth(.78f).fillMaxHeight(.96f), petMood)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(petName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = { petNameDraft = petName; showPetNameDialog = true }) { Text("修改名称") }
+                }
+                Text("轻触萌宠可查看互动反应；Agent 对话会影响萌宠情绪。", color = Muted, fontSize = 10.sp)
+            }
+        }
         Spacer(Modifier.height(18.dp))
         Text("模型与服务", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
         Text("先选择服务类型，再配置连接信息与模型档案", color = Muted, fontSize = 11.sp)
@@ -2476,6 +2407,13 @@ private fun SettingsPage(
         }
 
     }
+    if (showPetNameDialog) AlertDialog(
+        onDismissRequest = { showPetNameDialog = false },
+        title = { Text("给萌宠取个名字") },
+        text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("萌宠名称") }) },
+        confirmButton = { TextButton(onClick = { onPetNameChange(petNameDraft); showPetNameDialog = false }) { Text("保存") } },
+        dismissButton = { TextButton(onClick = { showPetNameDialog = false }) { Text("取消") } }
+    )
     if (showSkillDialog) AlertDialog(
         onDismissRequest = { showSkillDialog = false },
         title = { Text("技能库 · ${skills.size}") },
