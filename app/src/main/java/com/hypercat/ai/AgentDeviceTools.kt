@@ -7,16 +7,88 @@ import android.provider.CalendarContract
 import android.Manifest
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.location.Location
 import android.location.Geocoder
+import android.os.Build
+import android.os.CancellationSignal
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
 
 object AgentDeviceTools {
+    private fun freshestRecentLocation(context: Context): Location? {
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val now = System.currentTimeMillis()
+        return listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+            .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
+            .filter { it.latitude.isFinite() && it.longitude.isFinite() && now - it.time in 0L..600_000L }
+            .maxByOrNull { it.time }
+    }
+
+    private suspend fun currentDeviceLocation(context: Context): Location? {
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            for (provider in listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)) {
+                val enabled = runCatching { manager.isProviderEnabled(provider) }.getOrDefault(false)
+                if (!enabled) continue
+                val location = withTimeoutOrNull(8_000L) {
+                    suspendCancellableCoroutine<Location?> { continuation ->
+                        val cancellation = CancellationSignal()
+                        continuation.invokeOnCancellation { cancellation.cancel() }
+                        try {
+                            manager.getCurrentLocation(provider, cancellation, context.mainExecutor) { result ->
+                                if (continuation.isActive) continuation.resume(result)
+                            }
+                        } catch (_: SecurityException) {
+                            if (continuation.isActive) continuation.resume(null)
+                        } catch (_: Exception) {
+                            if (continuation.isActive) continuation.resume(null)
+                        }
+                    }
+                }
+                if (location != null && location.latitude.isFinite() && location.longitude.isFinite()) return location
+            }
+        }
+        // Older Android versions have no one-shot current-location API here. Only use a
+        // very recent cache entry; never silently reuse a stale city-level position.
+        return freshestRecentLocation(context)?.takeIf { System.currentTimeMillis() - it.time <= 120_000L }
+    }
+
+    private fun resolveNamedAddress(geocoder: Geocoder, requestedPlace: String): android.location.Address? {
+        val query = requestedPlace.trim().replace(Regex("\\s+"), "")
+        if (query.isBlank()) return null
+        @Suppress("DEPRECATION")
+        val candidates = geocoder.getFromLocationName(requestedPlace.trim(), 8).orEmpty()
+        fun normalize(value: String) = value.replace(Regex("[\\s,，省市区县特别行政区]"), "")
+        val target = normalize(query)
+        return candidates.mapNotNull { address ->
+            val parts = buildList {
+                address.featureName?.let(::add)
+                address.subLocality?.let(::add)
+                address.locality?.let(::add)
+                address.subAdminArea?.let(::add)
+                address.adminArea?.let(::add)
+                address.countryName?.let(::add)
+                for (i in 0 until address.maxAddressLineIndex + 1) address.getAddressLine(i)?.let(::add)
+            }
+            val combined = normalize(parts.joinToString(""))
+            val score = when {
+                parts.any { normalize(it) == target } -> 100
+                combined.contains(target) -> 90
+                parts.any { target.contains(normalize(it)) && normalize(it).length >= 2 } -> 65
+                else -> 0
+            }
+            if (score == 0) null else score to address
+        }.maxByOrNull { it.first }?.second
+    }
+
     fun handleSystemAction(context: Context, text: String): String? {
         val value = text.trim()
         val alarm = Regex("(?:设置|添加|帮我)?(?:一个)?(?:闹钟|提醒我)(?:在|到|为)?\\s*(上午|下午|晚上)?\\s*(\\d{1,2})(?:[:：点时](\\d{1,2})分?)?").find(value)
@@ -108,9 +180,8 @@ object AgentDeviceTools {
             val place = if (!requestedPlace.isNullOrBlank()) requestedPlace.trim() else {
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
                     return@withContext "查询当前位置天气需要位置权限，或直接告诉我城市/区县名称。"
-                val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                val loc = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER).firstNotNullOfOrNull { p -> runCatching { lm.getLastKnownLocation(p) }.getOrNull() }
-                    ?: return@withContext "暂时获取不到设备位置，请开启定位或直接告诉我城市名称。"
+                val loc = currentDeviceLocation(context)
+                    ?: return@withContext "无法获取当前实时位置。请开启系统定位并稍后重试，或直接告诉我城市/区县名称。"
                 val a = runCatching { @Suppress("DEPRECATION") Geocoder(context, Locale.CHINA).getFromLocation(loc.latitude, loc.longitude, 1)?.firstOrNull() }.getOrNull()
                 listOf(a?.adminArea, a?.locality, a?.subLocality, a?.subAdminArea).filterNotNull().filter { it.isNotBlank() }.distinct().joinToString("")
                     .ifBlank { return@withContext "无法识别当前位置区域，请直接告诉我城市/区县名称。" }
@@ -144,18 +215,22 @@ object AgentDeviceTools {
         val geocoder = Geocoder(context, Locale.CHINA)
         val address = try {
             if (!requestedPlace.isNullOrBlank()) {
-                @Suppress("DEPRECATION")
-                geocoder.getFromLocationName(requestedPlace.trim(), 1)?.firstOrNull()
+                resolveNamedAddress(geocoder, requestedPlace.trim())
             } else {
-                val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                val loc = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER).firstNotNullOfOrNull { p -> runCatching { lm.getLastKnownLocation(p) }.getOrNull() }
-                    ?: return@withContext "暂时获取不到设备位置，请开启定位或直接告诉我城市名称。"
+                val loc = currentDeviceLocation(context)
+                    ?: return@withContext "无法获取当前实时位置。请开启系统定位并稍后重试，或直接告诉我城市/区县名称。"
                 @Suppress("DEPRECATION")
-                geocoder.getFromLocation(loc.latitude, loc.longitude, 1)?.firstOrNull()
+                geocoder.getFromLocation(loc.latitude, loc.longitude, 5)
+                    ?.maxByOrNull { a ->
+                        (if (!a.locality.isNullOrBlank()) 4 else 0) +
+                        (if (!a.subLocality.isNullOrBlank()) 3 else 0) +
+                        (if (!a.adminArea.isNullOrBlank()) 2 else 0) +
+                        (if (!a.countryName.isNullOrBlank()) 1 else 0)
+                    }
                     ?: android.location.Address(Locale.CHINA).apply { latitude = loc.latitude; longitude = loc.longitude }
             }
         } catch (e: Exception) { return@withContext "地点解析失败：" + (e.message ?: "系统地理编码不可用") }
-            ?: return@withContext "无法识别地点“" + (requestedPlace ?: "当前位置") + "”的坐标，请补充省份、城市和区县名称。"
+            ?: return@withContext "无法可靠匹配地点“" + (requestedPlace ?: "当前位置") + "”。请补充省份、城市和区县名称，避免使用同名地区。"
         val lat = address.latitude
         val lon = address.longitude
         if (!lat.isFinite() || !lon.isFinite() || lat !in -90.0..90.0 || lon !in -180.0..180.0)

@@ -146,6 +146,27 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun createCallSpeechRecognizer(context: Context): SpeechRecognizer =
+    if (SpeechRecognizer.isRecognitionAvailable(context)) {
+        SpeechRecognizer.createSpeechRecognizer(context)
+    } else if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
+        SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+    } else {
+        SpeechRecognizer.createSpeechRecognizer(context)
+    }
+
+private fun createCallRecognitionIntent(context: Context) =
+    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-CN")
+        putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+    }
+
 private enum class Page { HOME, CHAT, SETTINGS }
 
 private data class ModelReply(val text: String, val reasoning: String = "")
@@ -1168,19 +1189,10 @@ private fun ChatPage(
     val latestOnCallInitiative by rememberUpdatedState(onCallInitiative)
     var pendingRecognitionStart by remember { mutableStateOf(false) }
     var pendingMicPermissionRequest by remember { mutableStateOf(false) }
-    val speechRecognizer = remember(context) {
-        // Prefer the device's configured recognition service (often has the user's language pack).
-        // Use on-device recognition only when no default recognition service is available.
-        if (SpeechRecognizer.isRecognitionAvailable(context)) {
-            SpeechRecognizer.createSpeechRecognizer(context)
-        } else if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
-            SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-        } else {
-            SpeechRecognizer.createSpeechRecognizer(context)
-        }
-    }
+    var speechRecognizer by remember(context) { mutableStateOf(createCallSpeechRecognizer(context)) }
     DisposableEffect(speechRecognizer) {
-        speechRecognizer.setRecognitionListener(object : RecognitionListener {
+        val activeRecognizer = speechRecognizer
+        activeRecognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) { isListening = true; speechStatus = "麦克风已启动，正在聆听…" }
             override fun onBeginningOfSpeech() { isListening = true; speechStatus = "已检测到你的声音，正在识别…" }
             override fun onRmsChanged(rmsdB: Float) { micRmsDb = rmsdB.coerceIn(-2f, 10f) }
@@ -1207,12 +1219,9 @@ private fun ChatPage(
                     }
                     if (latestMicEnabled && error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                         speechScope.launch {
-                            delay(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1200L else 700L)
-                            if (latestCallActive && latestMicEnabled && !isListening) {
+                            delay(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1400L else if (error == SpeechRecognizer.ERROR_CLIENT) 900L else 700L)
+                            if (latestCallActive && latestMicEnabled && !isListening && speechRecognizer === activeRecognizer) {
                                 runCatching {
-                                    speechRecognizer.cancel()
-                                    delay(250L)
-                                    if (!latestCallActive || !latestMicEnabled) return@launch
                                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                                         speechStatus = "录音权限已失效，请重新授权麦克风"
                                         pendingMicPermissionRequest = true
@@ -1223,16 +1232,21 @@ private fun ChatPage(
                                         speechStatus = "系统麦克风隐私开关已关闭，请开启麦克风访问"
                                         return@launch
                                     }
-                                    speechRecognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
-                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-CN")
-                                        putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-                                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                                        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
-                                        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-                                    })
+                                    val target = if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_SERVER) {
+                                        speechStatus = "语音识别服务已断开，正在重建识别会话…"
+                                        val replacement = createCallSpeechRecognizer(context)
+                                        speechRecognizer = replacement
+                                        delay(500L)
+                                        replacement
+                                    } else {
+                                        // onError already terminates the current recognition session.
+                                        // Calling cancel() here can itself trigger ERROR_CLIENT on some OEM services.
+                                        delay(350L)
+                                        activeRecognizer
+                                    }
+                                    if (!latestCallActive || !latestMicEnabled) return@launch
+                                    speechStatus = "正在重新连接语音识别服务…"
+                                    target.startListening(createCallRecognitionIntent(context))
                                 }.onFailure { speechStatus = "语音识别重试失败：${it.message ?: "请检查系统语音服务"}" }
                             }
                         }
@@ -1263,7 +1277,7 @@ private fun ChatPage(
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
-        onDispose { runCatching { speechRecognizer.cancel() }; speechRecognizer.destroy() }
+        onDispose { runCatching { activeRecognizer.cancel() }; runCatching { activeRecognizer.destroy() } }
     }
     val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
@@ -1310,7 +1324,8 @@ private fun ChatPage(
         isListening = false
         if (callActive) {
             recognitionStartJob?.cancel()
-            runCatching { speechRecognizer.cancel() }
+            // The previous session has already delivered onResults/onError before this restart.
+            // Avoid cancel() on an idle SpeechRecognizer: some OEM services report ERROR_CLIENT.
             speechStatus = "正在启动语音识别，请开始说话…"
             recognitionStartJob = speechScope.launch {
                 delay(300L)
