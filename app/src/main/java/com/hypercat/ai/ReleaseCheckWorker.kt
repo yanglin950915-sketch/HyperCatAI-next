@@ -21,15 +21,16 @@ class ReleaseCheckWorker(context: Context, params: WorkerParameters) : Worker(co
     override fun doWork(): Result {
         var connection: HttpURLConnection? = null
         return try {
-            connection = (URL(RELEASE_API).openConnection() as HttpURLConnection).apply {
+            val conn = (URL(RELEASE_API).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 10000
                 readTimeout = 10000
                 setRequestProperty("Accept", "application/vnd.github+json")
                 setRequestProperty("User-Agent", "HyperCatAI-Android")
             }
-            if (connection.responseCode !in 200..299) return Result.retry()
-            val release = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            connection = conn
+            if (conn.responseCode !in 200..299) return Result.retry()
+            val release = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
             val tag = release.optString("tag_name").ifBlank { release.optString("name") }
             if (tag.isBlank()) return Result.retry()
             val current = applicationContext.packageManager
