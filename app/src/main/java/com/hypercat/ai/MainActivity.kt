@@ -192,7 +192,7 @@ private fun speechText(source: String): String {
         .replace(Regex("[*_~\\x60]"), "")
         .replace(Regex("^\\s*[-+]\\s+", RegexOption.MULTILINE), "")
         .replace(Regex("^\\s*\\d+[.)、]\\s*", RegexOption.MULTILINE), "")
-        .replace(Regex("\\n{3,}"), "\\n\\n")
+        .replace(Regex("\n{3,}"), "\n\n")
         .trim()
 }
 
@@ -205,7 +205,7 @@ private fun splitSpeechText(text: String, maxLength: Int = 2800): List<String> {
             chunks += remaining.trim()
             break
         }
-        var cut = remaining.lastIndexOfAny(charArrayOf('。', '！', '？', '；', '\\n'), maxLength)
+        var cut = remaining.lastIndexOfAny(charArrayOf('。', '！', '？', '；', '\n'), maxLength)
         if (cut < maxLength / 2) cut = maxLength
         else cut += 1
         chunks += remaining.substring(0, cut).trim()
