@@ -7,6 +7,10 @@ import android.widget.Toast
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
+import android.graphics.Matrix
+import android.os.Handler
+import android.os.Looper
 import android.graphics.Bitmap
 import java.io.ByteArrayOutputStream
 import java.util.Base64
@@ -16,7 +20,6 @@ import android.net.Uri
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.RecognitionListener
-import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
