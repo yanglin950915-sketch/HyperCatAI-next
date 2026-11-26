@@ -333,6 +333,20 @@ private suspend fun speakWithCloudTts(context: Context, profile: ModelProfile, m
     playSpeechAudio(context, audio)
 }
 
+private fun safeTtsDiagnostic(error: Exception, profile: ModelProfile, model: String): String {
+    val raw = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
+    val redacted = raw
+        .replace(profile.apiKey, if (profile.apiKey.isNotBlank()) "[API Key 已隐藏]" else "")
+        .replace(Regex("(?i)(api[-_ ]?key|authorization)(\\s*[:=]\\s*)[^\\s,;]+"), "$1$2[已隐藏]")
+    return buildString {
+        appendLine("模型档案：").appendLine(profile.name)
+        appendLine("TTS 模型：").appendLine(model)
+        appendLine("配置的 API Base URL：").appendLine(profile.endpoint)
+        appendLine()
+        append(redacted)
+    }
+}
+
 private fun speechText(source: String): String {
     return source
         .replace(Regex("```[\\w+-]*"), "代码段：")
@@ -981,6 +995,7 @@ private fun ChatPage(
     val selectedTtsProfile = modelProfiles.firstOrNull { it.name == ttsProfileName }
     val canSpeak = if (ttsMode == "cloud") selectedTtsProfile != null && ttsModel.isNotBlank() else ttsReady
     var speechStatus by remember { mutableStateOf("语音引擎初始化中") }
+    var ttsDiagnostic by remember { mutableStateOf<String?>(null) }
     val speechEngine = remember(context) {
         TextToSpeech(context) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
@@ -1057,9 +1072,9 @@ private fun ChatPage(
                             isSpeaking = true; speechStatus = "正在请求云端语音…"
                             try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "云端语音播报完成" }
                             catch (error: Exception) {
-                                                                speechStatus = "云端 TTS 失败：${error.message ?: "请检查模型、接口和密钥"}"
-                                                                Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
-                                                            }
+                                speechStatus = "云端 TTS 失败，点击查看完整诊断"
+                                ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
+                            }
                             finally { isSpeaking = false }
                         }
                     } else {
@@ -1245,9 +1260,9 @@ private fun ChatPage(
                                                             isSpeaking = true; speechStatus = "正在请求云端语音…"
                                                             try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "云端语音播报完成" }
                                                             catch (error: Exception) {
-                                                                speechStatus = "云端 TTS 失败：${error.message ?: "请检查模型、接口和密钥"}"
-                                                                Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
-                                                            }
+                                speechStatus = "云端 TTS 失败，点击查看完整诊断"
+                                ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
+                            }
                                                             finally { isSpeaking = false }
                                                         }
                                                     }
@@ -1424,6 +1439,24 @@ private fun ChatPage(
                     }
         }
     }
+    if (ttsDiagnostic != null) AlertDialog(
+        onDismissRequest = { ttsDiagnostic = null },
+        title = { Text("云端 TTS 完整诊断") },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                Text("以下信息已自动隐藏 API Key，可复制后发送用于排查。", color = Muted, fontSize = 11.sp)
+                Spacer(Modifier.height(8.dp))
+                Text(ttsDiagnostic.orEmpty(), color = MainText, fontSize = 12.sp, lineHeight = 18.sp)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                clipboardManager.setText(AnnotatedString(ttsDiagnostic.orEmpty()))
+                ttsDiagnostic = null
+            }) { Text("复制诊断信息") }
+        },
+        dismissButton = { TextButton(onClick = { ttsDiagnostic = null }) { Text("关闭") } }
+    )
     if (previewPhoto != null) AlertDialog(onDismissRequest = { previewPhoto = null }, title = { Text("照片预览") }, text = { Image(bitmap = previewPhoto!!.asImageBitmap(), contentDescription = "照片预览", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) }, confirmButton = { TextButton(onClick = { previewPhoto = null }) { Text("完成") } })
     if (showSearch) AlertDialog(onDismissRequest = { showSearch = false; searchQuery = "" }, title = { Text("查找对话内容") },
         text = { Column { OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("输入关键词，聊天列表即时筛选") }, singleLine = true); Text("${messages.count { it.text.contains(searchQuery, true) }} 条匹配消息", color = Muted, fontSize = 12.sp) } },
