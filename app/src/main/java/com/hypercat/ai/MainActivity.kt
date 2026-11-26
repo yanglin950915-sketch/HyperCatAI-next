@@ -1204,10 +1204,10 @@ private fun ChatPage(
     LaunchedEffect(callActive, messages.size, isThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak) {
         if (callActive && !isThinking) {
             val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
-            if (reply.isNotBlank() && reply != lastCallSpokenText && canSpeak) {
+            if (reply.isNotBlank() && reply != lastCallSpokenText) {
                 lastCallSpokenText = reply
                 val spokenText = speechText(reply)
-                if (spokenText.isNotBlank()) {
+                if (spokenText.isNotBlank() && canSpeak) {
                     if (ttsMode == "cloud") {
                         val profile = selectedTtsProfile
                         if (profile != null) {
