@@ -1,6 +1,7 @@
 package com.hypercat.ai
 
 import android.content.Context
+import android.app.DownloadManager
 import android.media.MediaPlayer
 import android.media.AudioManager
 import android.media.AudioAttributes
@@ -16,6 +17,7 @@ import android.graphics.Bitmap
 import java.io.ByteArrayOutputStream
 import java.util.Base64
 import android.os.Bundle
+import android.os.Environment
 import android.content.Intent
 import android.net.Uri
 import android.speech.RecognizerIntent
@@ -61,6 +63,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Stop
@@ -126,6 +129,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import android.webkit.URLUtil
 import com.hypercat.ai.rear.PetStateStore
 import kotlin.random.Random
 
@@ -484,6 +488,45 @@ private fun shareChatText(context: Context, text: String, chooserTitle: String =
 }
 
 
+
+private data class GeneratedDownloadLink(val url: String, val isImage: Boolean)
+
+private fun extractGeneratedDownloadLinks(text: String): List<GeneratedDownloadLink> {
+    val markdownImages = Regex("!\\[[^]]*]\\((https?://[^)\\s]+)\\)")
+        .findAll(text).map { it.groupValues[1].trimEnd('.', ',', ';', ')', ']') }.toSet()
+    val urls = Regex("https?://[^\\s<>\\\"']+").findAll(text)
+        .map { it.value.trimEnd('.', ',', ';', ')', ']', '，', '。') }.distinct().toList()
+    return urls.map { url ->
+        val extension = Uri.parse(url).lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase()
+        GeneratedDownloadLink(url, url in markdownImages || extension in setOf("png", "jpg", "jpeg", "webp", "gif", "bmp", "avif"))
+    }
+}
+
+private fun saveGeneratedDownload(context: Context, link: GeneratedDownloadLink) {
+    runCatching {
+        val uri = Uri.parse(link.url)
+        require(uri.scheme == "https" || uri.scheme == "http") { "仅支持保存 HTTP/HTTPS 链接" }
+        val rawName = URLUtil.guessFileName(link.url, null, if (link.isImage) "image/*" else "application/octet-stream")
+        val safeName = rawName.replace(Regex("[\\\\/:*?\\\"<>|]"), "_").take(120)
+            .ifBlank { if (link.isImage) "HyperCat_AI_image.jpg" else "HyperCat_AI_file" }
+        val fileName = "HyperCatAI_" + System.currentTimeMillis() + "_" + safeName
+        val request = DownloadManager.Request(uri)
+            .setTitle(safeName)
+            .setDescription(if (link.isImage) "保存到图片目录" else "保存到下载目录")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(true)
+            .setDestinationInExternalPublicDir(
+                if (link.isImage) Environment.DIRECTORY_PICTURES else Environment.DIRECTORY_DOWNLOADS,
+                fileName
+            )
+        context.getSystemService(DownloadManager::class.java).enqueue(request)
+        Toast.makeText(context, if (link.isImage) "已开始保存图片到相册目录" else "已开始保存文件到下载目录", Toast.LENGTH_SHORT).show()
+    }.onFailure {
+        Toast.makeText(context, "保存失败：" + (it.message ?: "无法下载该文件"), Toast.LENGTH_LONG).show()
+    }
+}
+
 private fun appendAgentReply(context: Context, messages: MutableList<ChatLine>, text: String, reasoning: String = "") {
     messages.add(ChatLine(text, false, reasoning = reasoning))
     AgentReplyNotifications.showIfBackground(context, text)
@@ -690,7 +733,7 @@ private fun HyperCatApp() {
             containerColor = Bg,
             bottomBar = {
                 if (!(page == Page.CHAT && (chatDrawerExpanded || WindowInsets.isImeVisible))) {
-                NavigationBar(containerColor = if (darkNow) Color(0xCC0D1726) else Color(0xDDF7FAFD), tonalElevation = 0.dp) {
+                NavigationBar(modifier = Modifier.height(72.dp), containerColor = if (darkNow) Color(0xCC0D1726) else Color(0xDDF7FAFD), tonalElevation = 0.dp) {
                     NavigationBarItem(selected = page == Page.HOME, onClick = { page = Page.HOME },
                         icon = { Icon(Icons.Outlined.Home, contentDescription = "萌宠") }, label = { Text("萌宠") })
                     NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
@@ -724,6 +767,7 @@ private fun HyperCatApp() {
                     onOpenRecentSession = { prompt -> messages.clear(); messages.addAll(loadChatHistory(context, prompt)); currentSessionTitle = prompt },
                     onShareRecentSession = { prompt -> shareChatText(context, formatChatForSharing(prompt, loadChatHistory(context, prompt))) },
                     onShareCurrentSession = { shareChatText(context, formatChatForSharing(currentSessionTitle, messages)) },
+                    currentSessionTitle = currentSessionTitle,
                     modelProfiles = modelProfiles.toList(), ttsProfiles = ttsProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
                     onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
                     savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
@@ -1176,7 +1220,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
     ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit,
@@ -1620,8 +1664,8 @@ private fun ChatPage(
             }
         }
         if (messages.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
-            Text("有什么可以帮你？", color = MainText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-            Text("选择一个常用任务，或直接输入你的想法。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
+            Text("有什么可以帮你？", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Text("选择常用任务，或直接输入想法。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp, bottom = 6.dp))
             val suggestions = listOf(
                 "总结内容" to "请帮我总结以下内容，提炼重点：",
                 "翻译文本" to "请将下面内容准确翻译成中文：",
@@ -1636,10 +1680,10 @@ private fun ChatPage(
                             color = Panel, shape = RoundedCornerShape(15.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
                         ) {
-                            Column(Modifier.padding(horizontal = 10.dp, vertical = 9.dp)) {
-                                Text("✦", color = Cyan, fontSize = 12.sp)
-                                Spacer(Modifier.height(3.dp))
-                                Text(label, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Column(Modifier.padding(horizontal = 9.dp, vertical = 6.dp)) {
+                                Text("✦", color = Cyan, fontSize = 10.sp)
+                                Spacer(Modifier.height(2.dp))
+                                Text(label, color = MainText, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -1679,6 +1723,20 @@ private fun ChatPage(
                             }
                             if (line.text.isNotBlank()) {
                                 MarkdownMessage(line.text, if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), clipboardManager)
+                                if (!line.fromUser) {
+                                    val downloadableLinks = remember(line.text) { extractGeneratedDownloadLinks(line.text) }
+                                    if (downloadableLinks.isNotEmpty()) {
+                                        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            downloadableLinks.forEach { download ->
+                                                TextButton(onClick = { saveGeneratedDownload(context, download) }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
+                                                    Icon(Icons.Outlined.Download, contentDescription = if (download.isImage) "保存图片" else "保存文件", tint = Cyan, modifier = Modifier.size(14.dp))
+                                                    Spacer(Modifier.width(3.dp))
+                                                    Text(if (download.isImage) "保存图片" else "保存文件", color = Cyan, fontSize = 10.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                                     val actionTint = if (line.fromUser) Color.White.copy(alpha=.82f) else Cyan
                                     TextButton(onClick = { clipboardManager.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
@@ -1771,7 +1829,7 @@ private fun ChatPage(
                 Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedFiles = emptyList() })
             }
         }
-        Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 1.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 15.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1782,7 +1840,7 @@ private fun ChatPage(
                     VoiceInputButton(isListening = isListening, onPressStart = { startInAppRecognition() }, onPressEnd = { stopInAppRecognition() })
                 }
             }
-            Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 Surface(Modifier.requiredSize(40.dp).clickable { cameraCapture.launch(null) }, color = Panel2, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PhotoCamera, contentDescription = "拍照", tint = Cyan, modifier = Modifier.size(20.dp)) } }
                 Surface(Modifier.requiredHeight(40.dp).defaultMinSize(minWidth = 72.dp).clickable { startUnifiedCall() }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
                     Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
