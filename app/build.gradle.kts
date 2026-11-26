@@ -20,8 +20,8 @@ android {
         applicationId = "com.hypercat.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.8.0"
+        versionCode = 19
+        versionName = "0.9.0"
     }
     signingConfigs {
         create("stable") {
@@ -55,5 +55,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("androidx.camera:camera-camera2:1.4.1")
+    implementation("androidx.camera:camera-lifecycle:1.4.1")
+    implementation("androidx.camera:camera-view:1.4.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
