@@ -782,6 +782,8 @@ private fun ChatPage(
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
     var callMode by remember { mutableStateOf("语音") }
+    var callActive by remember { mutableStateOf(false) }
+    var lastCallSpokenText by remember { mutableStateOf("") }
     var isListening by remember { mutableStateOf(false) }
     var ttsReady by remember { mutableStateOf(false) }
     var isSpeaking by remember { mutableStateOf(false) }
@@ -834,7 +836,25 @@ private fun ChatPage(
     val voiceInput = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         isListening = false
         val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-        if (!spoken.isNullOrBlank()) onDraft(if (draft.isBlank()) spoken else "$draft $spoken")
+        if (!spoken.isNullOrBlank()) {
+            if (callActive) onSend(spoken, emptyList(), emptyList())
+            else onDraft(if (draft.isBlank()) spoken else "$draft $spoken")
+        }
+    }
+    val callCamera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        if (bitmap != null && callActive && callMode == "视频") {
+            onSend("请分析我当前摄像头拍摄到的画面，并结合画面内容与我进行交流。", emptyList(), listOf(bitmap))
+        }
+    }
+    LaunchedEffect(callActive, messages.size, isThinking) {
+        if (callActive && !isThinking) {
+            val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
+            if (reply.isNotBlank() && reply != lastCallSpokenText && ttsReady) {
+                lastCallSpokenText = reply
+                val spokenText = speechText(reply)
+                if (spokenText.isNotBlank()) speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${messages.size}-last")
+            }
+        }
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
@@ -1170,9 +1190,68 @@ private fun ChatPage(
         confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); showClear = false }) { Text("清空消息", color = Color(0xFFE57373)) } },
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
     if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
-    if (showCallInfo) AlertDialog(onDismissRequest = { showCallInfo = false }, title = { Text("${callMode}通话") },
-        text = { Text(if (callMode == "语音") "语音通话入口已恢复。实时双向通话需要接入支持实时音频的模型服务；当前版本暂未连接通话引擎。" else "视频通话入口已恢复。摄像头采集、实时视频传输与视频理解需要接入支持音视频的模型服务；当前版本暂未连接通话引擎。", color = Muted) },
-        confirmButton = { TextButton(onClick = { showCallInfo = false }) { Text("知道了") } })
+    if (showCallInfo) AlertDialog(
+        onDismissRequest = { callActive = false; isListening = false; speechEngine.stop(); showCallInfo = false },
+        title = { Text(if (callActive) "${callMode} AI 通话中" else "AI ${callMode}通话") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    if (callMode == "语音")
+                        "兼容通话模式：使用系统语音识别收集你的发言，交由当前已配置的大模型回答，再通过系统中文语音合成播报。点击麦克风即可开始一轮对话。"
+                    else
+                        "视频交流模式：拍摄一张当前画面，发送给支持图片输入的已配置模型进行理解，再用语音播报回答。此模式为逐帧拍摄，不是连续视频直播。",
+                    color = Muted, fontSize = 12.sp
+                )
+                Surface(color = Panel2, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(if (callActive) "通话已启动" else "等待开始", color = Cyan, fontWeight = FontWeight.SemiBold)
+                        Text("语音识别：系统服务 · ${if (isListening) "正在聆听" else "待命"}", color = Muted, fontSize = 11.sp)
+                        Text("AI 模型：${if (configured) "使用当前聊天模型" else "尚未配置"}", color = Muted, fontSize = 11.sp)
+                        Text("语音播报：${if (ttsReady) "中文语音已就绪" else speechStatus}", color = Muted, fontSize = 11.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (callMode == "视频") {
+                    TextButton(onClick = {
+                        if (!configured) Toast.makeText(context, "请先在设置中配置大模型", Toast.LENGTH_SHORT).show()
+                        else {
+                            callActive = true
+                            runCatching { callCamera.launch(null) }.onFailure {
+                                Toast.makeText(context, "无法启动摄像头：${it.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }) { Text("拍摄并交流") }
+                } else {
+                    TextButton(onClick = {
+                        if (!configured) Toast.makeText(context, "请先在设置中配置大模型", Toast.LENGTH_SHORT).show()
+                        else if (!ttsReady) Toast.makeText(context, speechStatus, Toast.LENGTH_SHORT).show()
+                        else {
+                            callActive = true
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "AI 通话中，请开始说话")
+                            }
+                            isListening = true
+                            runCatching { voiceInput.launch(intent) }.onFailure {
+                                isListening = false
+                                Toast.makeText(context, "系统语音识别不可用：${it.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }) { Text(if (isListening) "正在聆听…" else "开始说话") }
+                }
+                TextButton(onClick = {
+                    callActive = false
+                    isListening = false
+                    speechEngine.stop()
+                    showCallInfo = false
+                }) { Text(if (callActive) "挂断" else "关闭") }
+            }
+        }
+    )
 }
 
 @Composable
