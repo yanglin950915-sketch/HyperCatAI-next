@@ -2129,6 +2129,7 @@ private fun SettingsPage(
     var showPluginDialog by remember { mutableStateOf(false) }
     var showMcpDialog by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
+    var showDocsDialog by remember { mutableStateOf(false) }
     var showTaskDialog by remember { mutableStateOf(false) }
     var showSecurityDetail by remember { mutableStateOf(false) }
     var showSkillDialog by remember { mutableStateOf(false) }
@@ -2427,7 +2428,8 @@ private fun SettingsPage(
         SettingsAction("◇", "插件", if (pluginEnabled) "已启用插件框架" else "管理插件扩展入口") { showPluginDialog = true }
         SettingsAction("✧", "技能（Skills）", "${skills.size} 个技能 · 创建自定义技能或从文件导入") { showSkillDialog = true }
         SettingsAction("⌁", "MCP 设置", if (mcpEndpoint.isBlank()) "配置 MCP 服务连接" else mcpName.ifBlank { mcpEndpoint }) { showMcpDialog = true }
-        SettingsAction("✉", "帮助与反馈", "使用说明、问题反馈与项目主页") { showHelpDialog = true }
+        SettingsAction("✉", "帮助与反馈", "问题反馈与项目主页") { showHelpDialog = true }
+        SettingsAction("▤", "项目文档", "README、版本更新说明和使用文档") { showDocsDialog = true }
         Spacer(Modifier.height(18.dp))
         Text("应用与帮助", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
@@ -2597,6 +2599,16 @@ private fun SettingsPage(
         text = { Text("HyperCat AI 项目主页、问题反馈和版本发布均通过 GitHub 提供。若遇到问题，请提交设备型号、系统版本和复现步骤。", color = Muted) },
         confirmButton = { TextButton(onClick = { showHelpDialog = false; openUrl("https://github.com/yanglin950915-sketch/HyperCatAI-next/issues") }) { Text("提交反馈") } },
         dismissButton = { TextButton(onClick = { showHelpDialog = false; openUrl("https://github.com/yanglin950915-sketch/HyperCatAI-next") }) { Text("项目主页") } }
+    )
+    if (showDocsDialog) AlertDialog(
+        onDismissRequest = { showDocsDialog = false },
+        title = { Text("项目文档") },
+        text = { Text("选择要查看的项目资料。文档将在浏览器中打开，内容与 GitHub 仓库保持同步。", color = Muted) },
+        confirmButton = { TextButton(onClick = { showDocsDialog = false; openUrl("https://github.com/yanglin950915-sketch/HyperCatAI-next/blob/main/README.md") }) { Text("项目 README") } },
+        dismissButton = { Row {
+            TextButton(onClick = { showDocsDialog = false; openUrl("https://github.com/yanglin950915-sketch/HyperCatAI-next/releases") }) { Text("版本更新") }
+            TextButton(onClick = { showDocsDialog = false; openUrl("https://github.com/yanglin950915-sketch/HyperCatAI-next#agent-核心能力") }) { Text("使用文档") }
+        } }
     )
 }
 
