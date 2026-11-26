@@ -247,7 +247,7 @@ object AgentDeviceTools {
             } catch (e: Exception) { "高德天气查询失败：" + (e.message ?: "网络异常") }
         }
         if (provider == "caiyun" && caiyunToken.isBlank()) return@withContext "彩云天气尚未配置 Token，请在设置 → 天气服务中填写。"
-        if (requestedPlace.isNullOrBlank() && ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+        if (requestedPlace.isNullOrBlank() && !hasLocationPermission(context))
             return@withContext "查询当前位置天气需要位置权限，或直接告诉我城市/区县名称。"
         val geocoder = Geocoder(context, Locale.CHINA)
         val address = try {
