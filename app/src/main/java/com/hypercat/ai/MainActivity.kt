@@ -1,6 +1,7 @@
 package com.hypercat.ai
 
 import android.content.Context
+import android.media.MediaPlayer
 import android.widget.Toast
 import android.Manifest
 import android.content.pm.PackageManager
@@ -92,6 +93,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import java.io.File
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.Dispatchers
@@ -181,6 +187,64 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
         if (tagged != null) answer = answer.removeRange(tagged.range).trim()
         return ModelReply(answer, reasoning)
     } finally { connection.disconnect() }
+}
+
+
+private fun requestSpeechAudio(endpoint: String, apiKey: String, model: String, voice: String, input: String, speed: Float): ByteArray {
+    val rawBase = endpoint.trim().trimEnd('/')
+    val base = rawBase.removeSuffix("/chat/completions")
+    require(base.startsWith("https://") || base.startsWith("http://")) { "TTS 服务地址必须是有效的 HTTP/HTTPS 地址" }
+    val apiUrl = when {
+        base.endsWith("/audio/speech") -> base
+        base.endsWith("/v1") -> "$base/audio/speech"
+        else -> "$base/v1/audio/speech"
+    }
+    val payload = JSONObject().put("model", model.trim()).put("voice", voice.trim().ifBlank { "alloy" })
+        .put("input", input).put("response_format", "mp3").put("speed", speed.coerceIn(0.6f, 1.6f).toDouble())
+    val connection = URL(apiUrl).openConnection() as HttpURLConnection
+    try {
+        connection.requestMethod = "POST"; connection.connectTimeout = 15000; connection.readTimeout = 90000; connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.setRequestProperty("Accept", "audio/mpeg, audio/*")
+        if (apiKey.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
+        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+        val code = connection.responseCode
+        if (code !in 200..299) {
+            val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val message = runCatching { JSONObject(detail).optJSONObject("error")?.optString("message") }.getOrNull()
+            throw IllegalStateException("云端 TTS 请求失败（HTTP $code）${message?.takeIf { it.isNotBlank() } ?: detail.take(180)}")
+        }
+        val bytes = connection.inputStream.use { it.readBytes() }
+        if (bytes.isEmpty()) throw IllegalStateException("TTS 服务返回了空音频")
+        return bytes
+    } finally { connection.disconnect() }
+}
+
+private suspend fun playSpeechAudio(context: Context, bytes: ByteArray) {
+    val file = withContext(Dispatchers.IO) { File.createTempFile("hypercat-tts-", ".mp3", context.cacheDir).apply { writeBytes(bytes) } }
+    try {
+        suspendCancellableCoroutine<Unit> { continuation ->
+            val player = MediaPlayer()
+            fun release() { runCatching { player.reset() }; runCatching { player.release() } }
+            player.setOnPreparedListener { media -> runCatching { media.start() }.onFailure {
+                release(); if (continuation.isActive) continuation.resumeWithException(it)
+            } }
+            player.setOnCompletionListener {
+                release(); if (continuation.isActive) continuation.resume(Unit)
+            }
+            player.setOnErrorListener { _, what, extra ->
+                release(); if (continuation.isActive) continuation.resumeWithException(IllegalStateException("音频播放失败（$what/$extra）")); true
+            }
+            continuation.invokeOnCancellation { release(); file.delete() }
+            try { player.setDataSource(file.absolutePath); player.prepareAsync() }
+            catch (error: Exception) { release(); if (continuation.isActive) continuation.resumeWithException(error) }
+        }
+    } finally { withContext(Dispatchers.IO) { file.delete() } }
+}
+
+private suspend fun speakWithCloudTts(context: Context, profile: ModelProfile, model: String, voice: String, text: String, speed: Float) {
+    val audio = withContext(Dispatchers.IO) { requestSpeechAudio(profile.endpoint, profile.apiKey, model, voice, text, speed) }
+    playSpeechAudio(context, audio)
 }
 
 private fun speechText(source: String): String {
@@ -276,6 +340,10 @@ private fun HyperCatApp() {
     var ttsLanguage by remember { mutableStateOf("zh-CN") }
     var ttsRate by remember { mutableFloatStateOf(1.0f) }
     var ttsPitch by remember { mutableFloatStateOf(1.0f) }
+    var ttsMode by remember { mutableStateOf("system") }
+    var ttsProfileName by remember { mutableStateOf("") }
+    var ttsModel by remember { mutableStateOf("tts-1") }
+    var ttsVoice by remember { mutableStateOf("alloy") }
     var saved by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
     var petName by remember { mutableStateOf("小橘") }
@@ -324,6 +392,10 @@ private fun HyperCatApp() {
         ttsLanguage = prefs.getString("tts_language", "zh-CN") ?: "zh-CN"
         ttsRate = prefs.getFloat("tts_rate", 1.0f).coerceIn(0.6f, 1.6f)
         ttsPitch = prefs.getFloat("tts_pitch", 1.0f).coerceIn(0.7f, 1.4f)
+        ttsMode = prefs.getString("tts_mode", "system") ?: "system"
+        ttsProfileName = prefs.getString("tts_profile_name", "") ?: ""
+        ttsModel = prefs.getString("tts_model", "tts-1") ?: "tts-1"
+        ttsVoice = prefs.getString("tts_voice", "alloy") ?: "alloy"
         saved = endpoint.isNotBlank() && model.isNotBlank()
         runCatching { val array = org.json.JSONArray(prefs.getString("model_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); modelProfiles.add(ModelProfile(item.optString("name"), item.optString("provider"), item.optString("endpoint"), item.optString("model"), item.optString("apiKey"))) } }
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
@@ -423,6 +495,7 @@ private fun HyperCatApp() {
                     petName = petName,
                     petMood = petMood,
                     ttsLanguage = ttsLanguage, ttsRate = ttsRate, ttsPitch = ttsPitch,
+                    ttsMode = ttsMode, ttsProfileName = ttsProfileName, ttsModel = ttsModel, ttsVoice = ttsVoice,
                     onMood = { mood -> petMood = mood },
                     showSettingsOnEnter = openSettingsDrawer,
                     onSettingsDrawerShown = { openSettingsDrawer = false },
@@ -439,6 +512,10 @@ private fun HyperCatApp() {
                             ttsLanguage = ttsLanguage, onTtsLanguage = { ttsLanguage = it; chatPrefs.edit().putString("tts_language", it).apply() },
                             ttsRate = ttsRate, onTtsRate = { ttsRate = it; chatPrefs.edit().putFloat("tts_rate", it).apply() },
                             ttsPitch = ttsPitch, onTtsPitch = { ttsPitch = it; chatPrefs.edit().putFloat("tts_pitch", it).apply() },
+                    ttsMode = ttsMode, onTtsMode = { ttsMode = it; chatPrefs.edit().putString("tts_mode", it).apply() },
+                    ttsProfileName = ttsProfileName, onTtsProfileName = { ttsProfileName = it; chatPrefs.edit().putString("tts_profile_name", it).apply() },
+                    ttsModel = ttsModel, onTtsModel = { ttsModel = it; chatPrefs.edit().putString("tts_model", it).apply() },
+                    ttsVoice = ttsVoice, onTtsVoice = { ttsVoice = it; chatPrefs.edit().putString("tts_voice", it).apply() },
                             onSave = {
                                 chatPrefs.edit().putString("provider", provider).putString("endpoint", endpoint.trim())
                                     .putString("model", model.trim()).putString("api_key", apiKey).apply()
@@ -473,6 +550,10 @@ private fun HyperCatApp() {
                     ttsLanguage = ttsLanguage, onTtsLanguage = { ttsLanguage = it; chatPrefs.edit().putString("tts_language", it).apply() },
                     ttsRate = ttsRate, onTtsRate = { ttsRate = it; chatPrefs.edit().putFloat("tts_rate", it).apply() },
                     ttsPitch = ttsPitch, onTtsPitch = { ttsPitch = it; chatPrefs.edit().putFloat("tts_pitch", it).apply() },
+                    ttsMode = ttsMode, onTtsMode = { ttsMode = it; chatPrefs.edit().putString("tts_mode", it).apply() },
+                    ttsProfileName = ttsProfileName, onTtsProfileName = { ttsProfileName = it; chatPrefs.edit().putString("tts_profile_name", it).apply() },
+                    ttsModel = ttsModel, onTtsModel = { ttsModel = it; chatPrefs.edit().putString("tts_model", it).apply() },
+                    ttsVoice = ttsVoice, onTtsVoice = { ttsVoice = it; chatPrefs.edit().putString("tts_voice", it).apply() },
                     onSave = {
                         context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit()
                             .putString("provider", provider).putString("endpoint", endpoint.trim())
@@ -784,7 +865,8 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
-    petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float, onMood: (String) -> Unit,
+    petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
+    ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, onMood: (String) -> Unit,
     showSettingsOnEnter: Boolean,
     onSettingsDrawerShown: () -> Unit,
     settingsContent: @Composable (Modifier) -> Unit
@@ -808,12 +890,19 @@ private fun ChatPage(
     var isListening by remember { mutableStateOf(false) }
     var ttsReady by remember { mutableStateOf(false) }
     var isSpeaking by remember { mutableStateOf(false) }
+    var cloudSpeechJob by remember { mutableStateOf<Job?>(null) }
+    val speechScope = rememberCoroutineScope()
+    val selectedTtsProfile = modelProfiles.firstOrNull { it.name == ttsProfileName }
+    val canSpeak = if (ttsMode == "cloud") selectedTtsProfile != null && ttsModel.isNotBlank() else ttsReady
     var speechStatus by remember { mutableStateOf("语音引擎初始化中") }
     val speechEngine = remember(context) {
         TextToSpeech(context) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
             if (status != TextToSpeech.SUCCESS) speechStatus = "语音引擎初始化失败，请检查系统文字转语音服务"
         }
+    }
+    LaunchedEffect(ttsMode, ttsProfileName, ttsModel) {
+        if (ttsMode == "cloud") speechStatus = if (selectedTtsProfile != null && ttsModel.isNotBlank()) "云端 TTS 已配置，可测试朗读" else "请在设置中选择 TTS 模型档案并填写模型名称"
     }
     LaunchedEffect(ttsReady, ttsLanguage, ttsRate, ttsPitch) {
         if (ttsReady) {
@@ -869,18 +958,25 @@ private fun ChatPage(
             onSend("请分析我当前摄像头拍摄到的画面，并结合画面内容与我进行交流。", emptyList(), listOf(bitmap))
         }
     }
-    LaunchedEffect(callActive, messages.size, isThinking) {
+    LaunchedEffect(callActive, messages.size, isThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak) {
         if (callActive && !isThinking) {
             val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
-            if (reply.isNotBlank() && reply != lastCallSpokenText && ttsReady) {
+            if (reply.isNotBlank() && reply != lastCallSpokenText && canSpeak) {
                 lastCallSpokenText = reply
                 val spokenText = speechText(reply)
                 if (spokenText.isNotBlank()) {
-                    isSpeaking = true
-                    val result = speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${messages.size}-last")
-                    if (result == TextToSpeech.ERROR) {
-                        isSpeaking = false
-                        speechStatus = "通话语音播报失败，请检查系统 TTS 语音数据"
+                    if (ttsMode == "cloud") {
+                        val profile = selectedTtsProfile
+                        if (profile != null) {
+                            isSpeaking = true; speechStatus = "正在请求云端语音…"
+                            try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "云端语音播报完成" }
+                            catch (error: Exception) { speechStatus = "云端 TTS 失败：${error.message ?: "请检查模型、接口和密钥"}" }
+                            finally { isSpeaking = false }
+                        }
+                    } else {
+                        isSpeaking = true
+                        val result = speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${messages.size}-last")
+                        if (result == TextToSpeech.ERROR) { isSpeaking = false; speechStatus = "通话语音播报失败，请检查系统 TTS 语音数据" }
                     }
                 }
             }
@@ -890,7 +986,7 @@ private fun ChatPage(
         val latest = messages.lastOrNull()
         if (callActive && !isThinking && !isSpeaking && !isListening &&
             latest != null && !latest.fromUser && latest.text.isNotBlank() &&
-            latest.text == lastCallSpokenText && ttsReady
+            latest.text == lastCallSpokenText && canSpeak
         ) {
             delay(650)
             if (callActive && !isSpeaking && !isListening) {
@@ -1043,30 +1139,35 @@ private fun ChatPage(
                                     }
                                     if (!line.fromUser) {
                                         TextButton(enabled = true, onClick = {
-                                            if (!ttsReady && !isSpeaking) {
+                                            if (!canSpeak && !isSpeaking) {
                                                 Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
                                             } else if (isSpeaking) {
-                                                speechEngine.stop()
-                                                isSpeaking = false
-                                                speechStatus = "已停止朗读"
+                                                cloudSpeechJob?.cancel(); cloudSpeechJob = null
+                                                speechEngine.stop(); isSpeaking = false; speechStatus = "已停止朗读"
                                             } else {
                                                 val spokenText = speechText(line.text)
-                                                if (spokenText.isBlank()) {
-                                                    speechStatus = "这条回复没有可朗读的文字"
+                                                if (spokenText.isBlank()) speechStatus = "这条回复没有可朗读的文字"
+                                                else if (ttsMode == "cloud") {
+                                                    val profile = selectedTtsProfile
+                                                    if (profile == null) speechStatus = "请先在设置中选择 TTS 模型档案"
+                                                    else {
+                                                        cloudSpeechJob?.cancel()
+                                                        cloudSpeechJob = speechScope.launch {
+                                                            isSpeaking = true; speechStatus = "正在请求云端语音…"
+                                                            try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "云端语音播报完成" }
+                                                            catch (error: Exception) { speechStatus = "云端 TTS 失败：${error.message ?: "请检查模型、接口和密钥"}" }
+                                                            finally { isSpeaking = false }
+                                                        }
+                                                    }
                                                 } else {
                                                     val chunks = splitSpeechText(spokenText)
                                                     val requestPrefix = "hypercat-${System.nanoTime()}"
-                                                    speechEngine.stop()
-                                                    isSpeaking = true
-                                                    speechStatus = "正在朗读"
+                                                    speechEngine.stop(); isSpeaking = true; speechStatus = "正在朗读"
                                                     chunks.forEachIndexed { index, chunk ->
                                                         val utteranceId = requestPrefix + if (index == chunks.lastIndex) "-last" else "-${index}"
                                                         val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
                                                         val result = speechEngine.speak(chunk, queueMode, null, utteranceId)
-                                                        if (result == TextToSpeech.ERROR) {
-                                                            isSpeaking = false
-                                                            speechStatus = "朗读请求失败，请检查系统文字转语音引擎"
-                                                        }
+                                                        if (result == TextToSpeech.ERROR) { isSpeaking = false; speechStatus = "朗读请求失败，请检查系统文字转语音引擎" }
                                                     }
                                                 }
                                             }
@@ -1242,13 +1343,13 @@ private fun ChatPage(
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
     if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
     if (showCallInfo) AlertDialog(
-        onDismissRequest = { callActive = false; isListening = false; speechEngine.stop(); showCallInfo = false },
+        onDismissRequest = { callActive = false; isListening = false; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false },
         title = { Text(if (callActive) "${callMode} AI 通话中" else "AI ${callMode}通话") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     if (callMode == "语音")
-                        "兼容通话模式：使用系统语音识别收集你的发言，交由当前已配置的大模型回答，再通过系统中文语音合成播报。点击麦克风即可开始一轮对话。"
+                        "兼容通话模式：使用系统语音识别收集你的发言，交由当前大模型回答，再通过所选系统语音或云端 TTS 播报。点击麦克风即可开始一轮对话。"
                     else
                         "视频交流模式：拍摄一张当前画面，发送给支持图片输入的已配置模型进行理解，再用语音播报回答。此模式为逐帧拍摄，不是连续视频直播。",
                     color = Muted, fontSize = 12.sp
@@ -1258,7 +1359,7 @@ private fun ChatPage(
                         Text(if (callActive) "通话已启动" else "等待开始", color = Cyan, fontWeight = FontWeight.SemiBold)
                         Text("语音识别：系统服务 · ${if (isListening) "正在聆听" else "待命"}", color = Muted, fontSize = 11.sp)
                         Text("AI 模型：${if (configured) "使用当前聊天模型" else "尚未配置"}", color = Muted, fontSize = 11.sp)
-                        Text("语音播报：${if (ttsReady) "中文语音已就绪" else speechStatus}", color = Muted, fontSize = 11.sp)
+                        Text("语音播报：${if (canSpeak) if (ttsMode == "cloud") "云端 TTS 已配置" else "系统语音已就绪" else speechStatus}", color = Muted, fontSize = 11.sp)
                     }
                 }
             }
@@ -1278,7 +1379,7 @@ private fun ChatPage(
                 } else {
                     TextButton(onClick = {
                         if (!configured) Toast.makeText(context, "请先在设置中配置大模型", Toast.LENGTH_SHORT).show()
-                        else if (!ttsReady) Toast.makeText(context, speechStatus, Toast.LENGTH_SHORT).show()
+                        else if (!canSpeak) Toast.makeText(context, speechStatus, Toast.LENGTH_SHORT).show()
                         else {
                             lastCallSpokenText = ""
                             callActive = true
@@ -1298,6 +1399,7 @@ private fun ChatPage(
                 TextButton(onClick = {
                     callActive = false
                     isListening = false
+                    cloudSpeechJob?.cancel()
                     speechEngine.stop()
                     showCallInfo = false
                 }) { Text(if (callActive) "挂断" else "关闭") }
@@ -1333,6 +1435,8 @@ private fun SettingsPage(
     apiKey: String, onApiKey: (String) -> Unit,
     ttsLanguage: String, onTtsLanguage: (String) -> Unit,
     ttsRate: Float, onTtsRate: (Float) -> Unit, ttsPitch: Float, onTtsPitch: (Float) -> Unit,
+    ttsMode: String, onTtsMode: (String) -> Unit, ttsProfileName: String, onTtsProfileName: (String) -> Unit,
+    ttsModel: String, onTtsModel: (String) -> Unit, ttsVoice: String, onTtsVoice: (String) -> Unit,
     onSave: () -> Unit, saved: Boolean,
     themeMode: String, onThemeMode: (String) -> Unit,
     currentVersion: String, updateStatus: String, latestRelease: ReleaseInfo?,
@@ -1453,25 +1557,51 @@ private fun SettingsPage(
                 ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
                 Spacer(Modifier.height(14.dp))
                 Text("TTS 语音配置", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text("用于回复朗读和 AI 通话播报，默认使用系统语音引擎，不需要额外 API Key。", color = Muted, fontSize = 10.sp)
+                Text("选择系统语音，或使用已保存模型档案连接兼容 OpenAI 的云端语音合成服务。", color = Muted, fontSize = 10.sp)
                 Spacer(Modifier.height(7.dp))
-                Text("朗读语言", color = Muted, fontSize = 11.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    listOf("zh-CN" to "中文普通话", "en-US" to "英语").forEach { (code, label) ->
-                        FilterChip(selected = ttsLanguage == code, onClick = { onTtsLanguage(code) }, label = { Text(label, fontSize = 11.sp) })
+                    FilterChip(selected = ttsMode == "system", onClick = { onTtsMode("system") }, label = { Text("系统语音") })
+                    FilterChip(selected = ttsMode == "cloud", onClick = { onTtsMode("cloud") }, label = { Text("云端模型 TTS") })
+                }
+                if (ttsMode == "cloud") {
+                    Text("选择用于语音合成的模型档案（复用档案中的接口地址和 API Key）", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
+                    if (modelProfiles.isEmpty()) Text("请先保存一个模型档案，再回来选择。", color = Color(0xFFE0A45B), fontSize = 11.sp)
+                    modelProfiles.forEach { profile ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onTtsProfileName(profile.name) }.padding(vertical = 7.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(profile.name, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Text(profile.endpoint, color = Muted, fontSize = 9.sp, maxLines = 1)
+                            }
+                            RadioButton(selected = ttsProfileName == profile.name, onClick = { onTtsProfileName(profile.name) })
+                        }
                     }
+                    ConfigField("TTS 模型名称", ttsModel, onTtsModel, "例如 tts-1 或服务商提供的语音模型")
+                    ConfigField("TTS 音色", ttsVoice, onTtsVoice, "例如 alloy、nova、shimmer")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                        Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
+                        Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                    }
+                    Text("云端接口需支持 POST /v1/audio/speech 与 MP3 响应；聊天模型本身不一定支持语音合成。", color = Muted, fontSize = 10.sp)
+                } else {
+                    Text("朗读语言", color = Muted, fontSize = 11.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        listOf("zh-CN" to "中文普通话", "en-US" to "英语").forEach { (code, label) ->
+                            FilterChip(selected = ttsLanguage == code, onClick = { onTtsLanguage(code) }, label = { Text(label, fontSize = 11.sp) })
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                        Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
+                        Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("音调", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                        Slider(value = ttsPitch, onValueChange = onTtsPitch, valueRange = 0.7f..1.4f, modifier = Modifier.weight(1f))
+                        Text(String.format(Locale.US, "%.1f", ttsPitch), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                    }
+                    Text("参数自动保存并用于回复朗读与 AI 通话播报。", color = Muted, fontSize = 10.sp)
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                    Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
-                    Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("音调", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                    Slider(value = ttsPitch, onValueChange = onTtsPitch, valueRange = 0.7f..1.4f, modifier = Modifier.weight(1f))
-                    Text(String.format(Locale.US, "%.1f", ttsPitch), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                }
-                Text("参数会自动保存并用于消息朗读与语音通话；如无声音，请确认系统已安装对应语言的语音数据。", color = Muted, fontSize = 10.sp)
                 Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
                 else modelProfiles.forEach { p ->
