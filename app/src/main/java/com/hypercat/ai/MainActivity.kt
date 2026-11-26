@@ -1938,17 +1938,6 @@ private fun ChatPage(
         confirmButton = { TextButton(onClick = { if (noteDraft.isNotBlank()) onSaveNote(noteDraft.trim()); noteDraft = ""; showRemember = false }) { Text("保存记忆") } },
         dismissButton = { TextButton(onClick = { showRemember = false }) { Text("完成") } }
     )
-    if (selectedMessageIndices.isNotEmpty()) AlertDialog(
-        onDismissRequest = { selectedMessageIndices = emptySet() },
-        title = { Text("分享所选消息") },
-        text = { Text("已选择 ${selectedMessageIndices.size} 条消息，可按时间顺序合并分享。", color = Muted) },
-        confirmButton = { TextButton(onClick = {
-            val chosen = selectedMessageIndices.sorted().mapNotNull { messages.getOrNull(it) }
-            shareChatText(context, formatChatForSharing(currentSessionTitle, chosen), "分享所选消息")
-            selectedMessageIndices = emptySet()
-        }) { Text("分享") } },
-        dismissButton = { TextButton(onClick = { selectedMessageIndices = emptySet() }) { Text("取消") } }
-    )
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("清理当前对话") },
         text = { Text("确定清空当前页面的全部消息吗？此操作不会删除最近对话记录。", color = Muted) },
         confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); onClearCurrentSession(); showClear = false }) { Text("清空消息", color = Color(0xFFE57373)) } },
