@@ -1,119 +1,1681 @@
 package com.hypercat.ai
 
+import android.content.Context
+import android.widget.Toast
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.graphics.Bitmap
+import java.io.ByteArrayOutputStream
+import java.util.Base64
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
+import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import java.util.Locale
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Send
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.runtime.*
+import androidx.core.content.ContextCompat
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.hypercat.ai.pet.PetCatalog
-import com.hypercat.ai.pet.PetProfile
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import com.hypercat.ai.rear.PetStateStore
+import kotlin.random.Random
+
+private var appDarkState by mutableStateOf(true)
+private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF1F5FA)
+private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFFFFFFF)
+private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFE4EDF6)
+private val Cyan get() = if (appDarkState) Color(0xFFE6E6E6) else Color(0xFF168DA6)
+private val Muted get() = if (appDarkState) Color(0xFFA0A0A0) else Color(0xFF65758A)
+private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f) else Color(0xFF8AA4BA).copy(alpha = .35f)
+private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF142235)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val updateCheck = PeriodicWorkRequestBuilder<ReleaseCheckWorker>(12, TimeUnit.HOURS).build()
+        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+            "hypercat-release-check", ExistingPeriodicWorkPolicy.KEEP, updateCheck
+        )
         setContent { HyperCatApp() }
     }
 }
 
+private enum class Page { HOME, CHAT, SETTINGS }
+
+private data class ModelReply(val text: String, val reasoning: String = "")
+
+private fun requestModelReply(context: Context, endpoint: String, model: String, apiKey: String, history: List<ChatLine>): ModelReply {
+    val base = endpoint.trim().trimEnd('/')
+    val apiUrl = when { base.endsWith("/chat/completions") -> base; base.endsWith("/v1") -> "$base/chat/completions"; else -> "$base/v1/chat/completions" }
+    val requestMessages = org.json.JSONArray()
+    requestMessages.put(JSONObject().put("role", "system").put("content",
+        "请根据问题复杂度，在最终答复前提供简明、可核验的“思路说明”：用2-4条概述采用的方法、关键依据或排查步骤，不输出隐式思维链、私人内心独白或冗长逐字推理；简单问题可简短说明。随后给出清晰结论。代码请使用标准 Markdown 三反引号代码块，并标注语言。"))
+    history.forEach { line ->
+        if (line.text.isNotBlank() || line.photos.isNotEmpty() || line.imageUris.isNotEmpty()) {
+            val role = if (line.fromUser) "user" else "assistant"
+            if (line.fromUser && (line.photos.isNotEmpty() || line.imageUris.isNotEmpty())) {
+                val content = org.json.JSONArray()
+                if (line.text.isNotBlank()) content.put(JSONObject().put("type", "text").put("text", line.text))
+                line.photos.forEach { bitmap ->
+                    val bytes = ByteArrayOutputStream().use { out -> bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out); out.toByteArray() }
+                    content.put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:image/jpeg;base64,${Base64.getEncoder().encodeToString(bytes)}")))
+                }
+                line.imageUris.forEach { uri ->
+                    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                    if (mime.startsWith("image/")) {
+                        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        if (bytes != null) content.put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:$mime;base64,${Base64.getEncoder().encodeToString(bytes)}")))
+                    }
+                }
+                requestMessages.put(JSONObject().put("role", role).put("content", content))
+            } else if (line.text.isNotBlank()) requestMessages.put(JSONObject().put("role", role).put("content", line.text))
+        }
+    }
+    val payload = JSONObject().put("model", model).put("messages", requestMessages).put("stream", false)
+    val connection = URL(apiUrl).openConnection() as HttpURLConnection
+    try {
+        connection.requestMethod = "POST"; connection.connectTimeout = 15000; connection.readTimeout = 90000; connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.setRequestProperty("Accept", "application/json")
+        if (apiKey.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
+        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+        val code = connection.responseCode
+        val responseText = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (code !in 200..299) {
+            val detail = runCatching { JSONObject(responseText).optJSONObject("error")?.optString("message") }.getOrNull()
+            throw IllegalStateException("模型请求失败（HTTP $code）${detail?.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""}")
+        }
+        val message = JSONObject(responseText).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message") ?: throw IllegalStateException("模型返回内容格式不正确")
+        val value = message.opt("content")
+        var answer = when (value) {
+            is String -> value
+            is org.json.JSONArray -> (0 until value.length()).mapNotNull { value.optJSONObject(it)?.optString("text") }.filter { it.isNotBlank() }.joinToString("\n")
+            else -> "模型已返回，但没有可显示的文字内容。"
+        }.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
+        var reasoning = listOf("reasoning_content", "reasoning", "analysis")
+            .firstNotNullOfOrNull { key -> message.optString(key).takeIf { it.isNotBlank() && it != "null" } }.orEmpty()
+        val tagged = Regex("(?s)<思路说明>(.*?)</思路说明>").find(answer)
+        if (reasoning.isBlank() && tagged != null) reasoning = tagged.groupValues[1].trim()
+        if (tagged != null) answer = answer.removeRange(tagged.range).trim()
+        return ModelReply(answer, reasoning)
+    } finally { connection.disconnect() }
+}
+
+private fun speechText(source: String): String {
+    return source
+        .replace(Regex("```[\\w+-]*"), "代码段：")
+        .replace("```", "。")
+        .replace(Regex("!\\[([^]]*)]\\([^)]*\\)"), "$1")
+        .replace(Regex("\\[([^]]+)]\\([^)]*\\)"), "$1")
+        .replace(Regex("^\\s{0,3}#{1,6}\\s*", RegexOption.MULTILINE), "")
+        .replace(Regex("[*_~\\x60]"), "")
+        .replace(Regex("^\\s*[-+]\\s+", RegexOption.MULTILINE), "")
+        .replace(Regex("^\\s*\\d+[.)、]\\s*", RegexOption.MULTILINE), "")
+        .replace(Regex("\n{3,}"), "\n\n")
+        .trim()
+}
+
+private fun splitSpeechText(text: String, maxLength: Int = 2800): List<String> {
+    if (text.length <= maxLength) return listOf(text)
+    val chunks = mutableListOf<String>()
+    var remaining = text
+    while (remaining.isNotEmpty()) {
+        if (remaining.length <= maxLength) {
+            chunks += remaining.trim()
+            break
+        }
+        var cut = remaining.lastIndexOfAny(charArrayOf('。', '！', '？', '；', '\n'), maxLength)
+        if (cut < maxLength / 2) cut = maxLength
+        else cut += 1
+        chunks += remaining.substring(0, cut).trim()
+        remaining = remaining.substring(cut).trimStart()
+    }
+    return chunks.filter { it.isNotBlank() }
+}
+
+private fun inferMood(reply: String): String = when {
+    listOf("开心", "高兴", "太棒", "喜欢", "成功").any { reply.contains(it) } -> "happy"
+    listOf("难过", "抱歉", "遗憾", "失败").any { reply.contains(it) } -> "sad"
+    listOf("什么", "竟然", "惊讶", "哇").any { reply.contains(it) } -> "surprised"
+    listOf("思考", "考虑", "分析", "让我想想").any { reply.contains(it) } -> "thinking"
+    else -> "normal"
+}
+private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "")
+private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String)
+private data class SkillProfile(val name: String, val description: String, val instructions: String)
+private data class ThirdPartyPlugin(val name: String, val description: String, val endpoint: String, val method: String, val apiKey: String, val enabled: Boolean = false)
+private data class ReleaseInfo(val version: String, val notes: String, val url: String)
+private fun versionIsNewer(latest: String, current: String): Boolean {
+    fun parts(value: String) = value.trim().removePrefix("v").split(".", "-", "+").map { it.toIntOrNull() ?: 0 }
+    val a = parts(latest); val b = parts(current)
+    for (i in 0 until maxOf(a.size, b.size)) {
+        val av = a.getOrElse(i) { 0 }; val bv = b.getOrElse(i) { 0 }
+        if (av != bv) return av > bv
+    }
+    return false
+}
+private fun fetchLatestRelease(): ReleaseInfo {
+    val connection = URL("https://api.github.com/repos/yanglin950915-sketch/HyperCatAI-next/releases/latest").openConnection() as HttpURLConnection
+    try {
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 10000
+        connection.readTimeout = 10000
+        connection.setRequestProperty("Accept", "application/vnd.github+json")
+        connection.setRequestProperty("User-Agent", "HyperCatAI-Android")
+        if (connection.responseCode !in 200..299) throw IllegalStateException("GitHub 暂无可用的正式 Release（HTTP ${connection.responseCode}）")
+        val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        val tag = json.optString("tag_name", "").ifBlank { json.optString("name", "") }
+        if (tag.isBlank()) throw IllegalStateException("Release 未设置版本标签")
+        return ReleaseInfo(tag, json.optString("body", "").take(1200), json.optString("html_url", "https://github.com/yanglin950915-sketch/HyperCatAI-next/releases"))
+    } finally { connection.disconnect() }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HyperCatApp() {
-    val context = LocalContext.current
-    var selectedPet by remember { mutableStateOf(PetCatalog.all.first()) }
-    var confirmedPet by remember { mutableStateOf(PetCatalog.all.first()) }
-    var loaded by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("选择萌宠后，点击确认更换，背屏才会更新。") }
-
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     LaunchedEffect(Unit) {
-        val saved = PetStateStore.read(context)
-        val restored = PetCatalog.all.firstOrNull { it.name == saved.petName } ?: PetCatalog.all.first()
-        selectedPet = restored
-        confirmedPet = restored
-        loaded = true
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            !context.getSharedPreferences("hypercat_update_state", Context.MODE_PRIVATE).getBoolean("notification_permission_asked", false)
+        ) {
+            context.getSharedPreferences("hypercat_update_state", Context.MODE_PRIVATE).edit().putBoolean("notification_permission_asked", true).apply()
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+    var page by remember { mutableStateOf(Page.HOME) }
+    var openSettingsDrawer by remember { mutableStateOf(false) }
+    var chatDrawerExpanded by remember { mutableStateOf(false) }
+    var provider by remember { mutableStateOf("OpenAI 兼容接口") }
+    var endpoint by remember { mutableStateOf("") }
+    var model by remember { mutableStateOf("") }
+    var apiKey by remember { mutableStateOf("") }
+    var saved by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf("") }
+    var petName by remember { mutableStateOf("小橘") }
+    var petMood by remember { mutableStateOf("normal") }
+    var themeMode by remember { mutableStateOf("system") }
+    var timeRefresh by remember { mutableIntStateOf(0) }
+    var updateStatus by remember { mutableStateOf("尚未检查") }
+    var latestRelease by remember { mutableStateOf<ReleaseInfo?>(null) }
+    var showUpdatePrompt by remember { mutableStateOf(false) }
+    val currentVersion = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0.0.0" }.getOrDefault("0.0.0") }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(themeMode) {
+        if (themeMode == "time") {
+            while (true) {
+                kotlinx.coroutines.delay(60_000)
+                timeRefresh++
+            }
+        }
+    }
+    val systemDark = isSystemInDarkTheme()
+    val darkNow = when (themeMode) {
+        "light" -> false
+        "dark" -> true
+        "time" -> {
+            val hour = timeRefresh.let { java.time.LocalTime.now().hour }
+            hour < 7 || hour >= 19
+        }
+        else -> systemDark
+    }
+    SideEffect { appDarkState = darkNow }
+    val messages = remember { mutableStateListOf<ChatLine>() }
+    var isThinking by remember { mutableStateOf(false) }
+    val modelProfiles = remember { mutableStateListOf<ModelProfile>() }
+    var savedNotes by remember { mutableStateOf(emptyList<String>()) }
+    val chatPrefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
+    var recentPrompts by remember {
+        mutableStateOf(chatPrefs.getString("recent_chat_titles", "")?.split("||")?.filter { it.isNotBlank() } ?: emptyList())
     }
 
-    MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF91A7FF), secondary = Color(0xFF75E0C1), background = Color(0xFF0B1020), surface = Color(0xFF19243B))) {
-        Column(
-            Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF1A294A), Color(0xFF0B1020)))).padding(horizontal = 20.dp, vertical = 24.dp)
-        ) {
-            Text("HYPERCAT AI", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-            Spacer(Modifier.height(5.dp))
-            Text("背屏萌宠", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Text("选择一个伙伴，让它出现在手机背屏。", color = Color(0xFFB5BED3), fontSize = 13.sp)
-            Spacer(Modifier.height(22.dp))
-            Surface(Modifier.fillMaxWidth(), color = Color(0xFF19243B), shape = RoundedCornerShape(26.dp)) {
-                Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("当前选择", color = Color(0xFFB7C5EA), fontSize = 12.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(selectedPet.emoji, fontSize = 76.sp)
-                    Text(selectedPet.name, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                    Text(selectedPet.description, color = Color(0xFFB5BED3), fontSize = 12.sp)
-                    Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = {
-                            PetStateStore.update(context, selectedPet.name, selectedPet.emoji, "IDLE", "${selectedPet.name} 已准备好，在背屏等你！")
-                            confirmedPet = selectedPet
-                            status = "已确认更换为${selectedPet.name}。背屏模板会自动刷新，请稍等约 1–2 秒。"
-                        },
-                        enabled = loaded,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Text(if (selectedPet.id == confirmedPet.id) "确认并同步到背屏" else "确认更换萌宠", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(status, color = Color(0xFF9FB1D6), fontSize = 12.sp)
+    LaunchedEffect(Unit) {
+        val prefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+        provider = prefs.getString("provider", "OpenAI 兼容接口") ?: "OpenAI 兼容接口"
+        endpoint = prefs.getString("endpoint", "") ?: ""
+        model = prefs.getString("model", "") ?: ""
+        apiKey = prefs.getString("api_key", "") ?: ""
+        saved = endpoint.isNotBlank() && model.isNotBlank()
+        runCatching { val array = org.json.JSONArray(prefs.getString("model_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); modelProfiles.add(ModelProfile(item.optString("name"), item.optString("provider"), item.optString("endpoint"), item.optString("model"), item.optString("apiKey"))) } }
+        savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
+        petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
+        themeMode = prefs.getString("theme_mode", "system") ?: "system"
+    }
+
+    LaunchedEffect(currentVersion) {
+        try {
+            val release = withContext(Dispatchers.IO) { fetchLatestRelease() }
+            latestRelease = release
+            if (versionIsNewer(release.version, currentVersion)) {
+                updateStatus = "发现新版本：${release.version}"
+                showUpdatePrompt = true
+            } else {
+                updateStatus = "当前已是最新版本（${currentVersion}）"
+            }
+        } catch (_: Exception) {
+            updateStatus = "自动检查暂不可用，可稍后手动检查"
+        }
+    }
+
+    LaunchedEffect(petName, petMood) {
+        val state = PetStateStore.read(context)
+        PetStateStore.update(context, petName, "🤖", petMood, state.reply)
+    }
+
+    MaterialTheme(colorScheme = if (darkNow) darkColorScheme(
+        primary = Cyan, secondary = Color(0xFFB9A4FF), background = Bg, surface = Panel,
+        onPrimary = Color(0xFF06131B), onSurface = Color(0xFFEAF4FF)
+    ) else lightColorScheme(
+        primary = Color(0xFF168DA6), secondary = Color(0xFF7461C8), background = Bg, surface = Panel,
+        onPrimary = Color.White, onSurface = Color(0xFF142235)
+    )) {
+        Scaffold(
+            containerColor = Bg,
+            bottomBar = {
+                if (!(page == Page.CHAT && (chatDrawerExpanded || WindowInsets.isImeVisible))) {
+                NavigationBar(containerColor = if (darkNow) Color(0xCC0D1726) else Color(0xDDF7FAFD), tonalElevation = 0.dp) {
+                    NavigationBarItem(selected = page == Page.HOME, onClick = { page = Page.HOME },
+                        icon = { Icon(Icons.Outlined.Home, contentDescription = "萌宠") }, label = { Text("萌宠") })
+                    NavigationBarItem(selected = page == Page.CHAT, onClick = { page = Page.CHAT },
+                        icon = { Icon(Icons.Outlined.Forum, contentDescription = "Agent") }, label = { Text("Agent") })
+                }
                 }
             }
-            Spacer(Modifier.height(22.dp))
-            Text("选择萌宠", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        ) { padding ->
+            when (page) {
+                Page.HOME -> HomePage(
+                    modifier = Modifier.padding(padding),
+                    configured = saved,
+                    petName = petName,
+                    petMood = petMood,
+                    onPetNameChange = { value ->
+                        val clean = value.trim().take(16).ifBlank { "小橘" }
+                        petName = clean
+                        context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit().putString("pet_name", clean).apply()
+                    },
+                    openChat = { page = Page.CHAT },
+                    openSettings = { page = Page.CHAT; openSettingsDrawer = true }
+                )
+                Page.CHAT -> ChatPage(
+                    modifier = Modifier,
+                    contentPadding = padding,
+                    onDrawerVisibility = { chatDrawerExpanded = it },
+                    messages = messages,
+                    isThinking = isThinking,
+                    recentPrompts = recentPrompts,
+                    modelProfiles = modelProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
+                    onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
+                    savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
+                    draft = draft,
+                    onDraft = { draft = it },
+                    onSend = { value, attachments, photos ->
+                        if (value.isNotBlank() || attachments.isNotEmpty() || photos.isNotEmpty()) {
+                            val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") })
+                            messages.add(userLine)
+                            if (value.isNotBlank()) { recentPrompts = (listOf(value.trim().take(42)) + recentPrompts).distinct().take(12); chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply() }
+                            draft = ""
+                            if (!saved || endpoint.isBlank() || model.isBlank()) messages.add(ChatLine("请先在设置中完成模型配置，再发送消息。", false))
+                            else {
+                                val requestHistory = messages.toList()
+                                scope.launch {
+                                    isThinking = true
+                                    try {
+                                        val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory) }
+                                        messages.add(ChatLine(reply.text, false, reasoning = reply.reasoning)); petMood = inferMood(reply.text)
+                                    } catch (error: Exception) {
+                                        messages.add(ChatLine("模型请求未成功：${error.message ?: "网络或服务异常"}", false))
+                                    } finally { isThinking = false }
+                                }
+                            }
+                        }
+                    },
+                    openSettings = { page = Page.CHAT; openSettingsDrawer = true },
+                    configured = saved,
+                    petName = petName,
+                    petMood = petMood,
+                    onMood = { mood -> petMood = mood },
+                    showSettingsOnEnter = openSettingsDrawer,
+                    onSettingsDrawerShown = { openSettingsDrawer = false },
+                    settingsContent = { drawerModifier ->
+                        SettingsPage(
+                            modifier = drawerModifier,
+                            provider = provider, onProvider = { provider = it },
+                            modelProfiles = modelProfiles.toList(),
+                            onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                            onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
+                            endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
+                            model = model, onModel = { model = it; saved = false },
+                            apiKey = apiKey, onApiKey = { apiKey = it; saved = false },
+                            onSave = {
+                                chatPrefs.edit().putString("provider", provider).putString("endpoint", endpoint.trim())
+                                    .putString("model", model.trim()).putString("api_key", apiKey).apply()
+                                saved = endpoint.isNotBlank() && model.isNotBlank()
+                            },
+                            saved = saved, themeMode = themeMode,
+                            onThemeMode = { mode -> themeMode = mode; chatPrefs.edit().putString("theme_mode", mode).apply() },
+                            currentVersion = currentVersion, updateStatus = updateStatus, latestRelease = latestRelease,
+                            onCheckUpdates = {
+                                scope.launch {
+                                    updateStatus = "正在检查 GitHub Releases…"
+                                    try {
+                                        val release = withContext(Dispatchers.IO) { fetchLatestRelease() }
+                                        latestRelease = release
+                                        updateStatus = if (versionIsNewer(release.version, currentVersion)) "发现新版本：${release.version}" else "当前已是最新版本（${currentVersion}）"
+                                    } catch (error: Exception) { updateStatus = error.message ?: "检查失败，请稍后重试" }
+                                }
+                            },
+                            openUrl = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } }
+                        )
+                    }
+                )
+                Page.SETTINGS -> SettingsPage(
+                    modifier = Modifier.padding(padding),
+                    provider = provider, onProvider = { provider = it },
+                    modelProfiles = modelProfiles.toList(),
+                    onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                    onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
+                    endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
+                    model = model, onModel = { model = it; saved = false },
+                    apiKey = apiKey, onApiKey = { apiKey = it; saved = false },
+                    onSave = {
+                        context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit()
+                            .putString("provider", provider).putString("endpoint", endpoint.trim())
+                            .putString("model", model.trim()).putString("api_key", apiKey).apply()
+                        saved = endpoint.isNotBlank() && model.isNotBlank()
+                    },
+                    saved = saved,
+                    themeMode = themeMode,
+                    onThemeMode = { mode ->
+                        themeMode = mode
+                        context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit().putString("theme_mode", mode).apply()
+                    },
+                    currentVersion = currentVersion,
+                    updateStatus = updateStatus,
+                    latestRelease = latestRelease,
+                    onCheckUpdates = {
+                        scope.launch {
+                            updateStatus = "正在检查 GitHub Releases…"
+                            try {
+                                val release = withContext(Dispatchers.IO) { fetchLatestRelease() }
+                                latestRelease = release
+                                updateStatus = if (versionIsNewer(release.version, currentVersion)) "发现新版本：${release.version}" else "当前已是最新版本（${currentVersion}）"
+                            } catch (error: Exception) {
+                                updateStatus = error.message ?: "检查失败，请稍后重试"
+                            }
+                        }
+                    },
+                    openUrl = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } }
+                )
+            }
+        }
+        if (showUpdatePrompt && latestRelease != null) {
+            AlertDialog(
+                onDismissRequest = { showUpdatePrompt = false },
+                title = { Text("发现 HyperCat AI 新版本") },
+                text = { Text("最新版本：${latestRelease!!.version}\n建议前往 GitHub 下载并安装更新。") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showUpdatePrompt = false
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(latestRelease!!.url))) }
+                    }) { Text("立即更新") }
+                },
+                dismissButton = { TextButton(onClick = { showUpdatePrompt = false }) { Text("稍后") } }
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomePage(modifier: Modifier, configured: Boolean, petName: String, petMood: String, onPetNameChange: (String) -> Unit, openChat: () -> Unit, openSettings: () -> Unit) {
+    var showNameDialog by remember { mutableStateOf(false) }
+    var nameDraft by remember(petName) { mutableStateOf(petName) }
+    Column(
+        modifier.fillMaxSize()
+            .background(Brush.verticalGradient(listOf(if (appDarkState) Color(0xFF090909) else Color(0xFFEAF2F8), Bg)))
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 22.dp)
+    ) {
+        Spacer(Modifier.height(22.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("HYPERCAT", color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+                Text("你的 AI 伙伴", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
+            }
+            Surface(shape = CircleShape, color = Panel2, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+                Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+                    Text("✦", color = Cyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(30.dp),
+            color = if (appDarkState) Color(0xFF111111) else Color.White,
+            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
+            shadowElevation = 12.dp
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("YOUR COMPANION", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
+                        Text("今天也一起探索吧", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text("在线陪伴", color = if (configured) Color(0xFF65DDAE) else Muted, fontSize = 10.sp)
+                }
+                Spacer(Modifier.height(12.dp))
+                Box(Modifier.fillMaxWidth().height(236.dp), contentAlignment = Alignment.Center) {
+                    CatFace(Modifier.fillMaxWidth(.92f).fillMaxHeight(.92f), petMood)
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(petName, color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Spacer(Modifier.width(8.dp))
+                    Surface(Modifier.size(30.dp).clickable { nameDraft = petName; showNameDialog = true }, color = Panel2, shape = CircleShape) {
+                        Box(contentAlignment = Alignment.Center) { Text("✎", color = Cyan, fontSize = 14.sp) }
+                    }
+                }
+                Text("轻触表情，看看我的反应", color = Muted, fontSize = 12.sp)
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (configured) Color(0xFF65DDAE) else Color(0xFFFFC46B)))
+                    Spacer(Modifier.width(7.dp))
+                    Text(if (configured) "模型已就绪" else "连接模型后即可开始使用", color = Muted, fontSize = 11.sp)
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = openChat, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) {
+            Text("和 $petName 聊一聊", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(8.dp))
+            Text("→", fontSize = 18.sp)
+        }
+        Spacer(Modifier.height(9.dp))
+        OutlinedButton(onClick = openSettings, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(17.dp)) {
+            Text("模型与服务设置", fontSize = 13.sp)
+        }
+    }
+    if (showNameDialog) AlertDialog(
+        onDismissRequest = { showNameDialog = false },
+        title = { Text("给萌宠取个名字") },
+        text = { OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) }, singleLine = true, label = { Text("萌宠名称") }) },
+        confirmButton = { TextButton(onClick = { onPetNameChange(nameDraft); showNameDialog = false }) { Text("保存") } },
+        dismissButton = { TextButton(onClick = { showNameDialog = false }) { Text("取消") } }
+    )
+}
+
+@Composable
+private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
+    var gazeX by remember { mutableStateOf(0f) }
+    var gazeY by remember { mutableStateOf(0f) }
+    var blinking by remember { mutableStateOf(false) }
+    var lastTouchAt by remember { mutableStateOf(0L) }
+    val pupilX by animateFloatAsState(gazeX, animationSpec = tween(260), label = "pupilX")
+    val pupilY by animateFloatAsState(gazeY, animationSpec = tween(260), label = "pupilY")
+    val eyelid by animateFloatAsState(if (blinking) 0.06f else 1f, animationSpec = tween(105), label = "eyelid")
+    val idle = rememberInfiniteTransition(label = "petIdle")
+    val breathe by idle.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1900), RepeatMode.Reverse), label = "breathe"
+    )
+    val floatY by idle.animateFloat(
+        initialValue = -3.5f, targetValue = 3.5f,
+        animationSpec = infiniteRepeatable(tween(2400), RepeatMode.Reverse), label = "floatY"
+    )
+    val eyeSparkle by idle.animateFloat(
+        initialValue = 0.72f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1300), RepeatMode.Reverse), label = "eyeSparkle"
+    )
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(Random.nextLong(2300L, 4301L))
+            if (System.currentTimeMillis() - lastTouchAt > 3200L) {
+                gazeX = Random.nextFloat() * 0.7f - 0.35f
+                gazeY = Random.nextFloat() * 0.36f - 0.18f
+            }
+            delay(100L)
+            blinking = true
+            delay(115L)
+            blinking = false
+            if (Random.nextInt(5) == 0) {
+                delay(150L)
+                blinking = true
+                delay(100L)
+                blinking = false
+            }
+        }
+    }
+
+    Canvas(modifier
+        .graphicsLayer {
+            translationY = floatY.dp.toPx()
+            scaleX = 1f + breathe * 0.008f
+            scaleY = 1f - breathe * 0.006f
+        }
+        .pointerInput(Unit) {
+            detectTapGestures { point ->
+                lastTouchAt = System.currentTimeMillis()
+                val w = size.width.toFloat().coerceAtLeast(1f)
+                val h = size.height.toFloat().coerceAtLeast(1f)
+                gazeX = (((point.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
+                gazeY = (((point.y / h) - 0.47f) * 2.8f).coerceIn(-1f, 1f)
+                blinking = true
+            }
+        }
+        .pointerInput(Unit) {
+            detectDragGestures(
+                onDragStart = { point ->
+                    lastTouchAt = System.currentTimeMillis()
+                    val w = size.width.toFloat().coerceAtLeast(1f)
+                    val h = size.height.toFloat().coerceAtLeast(1f)
+                    gazeX = (((point.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
+                    gazeY = (((point.y / h) - 0.47f) * 2.8f).coerceIn(-1f, 1f)
+                },
+                onDrag = { change, _ ->
+                    lastTouchAt = System.currentTimeMillis()
+                    val w = size.width.toFloat().coerceAtLeast(1f)
+                    val h = size.height.toFloat().coerceAtLeast(1f)
+                    gazeX = (((change.position.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
+                    gazeY = (((change.position.y / h) - 0.47f) * 2.8f).coerceIn(-1f, 1f)
+                    change.consume()
+                }
+            )
+        }
+    ) {
+        val cx = size.width / 2f
+        val cy = size.height * .47f
+        val eyeW = size.width * .205f
+        val eyeH = size.height * .31f
+        val gap = size.width * .17f
+        val eyeWhite = Color(0xFFF4F1EA)
+        listOf(cx - gap, cx + gap).forEachIndexed { index, x ->
+            val wink = if (mood == "happy") 0.82f else 1f
+            val currentEyeH = eyeH * eyelid * wink * (0.985f + breathe * 0.015f)
+            val eyeTop = cy - currentEyeH / 2
+            drawOval(brush = Brush.verticalGradient(colors = listOf(Color(0xFFFFFFFF), eyeWhite, Color(0xFFE5E1DA)), startY = eyeTop, endY = eyeTop + currentEyeH), topLeft = Offset(x - eyeW / 2, eyeTop), size = Size(eyeW, currentEyeH))
+            if (eyelid > .22f) {
+                val px = (pupilX * eyeW * .30f).coerceIn(-eyeW * .30f, eyeW * .30f)
+                val py = (pupilY * eyeH * .22f).coerceIn(-eyeH * .22f, eyeH * .22f)
+                val irisCenter = Offset(x + px, cy + py)
+                drawCircle(Color(0xFF9B7960), radius = eyeW * .305f, center = irisCenter)
+                drawCircle(Color(0xFF382B25), radius = eyeW * .255f, center = irisCenter)
+                drawCircle(Color(0xFF101010), radius = eyeW * .19f, center = irisCenter)
+                drawCircle(Color.White.copy(alpha = eyeSparkle), radius = eyeW * .085f, center = Offset(x + px - eyeW * .095f, cy - eyeH * .105f + py))
+                drawCircle(Color.White.copy(alpha = .55f), radius = eyeW * .038f, center = Offset(x + px + eyeW * .105f, cy + eyeH * .075f + py))
+            }
+            val lash = Path().apply {
+                moveTo(x - eyeW * .49f, cy - currentEyeH * .12f)
+                quadraticTo(x, eyeTop - 2.dp.toPx(), x + eyeW * .49f, cy - currentEyeH * .12f)
+            }
+            drawPath(lash, Color(0xFF403631).copy(alpha = .72f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.7.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
+        }
+        val noseY = cy + eyeH * .72f + breathe * 1.2f.dp.toPx()
+        val nose = Path().apply {
+            moveTo(cx - 7.dp.toPx(), noseY)
+            quadraticTo(cx, noseY - 8.dp.toPx(), cx + 7.dp.toPx(), noseY)
+            quadraticTo(cx, noseY + 9.dp.toPx(), cx - 7.dp.toPx(), noseY)
+            close()
+        }
+        drawPath(nose, Color(0xFFB9A5A0))
+        val mouthY = noseY + 12.dp.toPx()
+        val mouth = Path().apply {
+            when (mood) {
+                "happy" -> { moveTo(cx - 17.dp.toPx(), mouthY); quadraticTo(cx, mouthY + 24.dp.toPx(), cx + 17.dp.toPx(), mouthY) }
+                "sad" -> { moveTo(cx - 15.dp.toPx(), mouthY + 9.dp.toPx()); quadraticTo(cx, mouthY - 7.dp.toPx(), cx + 15.dp.toPx(), mouthY + 9.dp.toPx()) }
+                "surprised" -> addOval(androidx.compose.ui.geometry.Rect(cx - 6.dp.toPx(), mouthY, cx + 6.dp.toPx(), mouthY + 15.dp.toPx()))
+                "thinking" -> { moveTo(cx - 10.dp.toPx(), mouthY + 4.dp.toPx()); lineTo(cx + 10.dp.toPx(), mouthY + 4.dp.toPx()) }
+                else -> {
+                    moveTo(cx, mouthY)
+                    cubicTo(cx - 2.dp.toPx(), mouthY + 10.dp.toPx(), cx - 13.dp.toPx(), mouthY + 11.dp.toPx(), cx - 16.dp.toPx(), mouthY + 5.dp.toPx())
+                    moveTo(cx, mouthY)
+                    cubicTo(cx + 2.dp.toPx(), mouthY + 10.dp.toPx(), cx + 13.dp.toPx(), mouthY + 11.dp.toPx(), cx + 16.dp.toPx(), mouthY + 5.dp.toPx())
+                }
+            }
+        }
+        drawPath(mouth, Color(0xFFB9A5A0), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
+    }
+}
+
+
+@Composable
+private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: androidx.compose.ui.platform.ClipboardManager) {
+    val fence = "```"
+    val codePattern = Regex("(?s)" + fence + "([^\\n]*)\\n(.*?)" + fence)
+    val matches = codePattern.findAll(text).toList()
+    if (matches.isEmpty()) {
+        Text(text, color = textColor, fontSize = 14.sp, lineHeight = 20.sp)
+        return
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        var cursor = 0
+        matches.forEach { match ->
+            val prose = text.substring(cursor, match.range.first).trim()
+            if (prose.isNotBlank()) Text(prose, color = textColor, fontSize = 14.sp, lineHeight = 20.sp)
+            val language = match.groupValues[1].trim().ifBlank { "CODE" }
+            val code = match.groupValues[2].trimEnd()
+            Surface(color = if (appDarkState) Color(0xFF090D12) else Color(0xFFF0F3F7), shape = RoundedCornerShape(12.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(language.uppercase(), color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { clipboardManager.setText(AnnotatedString(code)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                            Icon(Icons.Outlined.ContentCopy, contentDescription = "复制代码", tint = Cyan, modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("复制代码", color = Cyan, fontSize = 10.sp)
+                        }
+                    }
+                    Text(code, color = if (appDarkState) Color(0xFFE2EAF2) else Color(0xFF1E293B), fontSize = 12.sp, lineHeight = 17.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                }
+            }
+            cursor = match.range.last + 1
+        }
+        val tail = text.substring(cursor).trim()
+        if (tail.isNotBlank()) Text(tail, color = textColor, fontSize = 14.sp, lineHeight = 20.sp)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ChatPage(
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, modelProfiles: List<ModelProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
+    petMood: String, onMood: (String) -> Unit,
+    showSettingsOnEnter: Boolean,
+    onSettingsDrawerShown: () -> Unit,
+    settingsContent: @Composable (Modifier) -> Unit
+) {
+    val context: Context = LocalContext.current
+    var drawerSection by remember { mutableStateOf("recent") }
+    var selectedFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var selectedPhotos by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var previewPhoto by remember { mutableStateOf<Bitmap?>(null) }
+    val clipboardManager = LocalClipboardManager.current
+    val cameraCapture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap -> if (bitmap != null) selectedPhotos = selectedPhotos + bitmap }
+    var searchQuery by remember { mutableStateOf("") }
+    var showSearch by remember { mutableStateOf(false) }
+    var showRecent by remember { mutableStateOf(false) }
+    var showClear by remember { mutableStateOf(false) }
+    var showModelInfo by remember { mutableStateOf(false) }
+    var showCallInfo by remember { mutableStateOf(false) }
+    var callMode by remember { mutableStateOf("语音") }
+    var callActive by remember { mutableStateOf(false) }
+    var lastCallSpokenText by remember { mutableStateOf("") }
+    var isListening by remember { mutableStateOf(false) }
+    var ttsReady by remember { mutableStateOf(false) }
+    var isSpeaking by remember { mutableStateOf(false) }
+    var speechStatus by remember { mutableStateOf("语音引擎初始化中") }
+    val speechEngine = remember(context) {
+        TextToSpeech(context) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (status != TextToSpeech.SUCCESS) speechStatus = "语音引擎初始化失败，请检查系统文字转语音服务"
+        }
+    }
+    LaunchedEffect(ttsReady) {
+        if (ttsReady) {
+            val preferred = speechEngine.isLanguageAvailable(Locale.SIMPLIFIED_CHINESE)
+            val selected = when {
+                preferred >= TextToSpeech.LANG_AVAILABLE -> Locale.SIMPLIFIED_CHINESE
+                speechEngine.isLanguageAvailable(Locale.CHINESE) >= TextToSpeech.LANG_AVAILABLE -> Locale.CHINESE
+                else -> null
+            }
+            if (selected == null || speechEngine.setLanguage(selected) < TextToSpeech.LANG_AVAILABLE) {
+                speechStatus = "系统未安装中文语音包，请在系统文字转语音设置中下载中文语音"
+                ttsReady = false
+            } else {
+                speechEngine.setSpeechRate(1.0f)
+                speechEngine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) { isSpeaking = true }
+                    override fun onDone(utteranceId: String?) {
+                        if (utteranceId?.endsWith("-last") == true) isSpeaking = false
+                    }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        isSpeaking = false
+                        speechStatus = "朗读失败，请检查系统语音引擎或语音数据"
+                    }
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        isSpeaking = false
+                        speechStatus = "朗读失败（错误码 $errorCode），请检查系统语音引擎"
+                    }
+                })
+                speechStatus = "中文朗读已就绪"
+            }
+        }
+    }
+    DisposableEffect(speechEngine) { onDispose { speechEngine.stop(); speechEngine.shutdown() } }
+    var showRemember by remember { mutableStateOf(false) }
+    var noteDraft by remember { mutableStateOf("") }
+    var recentQuery by remember { mutableStateOf("") }
+    var recentSort by remember { mutableStateOf("最新") }
+    var showModelPicker by remember { mutableStateOf(false) }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
+    val voiceInput = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        isListening = false
+        val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (!spoken.isNullOrBlank()) {
+            if (callActive) onSend(spoken, emptyList(), emptyList())
+            else onDraft(if (draft.isBlank()) spoken else "$draft $spoken")
+        }
+    }
+    val callCamera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        if (bitmap != null && callActive && callMode == "视频") {
+            onSend("请分析我当前摄像头拍摄到的画面，并结合画面内容与我进行交流。", emptyList(), listOf(bitmap))
+        }
+    }
+    LaunchedEffect(callActive, messages.size, isThinking) {
+        if (callActive && !isThinking) {
+            val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
+            if (reply.isNotBlank() && reply != lastCallSpokenText && ttsReady) {
+                lastCallSpokenText = reply
+                val spokenText = speechText(reply)
+                if (spokenText.isNotBlank()) speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${messages.size}-last")
+            }
+        }
+    }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+    LaunchedEffect(drawerState) { androidx.compose.runtime.snapshotFlow { drawerState.isOpen }.collect { onDrawerVisibility(it) } }
+    LaunchedEffect(showSettingsOnEnter) {
+        if (showSettingsOnEnter) {
+            drawerSection = "settings"
+            drawerState.open()
+            onSettingsDrawerShown()
+        }
+    }
+    val filteredRecent = recentPrompts.filter { it.contains(recentQuery, true) }
+    val orderedRecent = when (recentSort) { "最早" -> filteredRecent.reversed(); "A-Z" -> filteredRecent.sortedBy { it.lowercase() }; else -> filteredRecent }
+    Box(
+        Modifier.fillMaxSize().pointerInput(drawerState.isOpen) {
+            var dragDistance = 0f
+            detectHorizontalDragGestures(
+                onDragStart = { dragDistance = 0f },
+                onHorizontalDrag = { _, amount -> dragDistance += amount },
+                onDragEnd = {
+                    if (!drawerState.isOpen && dragDistance > 72f) drawerScope.launch { drawerState.open() }
+                    else if (drawerState.isOpen && dragDistance < -72f) drawerScope.launch { drawerState.close() }
+                }
+            )
+        }
+    ) {
+    Column(modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding(), bottom = if (WindowInsets.isImeVisible) 0.dp else contentPadding.calculateBottomPadding()).padding(horizontal = 14.dp)) {
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { drawerScope.launch { drawerState.open() } }) {
+                Box(contentAlignment = Alignment.Center) { Text("☰", color = MainText, fontSize = 18.sp) }
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Agent", color = MainText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text(if (configured) activeModel else "尚未连接模型", color = Muted, fontSize = 10.sp, maxLines = 1)
+            }
+            Surface(shape = RoundedCornerShape(15.dp), color = Panel2, modifier = Modifier.clickable { showModelPicker = true }) {
+                Row(Modifier.padding(horizontal = 11.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("模型", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(5.dp))
+                    Text("⌄", color = Muted, fontSize = 13.sp)
+                }
+            }
+            Spacer(Modifier.width(7.dp))
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { showClear = true }) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Delete, contentDescription = "清理当前对话", tint = MainText, modifier = Modifier.size(20.dp)) }
+            }
+        }
+        if (!configured) {
             Spacer(Modifier.height(12.dp))
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 8.dp)
-            ) {
-                items(PetCatalog.all) { pet ->
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            selectedPet = pet
-                            status = if (pet.id == confirmedPet.id) "${pet.name} 已是背屏当前萌宠。" else "已选择${pet.name}，请点击上方确认按钮完成更换。"
-                        },
-                        color = if (selectedPet.id == pet.id) Color(0xFF344B7A) else Color(0xFF19243B),
-                        shape = RoundedCornerShape(18.dp),
-                        border = if (selectedPet.id == pet.id) BorderStroke(1.dp, Color(0xFF91A7FF)) else null
-                    ) {
-                        Column(Modifier.padding(vertical = 16.dp, horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(pet.emoji, fontSize = 38.sp)
-                            Spacer(Modifier.height(5.dp))
-                            Text(pet.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text(
-                                if (selectedPet.id == pet.id) "已选择" else if (confirmedPet.id == pet.id) "背屏当前" else pet.description,
-                                color = Color(0xFF9AA8C2), fontSize = 10.sp, maxLines = 1
-                            )
+            Surface(Modifier.fillMaxWidth().clickable(onClick = openSettings), color = Color(0xFF2B2A22), shape = RoundedCornerShape(14.dp)) {
+                Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("尚未配置模型 · 点击前往设置", color = Color(0xFFFFD58B), fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Text("设置  ›", color = Cyan, fontSize = 12.sp)
+                }
+            }
+        }
+        if (messages.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
+            Text("有什么可以帮你？", color = MainText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text("选择一个常用任务，或直接输入你的想法。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
+            val suggestions = listOf(
+                "总结内容" to "请帮我总结以下内容，提炼重点：",
+                "翻译文本" to "请将下面内容准确翻译成中文：",
+                "润色写作" to "请帮我润色下面这段文字，保持原意：",
+                "代码助手" to "请分析下面的代码并给出修复建议："
+            )
+            suggestions.chunked(2).forEach { rowItems ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    rowItems.forEach { (label, prompt) ->
+                        Surface(
+                            modifier = Modifier.weight(1f).padding(bottom = 8.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
+                            color = Panel, shape = RoundedCornerShape(15.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                        ) {
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+                                Text("✦", color = Cyan, fontSize = 14.sp)
+                                Spacer(Modifier.height(5.dp))
+                                Text(label, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
             }
-            Text("背屏通过 MAML 模板读取 HyperCat AI 数据。", color = Color(0xFF77839E), fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+        }
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
+            if (messages.isEmpty()) item {
+                Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    CatFace(Modifier.width(220.dp).height(170.dp), petMood)
+                    Text("嗨，我是$petName。", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("你可以在这里和我聊天。", color = Muted, fontSize = 13.sp)
+                }
+            }
+            items(messages.filter { searchQuery.isBlank() || it.text.contains(searchQuery, ignoreCase = true) }) { line ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
+                    if (!line.fromUser) {
+                        Box(Modifier.padding(end = 8.dp).size(34.dp).clip(RoundedCornerShape(11.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8C7BFF)))), contentAlignment = Alignment.Center) {
+                            Text(petName.take(1), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Surface(modifier = if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
+                        Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+                            if (line.reasoning.isNotBlank() && !line.fromUser) {
+                                var reasoningExpanded by remember(line) { mutableStateOf(true) }
+                                Surface(color = if (appDarkState) Color(0xFF24231F) else Color(0xFFFFF7E8), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(10.dp)) {
+                                        Row(Modifier.fillMaxWidth().clickable { reasoningExpanded = !reasoningExpanded }, verticalAlignment = Alignment.CenterVertically) {
+                                            Text("✧ 思路说明", color = if (appDarkState) Color(0xFFE5C98D) else Color(0xFF8A6425), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                            Text(if (reasoningExpanded) "收起⌃" else "展开⌄", color = Muted, fontSize = 10.sp)
+                                        }
+                                        AnimatedVisibility(visible = reasoningExpanded) {
+                                            Text(line.reasoning, color = if (appDarkState) Color(0xFFD8D1C3) else Color(0xFF5C503D), fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(9.dp))
+                            }
+                            if (line.text.isNotBlank()) {
+                                MarkdownMessage(line.text, if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), clipboardManager)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                                    val actionTint = if (line.fromUser) Color.White.copy(alpha=.82f) else Cyan
+                                    TextButton(onClick = { clipboardManager.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                        Icon(Icons.Outlined.ContentCopy, contentDescription = "复制消息", modifier = Modifier.size(13.dp), tint = actionTint)
+                                        Spacer(Modifier.width(3.dp)); Text("复制", color = actionTint, fontSize = 10.sp)
+                                    }
+                                    TextButton(onClick = {
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_TEXT, line.text)
+                                        }
+                                        runCatching { context.startActivity(Intent.createChooser(shareIntent, "分享消息")) }
+                                    }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                        Icon(Icons.Outlined.Share, contentDescription = "分享消息", modifier = Modifier.size(13.dp), tint = actionTint)
+                                        Spacer(Modifier.width(3.dp)); Text("分享", color = actionTint, fontSize = 10.sp)
+                                    }
+                                    if (!line.fromUser) {
+                                        TextButton(enabled = true, onClick = {
+                                            if (!ttsReady && !isSpeaking) {
+                                                Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+                                            } else if (isSpeaking) {
+                                                speechEngine.stop()
+                                                isSpeaking = false
+                                                speechStatus = "已停止朗读"
+                                            } else {
+                                                val spokenText = speechText(line.text)
+                                                if (spokenText.isBlank()) {
+                                                    speechStatus = "这条回复没有可朗读的文字"
+                                                } else {
+                                                    val chunks = splitSpeechText(spokenText)
+                                                    val requestPrefix = "hypercat-${System.nanoTime()}"
+                                                    speechEngine.stop()
+                                                    isSpeaking = true
+                                                    speechStatus = "正在朗读"
+                                                    chunks.forEachIndexed { index, chunk ->
+                                                        val utteranceId = requestPrefix + if (index == chunks.lastIndex) "-last" else "-${index}"
+                                                        val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+                                                        val result = speechEngine.speak(chunk, queueMode, null, utteranceId)
+                                                        if (result == TextToSpeech.ERROR) {
+                                                            isSpeaking = false
+                                                            speechStatus = "朗读请求失败，请检查系统文字转语音引擎"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                            Icon(if (isSpeaking) Icons.Outlined.Stop else Icons.Outlined.VolumeUp, contentDescription = if (isSpeaking) "停止朗读" else "语音播放", modifier = Modifier.size(13.dp), tint = actionTint)
+                                            Spacer(Modifier.width(3.dp)); Text(if (isSpeaking) "停止" else "朗读", color = actionTint, fontSize = 10.sp)
+                                        }
+                                    }
+                                }
+                            }
+                            line.photos.forEach { photo -> Image(bitmap = photo.asImageBitmap(), contentDescription = "照片", modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp).clip(RoundedCornerShape(12.dp))) }
+                            line.attachments.forEach { name -> Text("📎 $name", color = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan, fontSize = 11.sp) }
+                        }
+                    }
+                    if (line.fromUser) {
+                        Box(Modifier.padding(start = 8.dp).size(34.dp).clip(RoundedCornerShape(11.dp)).background(Color(0xFF397D9D)), contentAlignment = Alignment.Center) {
+                            Text("我", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+            if (isThinking && searchQuery.isBlank()) item {
+                Row(Modifier.fillMaxWidth().padding(start = 42.dp, top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Cyan)
+                    Spacer(Modifier.width(9.dp))
+                    Text("正在思考…", color = Muted, fontSize = 12.sp)
+                }
+            }
+        }
+        if (selectedPhotos.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                selectedPhotos.forEach { photo -> Image(bitmap = photo.asImageBitmap(), contentDescription = "待发送照片", modifier = Modifier.size(54.dp).clip(RoundedCornerShape(10.dp)).clickable { previewPhoto = photo }) }
+                Text("${selectedPhotos.size} 张照片", color = Cyan, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedPhotos = emptyList() })
+            }
+        }
+        if (selectedFiles.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("${selectedFiles.size} 个附件已添加", color = Cyan, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedFiles = emptyList() })
+            }
+        }
+        Column(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 10.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
+                BasicTextField(value = draft, onValueChange = onDraft,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp, max = 144.dp).padding(horizontal = 15.dp, vertical = 14.dp),
+                    textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
+                    decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$petName…", color = Muted, fontSize = 14.sp); inner() })
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Surface(Modifier.size(40.dp).clickable { cameraCapture.launch(null) }, color = Panel2, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PhotoCamera, contentDescription = "拍照", tint = Cyan) } }
+                Surface(Modifier.size(40.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
+                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted) }
+                }
+                Surface(Modifier.clip(RoundedCornerShape(14.dp)).clickable { callMode = "语音"; showCallInfo = true }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
+                    Row(Modifier.padding(horizontal = 9.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Call, contentDescription = null, tint = Cyan, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(5.dp)); Text("语音", color = MainText, fontSize = 11.sp)
+                    }
+                }
+                Surface(Modifier.clip(RoundedCornerShape(14.dp)).clickable { callMode = "视频"; showCallInfo = true }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
+                    Row(Modifier.padding(horizontal = 9.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Videocam, contentDescription = null, tint = Cyan, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(5.dp)); Text("视频", color = MainText, fontSize = 11.sp)
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                VoiceInputButton(isListening = isListening) {
+                    if (!isListening) {
+                        isListening = true
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, "请开始说话")
+                        }
+                        runCatching { voiceInput.launch(intent) }.onFailure { isListening = false }
+                    }
+                }
+                Surface(Modifier.size(42.dp).clickable(enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) {
+                    onSend(draft, selectedFiles, selectedPhotos); selectedFiles = emptyList(); selectedPhotos = emptyList()
+                }, color = if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.Send, contentDescription = "发送", tint = if (draft.isNotBlank() || selectedFiles.isNotEmpty()) Color(0xFF06202A) else Muted)
+                    }
+                }
+            }
+            if (isListening) Text("正在聆听… 说完后系统会自动返回识别文字", color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
         }
     }
+        AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding(),
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()) {
+                    Surface(modifier = Modifier.fillMaxSize(), color = Panel, shape = RoundedCornerShape(0.dp)) {
+                        if (drawerSection == "settings") {
+                            Column(Modifier.fillMaxSize()) {
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = { drawerSection = "recent" }) { Text("‹ 最近对话", color = MainText) }
+                                    Spacer(Modifier.weight(1f))
+                                    Text("设置", color = MainText, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.width(8.dp))
+                                    IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭设置", tint = Muted) }
+                                }
+                                settingsContent(Modifier.weight(1f).fillMaxWidth())
+                            }
+                        } else {
+                            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                                Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("最近对话", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                        Text("选择一条记录，将内容放回输入框继续编辑", color = Muted, fontSize = 11.sp)
+                                    }
+                                    IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭最近对话", tint = Muted) }
+                                }
+                                Spacer(Modifier.height(14.dp))
+                                OutlinedTextField(value = recentQuery, onValueChange = { recentQuery = it }, placeholder = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 10.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 11.sp) }) } }
+                                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp)) {
+                                    if (orderedRecent.isEmpty()) item {
+                                        Column(Modifier.fillMaxWidth().padding(top = 42.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("暂无最近对话", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                            Text("发送消息后，这里会显示最近使用的内容", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                                        }
+                                    }
+                                    items(orderedRecent) { prompt ->
+                                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onDraft(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 12.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8276D9)))), contentAlignment = Alignment.Center) { Text(petName.take(1), color = Color.White, fontWeight = FontWeight.Bold) }
+                                            Spacer(Modifier.width(10.dp))
+                                            Column(Modifier.weight(1f)) { Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold); Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 2) }
+                                        }
+                                        Divider(color = GlassBorder.copy(alpha = .4f))
+                                    }
+                                }
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp),
+                                    color = Panel2,
+                                    shape = RoundedCornerShape(18.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                                ) {
+                                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf("⌕" to "找一下", "✎" to "记一下", "⚙" to "设置").forEachIndexed { index, item ->
+                                            Column(
+                                                Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                                                    .clickable {
+                                                        when (index) {
+                                                            0 -> { showSearch = true; drawerScope.launch { drawerState.close() } }
+                                                            1 -> { noteDraft = draft; showRemember = true; drawerScope.launch { drawerState.close() } }
+                                                            else -> drawerSection = "settings"
+                                                        }
+                                                    }.padding(vertical = 8.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text(item.first, color = Cyan, fontSize = 20.sp)
+                                                Text(item.second, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                            }
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(12.dp))
+                            }
+                        }
+                    }
+        }
+    }
+    if (previewPhoto != null) AlertDialog(onDismissRequest = { previewPhoto = null }, title = { Text("照片预览") }, text = { Image(bitmap = previewPhoto!!.asImageBitmap(), contentDescription = "照片预览", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) }, confirmButton = { TextButton(onClick = { previewPhoto = null }) { Text("完成") } })
+    if (showSearch) AlertDialog(onDismissRequest = { showSearch = false; searchQuery = "" }, title = { Text("查找对话内容") },
+        text = { Column { OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("输入关键词，聊天列表即时筛选") }, singleLine = true); Text("${messages.count { it.text.contains(searchQuery, true) }} 条匹配消息", color = Muted, fontSize = 12.sp) } },
+        confirmButton = { TextButton(onClick = { showSearch = false; searchQuery = "" }) { Text("完成") } })
+    if (showRemember) AlertDialog(onDismissRequest = { showRemember = false }, title = { Text("记一下") }, text = { Column { OutlinedTextField(value = noteDraft, onValueChange = { noteDraft = it }, label = { Text("要记住的内容") }, minLines = 3); Text("已保存 ${savedNotes.size} 条", color = Muted, fontSize = 11.sp) } }, confirmButton = { TextButton(onClick = { if (noteDraft.isNotBlank()) onSaveNote(noteDraft.trim()); noteDraft=""; showRemember=false }) { Text("保存") } }, dismissButton = { TextButton(onClick = { showRemember=false }) { Text("取消") } })
+    if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("清理当前对话") },
+        text = { Text("确定清空当前页面的全部消息吗？此操作不会删除最近对话记录。", color = Muted) },
+        confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); showClear = false }) { Text("清空消息", color = Color(0xFFE57373)) } },
+        dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
+    if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
+    if (showCallInfo) AlertDialog(
+        onDismissRequest = { callActive = false; isListening = false; speechEngine.stop(); showCallInfo = false },
+        title = { Text(if (callActive) "${callMode} AI 通话中" else "AI ${callMode}通话") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    if (callMode == "语音")
+                        "兼容通话模式：使用系统语音识别收集你的发言，交由当前已配置的大模型回答，再通过系统中文语音合成播报。点击麦克风即可开始一轮对话。"
+                    else
+                        "视频交流模式：拍摄一张当前画面，发送给支持图片输入的已配置模型进行理解，再用语音播报回答。此模式为逐帧拍摄，不是连续视频直播。",
+                    color = Muted, fontSize = 12.sp
+                )
+                Surface(color = Panel2, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(if (callActive) "通话已启动" else "等待开始", color = Cyan, fontWeight = FontWeight.SemiBold)
+                        Text("语音识别：系统服务 · ${if (isListening) "正在聆听" else "待命"}", color = Muted, fontSize = 11.sp)
+                        Text("AI 模型：${if (configured) "使用当前聊天模型" else "尚未配置"}", color = Muted, fontSize = 11.sp)
+                        Text("语音播报：${if (ttsReady) "中文语音已就绪" else speechStatus}", color = Muted, fontSize = 11.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (callMode == "视频") {
+                    TextButton(onClick = {
+                        if (!configured) Toast.makeText(context, "请先在设置中配置大模型", Toast.LENGTH_SHORT).show()
+                        else {
+                            callActive = true
+                            runCatching { callCamera.launch(null) }.onFailure {
+                                Toast.makeText(context, "无法启动摄像头：${it.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }) { Text("拍摄并交流") }
+                } else {
+                    TextButton(onClick = {
+                        if (!configured) Toast.makeText(context, "请先在设置中配置大模型", Toast.LENGTH_SHORT).show()
+                        else if (!ttsReady) Toast.makeText(context, speechStatus, Toast.LENGTH_SHORT).show()
+                        else {
+                            callActive = true
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "AI 通话中，请开始说话")
+                            }
+                            isListening = true
+                            runCatching { voiceInput.launch(intent) }.onFailure {
+                                isListening = false
+                                Toast.makeText(context, "系统语音识别不可用：${it.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }) { Text(if (isListening) "正在聆听…" else "开始说话") }
+                }
+                TextButton(onClick = {
+                    callActive = false
+                    isListening = false
+                    speechEngine.stop()
+                    showCallInfo = false
+                }) { Text(if (callActive) "挂断" else "关闭") }
+            }
+        }
+    )
+}
+
+@Composable
+private fun VoiceInputButton(isListening: Boolean, onClick: () -> Unit) {
+    val pulseTransition = rememberInfiniteTransition(label = "voice-input-pulse")
+    val pulse by pulseTransition.animateFloat(initialValue = 0.78f, targetValue = 1.22f,
+        animationSpec = infiniteRepeatable(animation = tween(720), repeatMode = RepeatMode.Reverse), label = "voice-input-scale")
+    Box(Modifier.size(46.dp), contentAlignment = Alignment.Center) {
+        if (isListening) Canvas(Modifier.fillMaxSize()) {
+            drawCircle(color = Cyan.copy(alpha = 0.42f), radius = size.minDimension * 0.42f * pulse,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
+        }
+        Surface(Modifier.size(40.dp).clickable(enabled = !isListening, onClick = onClick),
+            color = if (isListening) Cyan else Panel2, shape = CircleShape) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Mic, contentDescription = if (isListening) "正在聆听" else "语音输入",
+                    tint = if (isListening) Color(0xFF06202A) else MainText)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsPage(
+    modifier: Modifier, provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit,
+    endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
+    apiKey: String, onApiKey: (String) -> Unit, onSave: () -> Unit, saved: Boolean,
+    themeMode: String, onThemeMode: (String) -> Unit,
+    currentVersion: String, updateStatus: String, latestRelease: ReleaseInfo?,
+    onCheckUpdates: () -> Unit, openUrl: (String) -> Unit
+) {
+    var showPluginDialog by remember { mutableStateOf(false) }
+    var showMcpDialog by remember { mutableStateOf(false) }
+    var showHelpDialog by remember { mutableStateOf(false) }
+    var showTaskDialog by remember { mutableStateOf(false) }
+    var showSecurityDetail by remember { mutableStateOf(false) }
+    var showSkillDialog by remember { mutableStateOf(false) }
+    var skillName by remember { mutableStateOf("") }
+    var skillDescription by remember { mutableStateOf("") }
+    var skillInstructions by remember { mutableStateOf("") }
+    var skillStatus by remember { mutableStateOf("支持导入 JSON、Markdown 和 TXT 技能文件") }
+    val skills = remember { mutableStateListOf<SkillProfile>() }
+    var securityDetailTitle by remember { mutableStateOf("") }
+    var securityDetailText by remember { mutableStateOf("") }
+    var taskTitle by remember { mutableStateOf("") }
+    var taskDelayMinutes by remember { mutableStateOf("30") }
+    var profileName by remember { mutableStateOf("") }
+    var pluginEnabled by remember { mutableStateOf(false) }
+    var pluginName by remember { mutableStateOf("") }
+    var pluginDescription by remember { mutableStateOf("") }
+    var pluginEndpoint by remember { mutableStateOf("") }
+    var pluginMethod by remember { mutableStateOf("POST") }
+    var pluginApiKey by remember { mutableStateOf("") }
+    var pluginStatus by remember { mutableStateOf("支持导入 JSON 插件清单或手动添加 REST API 插件") }
+    val plugins = remember { mutableStateListOf<ThirdPartyPlugin>() }
+    var mcpName by remember { mutableStateOf("") }
+    var mcpEndpoint by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
+    val pluginImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("无法读取插件清单")
+            val json = JSONObject(raw)
+            val name = json.optString("name").trim()
+            val endpoint = json.optString("endpoint").trim()
+            require(name.isNotBlank() && endpoint.startsWith("https://")) { "插件名称不能为空，且远程地址必须使用 HTTPS" }
+            val method = json.optString("method", "POST").uppercase().let { if (it in listOf("GET", "POST")) it else "POST" }
+            val item = ThirdPartyPlugin(name.take(60), json.optString("description").take(300), endpoint, method, json.optString("apiKey"), false)
+            plugins.removeAll { it.name.equals(item.name, true) }
+            plugins.add(0, item)
+            val savedPlugins = org.json.JSONArray()
+            plugins.forEach { plugin -> savedPlugins.put(JSONObject().put("name", plugin.name).put("description", plugin.description).put("endpoint", plugin.endpoint).put("method", plugin.method).put("apiKey", plugin.apiKey).put("enabled", plugin.enabled)) }
+            prefs.edit().putString("third_party_plugins", savedPlugins.toString()).apply()
+            pluginStatus = "已导入插件：${item.name}（默认未启用）"
+        }.onFailure { pluginStatus = "导入失败：${it.message ?: "文件格式错误"}" }
+    }
+    val skillImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("无法读取所选文件")
+            val json = runCatching { JSONObject(raw) }.getOrNull()
+            val importedName = json?.optString("name")?.takeIf { it.isNotBlank() }
+                ?: uri.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.')?.ifBlank { "导入技能" } ?: "导入技能"
+            val description = json?.optString("description").orEmpty()
+            val instructions = json?.optString("instructions")?.takeIf { it.isNotBlank() }
+                ?: json?.optString("content")?.takeIf { it.isNotBlank() } ?: raw
+            val skill = SkillProfile(importedName.take(60), description.take(300), instructions.take(30000))
+            skills.removeAll { it.name.equals(skill.name, true) }
+            skills.add(0, skill)
+            val array = org.json.JSONArray()
+            skills.forEach { item -> array.put(JSONObject().put("name", item.name).put("description", item.description).put("instructions", item.instructions)) }
+            prefs.edit().putString("agent_skills", array.toString()).apply()
+            skillStatus = "已导入：${skill.name}"
+        }.onFailure { skillStatus = "导入失败：${it.message ?: "文件格式无法识别"}" }
+    }
+    LaunchedEffect(Unit) {
+        pluginEnabled = prefs.getBoolean("plugins_enabled", false)
+        runCatching {
+            val array = org.json.JSONArray(prefs.getString("third_party_plugins", "[]") ?: "[]")
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                plugins.add(ThirdPartyPlugin(item.optString("name"), item.optString("description"), item.optString("endpoint"), item.optString("method", "POST"), item.optString("apiKey"), item.optBoolean("enabled", false)))
+            }
+        }
+        mcpName = prefs.getString("mcp_name", "") ?: ""
+        mcpEndpoint = prefs.getString("mcp_endpoint", "") ?: ""
+        runCatching {
+            val array = org.json.JSONArray(prefs.getString("agent_skills", "[]") ?: "[]")
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                skills.add(SkillProfile(item.optString("name"), item.optString("description"), item.optString("instructions")))
+            }
+        }
+    }
+    fun persistSkills() {
+        val array = org.json.JSONArray()
+        skills.forEach { item -> array.put(JSONObject().put("name", item.name).put("description", item.description).put("instructions", item.instructions)) }
+        prefs.edit().putString("agent_skills", array.toString()).apply()
+    }
+    fun persistPlugins() {
+        val array = org.json.JSONArray()
+        plugins.forEach { item -> array.put(JSONObject().put("name", item.name).put("description", item.description).put("endpoint", item.endpoint).put("method", item.method).put("apiKey", item.apiKey).put("enabled", item.enabled)) }
+        prefs.edit().putString("third_party_plugins", array.toString()).apply()
+    }
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+        Spacer(Modifier.height(22.dp))
+        Text("设置", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text("外观、扩展能力与应用信息", color = Muted, fontSize = 12.sp)
+        Spacer(Modifier.height(18.dp))
+        Text("模型与服务", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text("先选择服务类型，再配置连接信息与模型档案", color = Muted, fontSize = 11.sp)
+        Spacer(Modifier.height(10.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                Text("服务类型", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("本地模型", "OpenAI 兼容接口").forEach { item ->
+                        FilterChip(selected = provider == item, onClick = { onProvider(item) }, label = { Text(item, fontSize = 12.sp) })
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 http://127.0.0.1:1234/v1")
+                ConfigField("模型名称", model, onModel, "例如 qwen2.5 或 gpt-4o-mini")
+                ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
+                Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
+                else modelProfiles.forEach { p ->
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSelectProfile(p) }.padding(vertical = 9.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(p.name, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp)
+                        }
+                        Text("设为当前  ›", color = Cyan, fontSize = 11.sp)
+                    }
+                }
+                OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(24) }, label = { Text("档案名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank()) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey)); profileName = "" } },
+                    enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存为模型档案") }
+                Spacer(Modifier.height(8.dp))
+                Text("密钥目前保存在应用私有配置中；模型推理请求与密钥加密存储仍需后续接入。", color = Muted, fontSize = 10.sp)
+                Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) { Text("保存模型配置", fontWeight = FontWeight.Bold) }
+                if (saved) Text("配置已保存", color = Color(0xFF76E0B1), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+        Spacer(Modifier.height(22.dp))
+        Text("外观与主题", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text("按系统或时间自动切换，也可手动固定主题", color = Muted, fontSize = 11.sp)
+        Spacer(Modifier.height(10.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf("system" to "系统", "time" to "定时").forEach { (mode, label) ->
+                        FilterChip(selected = themeMode == mode, onClick = { onThemeMode(mode) }, modifier = Modifier.weight(1f), label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) })
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf("light" to "☀ 浅色", "dark" to "☾ 深色").forEach { (mode, label) ->
+                        FilterChip(selected = themeMode == mode, onClick = { onThemeMode(mode) }, modifier = Modifier.weight(1f), label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) })
+                    }
+                }
+                Text(if (themeMode == "time") "自动规则：07:00–18:59 浅色，19:00–06:59 深色" else if (themeMode == "system") "当前跟随手机系统外观" else if (themeMode == "light") "已固定为浅色外观" else "已固定为深色外观", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
+            }
+        }
+        Spacer(Modifier.height(22.dp))
+        Text("安全防护", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text("为 Agent、插件和技能设定操作边界。建议默认关闭高风险权限，按任务、目录和资源逐项授权。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+        val securityItems = listOf(
+            Triple("security_delete_files", "删除本地文件的授权", "控制 Agent、技能或工具是否可以发起文件删除。建议默认关闭；开启后也应逐次展示目标文件路径、文件名和影响范围，并要求用户二次确认。应用只能删除自身有权管理的文件，SAF 授权范围之外及 Android 受保护目录仍由系统拦截。"),
+            Triple("security_sensitive_dirs", "敏感目录的授权", "为下载、文档、照片、项目资料等目录分别设置访问范围。应遵循最小授权原则，只选择任务必需的目录；目录访问通过 Android 系统文件选择器授予，用户可随时撤销。不要将整个内部存储或包含密钥的目录无差别开放给技能。"),
+            Triple("security_system_protection", "系统安全保护", "作为高风险动作的总开关：对启动外部应用、修改系统设置、调用系统能力及执行批量操作进行风险提示和确认。应用不会静默获取设备管理员、无障碍、Root 或其他系统权限；任何系统能力都必须经过 Android 正规授权页面。"),
+            Triple("security_file_protection", "文件安全保护", "保护文件读写、覆盖、移动和删除流程。建议在覆盖前保留原文件或提示备份，对批量修改显示清单，并拒绝路径越界和可疑文件操作。此项不等同于杀毒软件、云端备份或全盘实时防护。"),
+            Triple("security_identity_delegate", "身份委托控制", "控制是否允许 Agent、插件或技能在用户明确授权的范围内代为执行操作。委托应限定具体任务、资源和有效范围；敏感操作再次确认，不应把 API Key、登录密码、短信验证码或系统账号凭据交给技能。"),
+            Triple("security_resource_access", "应用和资源访问控制", "管理相机、麦克风、位置、附件、剪贴板及应用内数据等资源的调用边界。按功能逐项授权，只在任务需要时请求系统权限，并说明用途；用户可以关闭应用内授权或通过 Android 设置撤销系统权限。")
+        )
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 5.dp)) {
+                securityItems.forEach { (key, title, description) ->
+                    var granted by remember(key) { mutableStateOf(prefs.getBoolean(key, false)) }
+                    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(title, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text(if (granted) "应用内已授权" else "尚未授权", color = if (granted) Color(0xFF70C99A) else Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                        }
+                        Switch(checked = granted, onCheckedChange = {
+                            granted = it
+                            prefs.edit().putBoolean(key, it).apply()
+                        })
+                        IconButton(onClick = {
+                            securityDetailTitle = title
+                            securityDetailText = description
+                            showSecurityDetail = true
+                        }) { Text("ⓘ", color = Muted, fontSize = 17.sp) }
+                    }
+                    if (key != securityItems.last().first) Divider(color = GlassBorder.copy(alpha = .45f))
+                }
+            }
+        }
+        Text("重要：当前开关仅保存应用内授权偏好，尚未接入对应的底层执行拦截器，因此不能视为已经具备完整安全防护。实际访问受保护目录、相机、麦克风等仍须 Android 系统授权；后续接入执行层时应再次校验授权状态。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
+        Spacer(Modifier.height(22.dp))
+        Text("扩展能力", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        SettingsAction("◷", "定时任务", "创建一次性提醒，到时间通过系统通知提醒") { showTaskDialog = true }
+        SettingsAction("◇", "插件", if (pluginEnabled) "已启用插件框架" else "管理插件扩展入口") { showPluginDialog = true }
+        SettingsAction("✧", "技能（Skills）", "${skills.size} 个技能 · 创建自定义技能或从文件导入") { showSkillDialog = true }
+        SettingsAction("⌁", "MCP 设置", if (mcpEndpoint.isBlank()) "配置 MCP 服务连接" else mcpName.ifBlank { mcpEndpoint }) { showMcpDialog = true }
+        SettingsAction("✉", "帮助与反馈", "使用说明、问题反馈与项目主页") { showHelpDialog = true }
+        Spacer(Modifier.height(18.dp))
+        Text("应用与帮助", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        SettingsAction("i", "版本号", "当前版本 $currentVersion") { }
+        SettingsAction("↻", "检查更新", updateStatus) { onCheckUpdates() }
+        if (latestRelease != null && versionIsNewer(latestRelease.version, currentVersion)) {
+            Surface(color = if (appDarkState) Color(0xFF183A43) else Color(0xFFE1F5F4), shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                    Text("发现新版本 ${latestRelease.version}", color = MainText, fontWeight = FontWeight.Bold)
+                    if (latestRelease.notes.isNotBlank()) Text(latestRelease.notes, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    Button(onClick = { openUrl(latestRelease.url) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) { Text("前往 GitHub 下载更新") }
+                }
+            }
+        }
+
+    }
+    if (showSkillDialog) AlertDialog(
+        onDismissRequest = { showSkillDialog = false },
+        title = { Text("技能库 · ${skills.size}") },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                Text("技能由名称、简介和操作指令组成。可创建自己的技能，或导入 JSON、Markdown、TXT 文件。导入内容会作为技能指令保存；请勿导入不可信来源的脚本或密钥。", color = Muted, fontSize = 11.sp)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(value = skillName, onValueChange = { skillName = it.take(60) }, label = { Text("技能名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = skillDescription, onValueChange = { skillDescription = it.take(300) }, label = { Text("技能简介（选填）") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = skillInstructions, onValueChange = { skillInstructions = it.take(30000) }, label = { Text("技能指令 / 工作流程") }, minLines = 4, modifier = Modifier.fillMaxWidth())
+                Button(onClick = {
+                    if (skillName.isNotBlank() && skillInstructions.isNotBlank()) {
+                        skills.removeAll { it.name.equals(skillName.trim(), true) }
+                        skills.add(0, SkillProfile(skillName.trim(), skillDescription.trim(), skillInstructions.trim()))
+                        persistSkills()
+                        skillName = ""; skillDescription = ""; skillInstructions = ""
+                        skillStatus = "技能已保存"
+                    }
+                }, enabled = skillName.isNotBlank() && skillInstructions.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("创建并保存技能") }
+                OutlinedButton(onClick = { skillImporter.launch(arrayOf("application/json", "text/markdown", "text/plain", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) { Text("从文件导入技能") }
+                Text(skillStatus, color = Muted, fontSize = 11.sp)
+                if (skills.isNotEmpty()) {
+                    Divider(color = GlassBorder)
+                    Text("已保存的技能", color = MainText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp))
+                    skills.forEach { skill ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(skill.name, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text(skill.description.ifBlank { skill.instructions.take(90) }, color = Muted, fontSize = 10.sp, maxLines = 2)
+                            }
+                            TextButton(onClick = {
+                                skills.remove(skill)
+                                persistSkills()
+                                skillStatus = "已删除：${skill.name}"
+                            }) { Text("删除") }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { showSkillDialog = false }) { Text("完成") } }
+    )
+    if (showSecurityDetail) AlertDialog(
+        onDismissRequest = { showSecurityDetail = false },
+        title = { Text(securityDetailTitle) },
+        text = { Text(securityDetailText + "\\n\\n当前开关仅保存应用内授权状态；涉及系统级文件或设备权限时，仍会通过 Android 系统授权流程单独申请。", color = Muted) },
+        confirmButton = { TextButton(onClick = { showSecurityDetail = false }) { Text("知道了") } }
+    )
+    if (showPluginDialog) AlertDialog(
+        onDismissRequest = { showPluginDialog = false },
+        title = { Text("第三方插件") },
+        text = { Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState())) {
+            Text("支持接入 HTTPS REST API 插件。可手动登记或导入 JSON 清单；插件默认关闭，启用前请确认服务来源与权限。当前提供插件登记、启停和配置持久化，Agent 自动调用/参数映射将在工具执行层接入后开放。", color = Muted, fontSize = 11.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("允许启用第三方插件", modifier = Modifier.weight(1f), color = MainText, fontSize = 13.sp)
+                Switch(checked = pluginEnabled, onCheckedChange = { pluginEnabled = it; prefs.edit().putBoolean("plugins_enabled", it).apply() })
+            }
+            Divider(color = GlassBorder)
+            Text("添加插件", color = MainText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+            OutlinedTextField(value = pluginName, onValueChange = { pluginName = it.take(60) }, label = { Text("插件名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = pluginDescription, onValueChange = { pluginDescription = it.take(300) }, label = { Text("功能说明") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = pluginEndpoint, onValueChange = { pluginEndpoint = it.take(1000) }, label = { Text("HTTPS API 地址") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(selected = pluginMethod == "GET", onClick = { pluginMethod = "GET" }, label = { Text("GET") })
+                Spacer(Modifier.width(8.dp))
+                FilterChip(selected = pluginMethod == "POST", onClick = { pluginMethod = "POST" }, label = { Text("POST") })
+            }
+            OutlinedTextField(value = pluginApiKey, onValueChange = { pluginApiKey = it.take(500) }, label = { Text("API Key（选填）") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            Button(onClick = {
+                val url = pluginEndpoint.trim()
+                if (pluginName.isNotBlank() && url.startsWith("https://")) {
+                    val item = ThirdPartyPlugin(pluginName.trim(), pluginDescription.trim(), url, pluginMethod, pluginApiKey.trim(), false)
+                    plugins.removeAll { it.name.equals(item.name, true) }
+                    plugins.add(0, item)
+                    persistPlugins()
+                    pluginName = ""; pluginDescription = ""; pluginEndpoint = ""; pluginApiKey = ""
+                    pluginStatus = "插件已添加，默认未启用"
+                } else pluginStatus = "请填写名称，并使用 HTTPS API 地址"
+            }, enabled = pluginName.isNotBlank() && pluginEndpoint.startsWith("https://"), modifier = Modifier.fillMaxWidth()) { Text("添加插件") }
+            OutlinedButton(onClick = { pluginImporter.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) { Text("导入 JSON 插件清单") }
+            Text(pluginStatus, color = Muted, fontSize = 10.sp)
+            Divider(color = GlassBorder)
+            Text("已接入插件 · \${plugins.size}", color = MainText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp))
+            if (plugins.isEmpty()) Text("尚未添加插件。", color = Muted, fontSize = 11.sp)
+            plugins.forEach { item ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(item.name, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("\${item.method} · \${item.endpoint}", color = Muted, fontSize = 9.sp, maxLines = 2)
+                        if (item.description.isNotBlank()) Text(item.description, color = Muted, fontSize = 10.sp, maxLines = 2)
+                    }
+                    Switch(checked = item.enabled, enabled = pluginEnabled, onCheckedChange = { enabled ->
+                        val index = plugins.indexOf(item)
+                        if (index >= 0) plugins[index] = item.copy(enabled = enabled)
+                        persistPlugins()
+                    })
+                    TextButton(onClick = { plugins.remove(item); persistPlugins(); pluginStatus = "已移除：\${item.name}" }) { Text("删除") }
+                }
+                Divider(color = GlassBorder.copy(alpha = .4f))
+            }
+            Text("清单格式：{ name, description, endpoint, method, apiKey }。仅接受 HTTPS 远程地址；导入后默认关闭。不要导入来源不明的 API Key。", color = Muted, fontSize = 10.sp)
+        } },
+        confirmButton = { TextButton(onClick = { showPluginDialog = false }) { Text("完成") } }
+    )
+    if (showMcpDialog) AlertDialog(
+        onDismissRequest = { showMcpDialog = false },
+        title = { Text("MCP 服务设置") },
+        text = { Column {
+            Text("配置 MCP 服务连接信息。当前版本保存配置，MCP 客户端连接能力将在后续接入。", color = Muted, fontSize = 12.sp)
+            OutlinedTextField(value = mcpName, onValueChange = { mcpName = it }, label = { Text("服务名称") }, singleLine = true)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(value = mcpEndpoint, onValueChange = { mcpEndpoint = it }, label = { Text("服务地址 / URL") }, singleLine = true)
+        } },
+        confirmButton = { TextButton(onClick = { prefs.edit().putString("mcp_name", mcpName.trim()).putString("mcp_endpoint", mcpEndpoint.trim()).apply(); showMcpDialog = false }) { Text("保存") } },
+        dismissButton = { TextButton(onClick = { showMcpDialog = false }) { Text("取消") } }
+    )
+    if (showTaskDialog) AlertDialog(
+        onDismissRequest = { showTaskDialog = false },
+        title = { Text("创建定时任务") },
+        text = { Column {
+            Text("设置任务名称和提醒时间。当前支持一次性本地通知提醒。", color = Muted, fontSize = 12.sp)
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(value = taskTitle, onValueChange = { taskTitle = it.take(60) }, label = { Text("任务名称") }, singleLine = true)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(value = taskDelayMinutes, onValueChange = { taskDelayMinutes = it.filter { ch -> ch.isDigit() }.take(5) }, label = { Text("多少分钟后提醒") }, singleLine = true)
+        } },
+        confirmButton = { TextButton(onClick = {
+            val minutes = taskDelayMinutes.toLongOrNull()
+            if (taskTitle.isNotBlank() && minutes != null && minutes > 0) {
+                val data = androidx.work.workDataOf("task_title" to taskTitle.trim(), "task_note" to "你设置的定时任务时间到了。")
+                val request = androidx.work.OneTimeWorkRequestBuilder<ReminderWorker>()
+                    .setInitialDelay(minutes, java.util.concurrent.TimeUnit.MINUTES)
+                    .setInputData(data).build()
+                androidx.work.WorkManager.getInstance(context).enqueue(request)
+                taskTitle = ""
+                showTaskDialog = false
+            }
+        }) { Text("创建提醒") } },
+        dismissButton = { TextButton(onClick = { showTaskDialog = false }) { Text("取消") } }
+    )
+    if (showHelpDialog) AlertDialog(
+        onDismissRequest = { showHelpDialog = false },
+        title = { Text("帮助与反馈") },
+        text = { Text("HyperCat AI 项目主页、问题反馈和版本发布均通过 GitHub 提供。若遇到问题，请提交设备型号、系统版本和复现步骤。", color = Muted) },
+        confirmButton = { TextButton(onClick = { showHelpDialog = false; openUrl("https://github.com/yanglin950915-sketch/HyperCatAI-next/issues") }) { Text("提交反馈") } },
+        dismissButton = { TextButton(onClick = { showHelpDialog = false; openUrl("https://github.com/yanglin950915-sketch/HyperCatAI-next") }) { Text("项目主页") } }
+    )
+}
+
+@Composable
+private fun SettingsAction(icon: String, title: String, subtitle: String, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(onClick = onClick),
+        color = Panel, shape = RoundedCornerShape(15.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+    ) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(icon, fontSize = 18.sp, color = Cyan, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, color = Muted, fontSize = 11.sp, maxLines = 2)
+            }
+            Text("›", color = Muted, fontSize = 20.sp, fontWeight = FontWeight.Light)
+        }
+    }
+}
+
+@Composable
+private fun ConfigField(label: String, value: String, onValue: (String) -> Unit, hint: String, secret: Boolean = false) {
+    Text(label, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+    Spacer(Modifier.height(7.dp))
+    Surface(color = Panel, shape = RoundedCornerShape(14.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp)) {
+            if (secret) {
+                BasicTextField(value, onValue, modifier = Modifier.fillMaxWidth(), textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp),
+                    visualTransformation = PasswordVisualTransformation(), decorationBox = { inner -> if (value.isEmpty()) Text(hint, color = Muted, fontSize = 13.sp); inner() })
+            } else {
+                BasicTextField(value, onValue, modifier = Modifier.fillMaxWidth(), textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp),
+                    decorationBox = { inner -> if (value.isEmpty()) Text(hint, color = Muted, fontSize = 13.sp); inner() })
+            }
+        }
+    }
+    Spacer(Modifier.height(13.dp))
 }
