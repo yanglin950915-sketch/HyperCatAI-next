@@ -183,7 +183,7 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
     val base = endpoint.trim().trimEnd('/')
     val apiUrl = when { base.endsWith("/chat/completions") -> base; base.endsWith("/v1") -> "$base/chat/completions"; else -> "$base/v1/chat/completions" }
     val requestMessages = org.json.JSONArray()
-    val baseSystemPrompt = "请根据问题复杂度，在最终答复前提供简明、可核验的“思路说明”：用2-4条概述采用的方法、关键依据或排查步骤，不输出隐式思维链、私人内心独白或冗长逐字推理；简单问题可简短说明。随后给出清晰结论。代码请使用标准 Markdown 三反引号代码块，并标注语言。"
+    val baseSystemPrompt = "请根据问题复杂度组织答复：简单问题（如问候、常识、简单事实或直接操作指引）直接给出简洁结论，不要输出思路说明、分析过程或推理过程；只有复杂问题确有必要时，才在最终答复前提供2-4条简短、可核验的方法或依据，不输出隐式思维链、私人内心独白或冗长逐字推理。语音朗读只朗读最终答复内容，不朗读思路说明或分析内容。代码请使用标准 Markdown 三反引号代码块，并标注语言。"
     val memoryContext = memories.filter { it.isNotBlank() }.take(40).joinToString("\n") { "- ${it.take(500)}" }
     val systemPrompt = if (memoryContext.isBlank()) baseSystemPrompt else "$baseSystemPrompt\n\n以下是用户明确保存的长期记忆，仅在与当前问题相关时参考；若用户当前指令与记忆冲突，以当前指令为准：\n$memoryContext"
     requestMessages.put(JSONObject().put("role", "system").put("content", systemPrompt))
