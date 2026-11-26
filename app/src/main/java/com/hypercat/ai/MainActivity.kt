@@ -1199,12 +1199,6 @@ private fun ChatPage(
         if (granted) Toast.makeText(context, "麦克风已授权，请再次按住说话", Toast.LENGTH_SHORT).show()
         else Toast.makeText(context, "需要麦克风权限才能语音输入", Toast.LENGTH_SHORT).show()
     }
-    val callMicPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            callActive = true; micEnabled = true; videoEnabled = false
-            showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
-        } else Toast.makeText(context, "AI 通话需要麦克风权限", Toast.LENGTH_LONG).show()
-    }
     fun startInAppRecognition() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO); return
@@ -1222,6 +1216,12 @@ private fun ChatPage(
         }
         runCatching { speechRecognizer.startListening(intent); isListening = true }
             .onFailure { isListening = false; speechStatus = "无法启动语音识别：${it.message}" }
+    }
+    val callMicPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            callActive = true; micEnabled = true; videoEnabled = false
+            showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
+        } else Toast.makeText(context, "AI 通话需要麦克风权限", Toast.LENGTH_LONG).show()
     }
     fun stopInAppRecognition() { if (isListening) runCatching { speechRecognizer.stopListening() } }
     var cameraError by remember { mutableStateOf<String?>(null) }
