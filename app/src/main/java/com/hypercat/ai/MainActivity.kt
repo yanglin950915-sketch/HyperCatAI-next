@@ -1062,8 +1062,10 @@ private fun ChatPage(
     var showClear by remember { mutableStateOf(false) }
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
-    var callMode by remember { mutableStateOf("语音") }
     var callActive by remember { mutableStateOf(false) }
+    var micEnabled by remember { mutableStateOf(true) }
+    var videoEnabled by remember { mutableStateOf(false) }
+    var useFrontCamera by remember { mutableStateOf(true) }
     var lastCallSpokenText by remember { mutableStateOf("") }
     var isListening by remember { mutableStateOf(false) }
     var ttsReady by remember { mutableStateOf(false) }
@@ -1128,6 +1130,7 @@ private fun ChatPage(
     val latestOnDraft by rememberUpdatedState(onDraft)
     val latestDraft by rememberUpdatedState(draft)
     val latestCallActive by rememberUpdatedState(callActive)
+    val latestMicEnabled by rememberUpdatedState(micEnabled)
     val speechRecognizer = remember(context) {
         // Prefer the device's configured recognition service (often has the user's language pack).
         // Use on-device recognition only when no default recognition service is available.
@@ -1159,14 +1162,32 @@ private fun ChatPage(
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有检测到语音，请再次说话"
                     else -> "语音识别异常（$error）"
                 }
-                if (latestCallActive) speechStatus = reason
+                if (latestCallActive) {
+                    speechStatus = reason
+                    if (latestMicEnabled && error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        speechScope.launch {
+                            delay(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1200L else 700L)
+                            if (latestCallActive && latestMicEnabled && !isListening && !isSpeaking && !isThinking) {
+                                runCatching {
+                                    speechRecognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                                    })
+                                    isListening = true
+                                }.onFailure { speechStatus = "语音识别重试失败：${it.message ?: "请检查系统语音服务"}" }
+                            }
+                        }
+                    }
+                }
             }
             override fun onResults(results: Bundle?) {
                 isListening = false
                 val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
                 if (spoken.isNotBlank()) {
-                    if (latestCallActive) latestOnSend(spoken, emptyList(), emptyList())
-                    else latestOnDraft(if (latestDraft.isBlank()) spoken else "${latestDraft} $spoken")
+                    if (latestCallActive && latestMicEnabled) latestOnSend(spoken, emptyList(), emptyList())
+                    else if (!latestCallActive) latestOnDraft(if (latestDraft.isBlank()) spoken else "${latestDraft} ${spoken}")
                 }
             }
             override fun onPartialResults(partialResults: Bundle?) {}
@@ -1177,6 +1198,12 @@ private fun ChatPage(
     val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) Toast.makeText(context, "麦克风已授权，请再次按住说话", Toast.LENGTH_SHORT).show()
         else Toast.makeText(context, "需要麦克风权限才能语音输入", Toast.LENGTH_SHORT).show()
+    }
+    val callMicPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            callActive = true; micEnabled = true; videoEnabled = false
+            showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
+        } else Toast.makeText(context, "AI 通话需要麦克风权限", Toast.LENGTH_LONG).show()
     }
     fun startInAppRecognition() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -1199,13 +1226,22 @@ private fun ChatPage(
     fun stopInAppRecognition() { if (isListening) runCatching { speechRecognizer.stopListening() } }
     var cameraError by remember { mutableStateOf<String?>(null) }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) { cameraError = null; callActive = true; speechStatus = "摄像头已启动，正在分析画面"; startInAppRecognition() }
-        else Toast.makeText(context, "需要摄像头权限才能进行 AI 视频通话", Toast.LENGTH_SHORT).show()
+        if (granted) { cameraError = null; videoEnabled = true; speechStatus = "摄像头预览已启动" }
+        else { videoEnabled = false; Toast.makeText(context, "未获得摄像头权限，语音通话仍可继续", Toast.LENGTH_SHORT).show() }
     }
-    fun startVideoCall() {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        else { cameraError = null; callActive = true; startInAppRecognition() }
+    fun startUnifiedCall() {
+        if (!configured) { Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show(); return }
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            callMicPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        } else {
+            callActive = true; micEnabled = true; videoEnabled = false
+            showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
+        }
+    }
+    fun toggleVideo() {
+        if (videoEnabled) { videoEnabled = false; cameraError = null }
+        else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        else { cameraError = null; videoEnabled = true }
     }
     LaunchedEffect(callActive, messages.size, isThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak) {
         if (callActive && !isThinking) {
@@ -1234,16 +1270,13 @@ private fun ChatPage(
             }
         }
     }
-    LaunchedEffect(callActive, isSpeaking, isThinking, messages.size, lastCallSpokenText) {
+    LaunchedEffect(callActive, micEnabled, isSpeaking, isThinking, messages.size, lastCallSpokenText) {
         val latest = messages.lastOrNull()
-        if (callActive && !isThinking && !isSpeaking && !isListening &&
-            latest != null && !latest.fromUser && latest.text.isNotBlank() &&
-            latest.text == lastCallSpokenText
+        if (callActive && micEnabled && !isThinking && !isSpeaking && !isListening &&
+            latest != null && !latest.fromUser && latest.text.isNotBlank() && latest.text == lastCallSpokenText
         ) {
-            delay(650)
-            if (callActive && !isSpeaking && !isListening) {
-                startInAppRecognition()
-            }
+            delay(500)
+            if (callActive && micEnabled && !isSpeaking && !isListening) startInAppRecognition()
         }
     }
     var lastAutoReadText by remember { mutableStateOf("") }
@@ -1509,16 +1542,10 @@ private fun ChatPage(
                 Surface(Modifier.size(40.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted) }
                 }
-                Surface(Modifier.clip(RoundedCornerShape(14.dp)).clickable { callMode = "语音"; showCallInfo = true }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
-                    Row(Modifier.padding(horizontal = 9.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Call, contentDescription = null, tint = Cyan, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(5.dp)); Text("语音", color = MainText, fontSize = 11.sp)
-                    }
-                }
-                Surface(Modifier.clip(RoundedCornerShape(14.dp)).clickable { callMode = "视频"; showCallInfo = true }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
-                    Row(Modifier.padding(horizontal = 9.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Videocam, contentDescription = null, tint = Cyan, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(5.dp)); Text("视频", color = MainText, fontSize = 11.sp)
+                Surface(Modifier.clip(RoundedCornerShape(14.dp)).clickable { startUnifiedCall() }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Call, contentDescription = "AI 通话", tint = Cyan, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(6.dp)); Text("通话", color = MainText, fontSize = 11.sp)
                     }
                 }
                 Spacer(Modifier.weight(1f))
@@ -1658,134 +1685,106 @@ private fun ChatPage(
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
     if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
     if (showCallInfo) Dialog(
-        onDismissRequest = { callActive = false; isListening = false; runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false },
+        onDismissRequest = {
+            callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+            runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
+        },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Surface(Modifier.fillMaxSize(), color = Color(0xFF080B12)) {
-            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 22.dp, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 18.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("‹", color = Color.White, fontSize = 28.sp, modifier = Modifier.clickable { callActive=false; isListening=false; runCatching { speechRecognizer.cancel() }; speechEngine.stop(); showCallInfo=false })
+                    Text("‹", color = Color.White, fontSize = 28.sp, modifier = Modifier.clickable {
+                        callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+                        runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
+                    })
                     Spacer(Modifier.weight(1f))
-                    Text(if (callActive) "正在进行${callMode}通话" else "AI ${callMode}通话", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.weight(1f)); Text("●", color = if (callActive) Color(0xFF55D69A) else Color.Gray)
+                    Text("HyperCat AI 通话", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.weight(1f))
+                    Text(if (callActive) "● 通话中" else "● 已结束", color = if (callActive) Color(0xFF55D69A) else Color.Gray, fontSize = 11.sp)
                 }
-                Spacer(Modifier.height(28.dp))
-                if (callMode == "视频") {
-                    Box(Modifier.fillMaxWidth().weight(0.9f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF151C29))) {
-                        if (callActive) {
-                            LiveCameraPreview(
-                                isActive = callActive && !isThinking && !isSpeaking && !isListening,
-                                onError = { cameraError = it }
-                            ) { frame ->
-                                onSend("请结合当前视频画面，实时观察并回答我。若画面与上一帧变化不大，请简洁回应。", emptyList(), listOf(frame))
-                            }
-                            if (cameraError != null) Text(cameraError.orEmpty(), color = Color(0xFFFF9A9A), fontSize = 11.sp,
-                                modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp))
-                        } else Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            CatFace(Modifier.width(220.dp).height(170.dp), petMood)
-                            Text("AI 视频伙伴", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                            Text("启动后会每隔数秒分析一帧画面", color = Color(0xFFADB8C8), fontSize = 11.sp)
-                        }
-                    }
-                } else {
-                    Spacer(Modifier.weight(0.3f))
-                    CatFace(Modifier.width(250.dp).height(210.dp), if (isThinking) "thinking" else petMood)
-                    Text(petName, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Text(if (isSpeaking) "正在回答…" else if (isListening) "正在聆听…" else if (isThinking) "正在思考…" else "等待你说话", color = Color(0xFFADB8C8), fontSize = 13.sp)
-                    Spacer(Modifier.weight(0.2f))
-                }
-                val latestCallReply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
-                val latestCallInput = messages.lastOrNull { it.fromUser }?.text.orEmpty()
-                Surface(Modifier.fillMaxWidth().heightIn(max = 170.dp), color = Color(0xFF151C29), shape = RoundedCornerShape(18.dp)) {
-                    Column(Modifier.verticalScroll(rememberScrollState()).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (latestCallInput.isNotBlank()) Text("你：$latestCallInput", color = Color(0xFFADB8C8), fontSize = 12.sp)
-                        if (latestCallReply.isNotBlank()) Text("AI：$latestCallReply", color = Color.White, fontSize = 13.sp, lineHeight = 19.sp)
-                        if (latestCallReply.isBlank() && latestCallInput.isBlank()) Text("开始通话后，你的发言和 AI 回复会显示在这里", color = Color(0xFFADB8C8), fontSize = 12.sp)
-                    }
-                }
-                Spacer(Modifier.height(22.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    if (callMode == "视频") {
-                        CallControl(if (callActive) "摄像头运行中" else "开始视频", "📷", enabled = configured) {
-                            if (!configured) Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show() else startVideoCall()
-                        }
-                        CallControl(if (isListening) "聆听中" else "语音对话", "🎙", enabled = configured) {
-                            if (!configured) Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show()
-                            else { callActive = true; startInAppRecognition() }
+                Spacer(Modifier.height(14.dp))
+                Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF151C29))) {
+                    if (videoEnabled) {
+                        LiveCameraPreview(isActive = videoEnabled && callActive && !isThinking && !isSpeaking && !isListening, useFrontCamera = useFrontCamera, onError = { cameraError = it })
+                        if (cameraError != null) Text(cameraError.orEmpty(), color = Color(0xFFFF9A9A), fontSize = 11.sp,
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp).background(Color.Black.copy(alpha = .65f), RoundedCornerShape(8.dp)).padding(8.dp))
+                        Surface(Modifier.align(Alignment.TopEnd).padding(12.dp), color = Color.Black.copy(alpha = .55f), shape = RoundedCornerShape(20.dp)) {
+                            Text(if (useFrontCamera) "前置摄像头" else "后置摄像头", color = Color.White, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
                         }
                     } else {
-                        CallControl(if (isListening) "聆听中" else "开始说话", "🎙", enabled = configured) {
-                            if (!configured) Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show()
-                            else { lastCallSpokenText = ""; callActive = true; startInAppRecognition() }
+                        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                            CatFace(Modifier.width(230.dp).height(190.dp), if (isThinking) "thinking" else petMood)
+                            Text(petName, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            Text(if (isSpeaking) "AI 正在回答…" else if (isListening) "正在聆听…" else if (isThinking) "正在思考…" else "语音通话已连接", color = Color(0xFFADB8C8), fontSize = 13.sp)
                         }
                     }
-                    CallControl("挂断", "☎", danger = true) {
-                        callActive=false; isListening=false; runCatching { speechRecognizer.cancel() }
-                        cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo=false
+                }
+                Spacer(Modifier.height(12.dp))
+                val latestCallReply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
+                val latestCallInput = messages.lastOrNull { it.fromUser }?.text.orEmpty()
+                Surface(Modifier.fillMaxWidth().heightIn(max = 128.dp), color = Color(0xFF151C29), shape = RoundedCornerShape(18.dp)) {
+                    Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (latestCallInput.isNotBlank()) Text("你：$latestCallInput", color = Color(0xFFADB8C8), fontSize = 11.sp)
+                        if (latestCallReply.isNotBlank()) Text("AI：$latestCallReply", color = Color.White, fontSize = 12.sp, lineHeight = 18.sp)
+                        if (latestCallReply.isBlank() && latestCallInput.isBlank()) Text("说话后，识别内容和 AI 回复会显示在这里", color = Color(0xFFADB8C8), fontSize = 11.sp)
                     }
                 }
-                if (callMode == "视频") Text("视频画面每 4 秒分析一帧；AI 回答或语音交互期间会暂停采帧，避免重复请求。", color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
+                Spacer(Modifier.height(15.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    CallControl(if (micEnabled) "麦克风开启" else "已静音", if (micEnabled) "🎙" else "🔇") {
+                        micEnabled = !micEnabled
+                        if (!micEnabled) { isListening = false; runCatching { speechRecognizer.cancel() }; speechStatus = "麦克风已关闭" }
+                        else if (callActive) { speechStatus = "正在重新启动语音识别…"; startInAppRecognition() }
+                    }
+                    CallControl(if (videoEnabled) "关闭视频" else "开启视频", if (videoEnabled) "📹" else "📷") { toggleVideo() }
+                    if (videoEnabled) CallControl("翻转摄像头", "🔄") { useFrontCamera = !useFrontCamera }
+                    CallControl("挂断", "☎", danger = true) {
+                        callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+                        runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
+                    }
+                }
+                Text(if (videoEnabled) "摄像头画面为设备本地实时预览；AI 语音通话持续工作。连续视频流理解需接入支持实时音视频的模型服务。" else "语音通话已启动。点击摄像头按钮可开启视频，点击麦克风按钮可静音。",
+                    color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
+                if (speechStatus.isNotBlank()) Text(speechStatus, color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
             }
         }
     }
 }
 
 @Composable
-private fun LiveCameraPreview(isActive: Boolean, onError: (String) -> Unit, onFrame: (Bitmap) -> Unit) {
+private fun LiveCameraPreview(isActive: Boolean, useFrontCamera: Boolean, onError: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val latestActive by rememberUpdatedState(isActive)
-    val latestOnFrame by rememberUpdatedState(onFrame)
     val latestOnError by rememberUpdatedState(onError)
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val previewView = remember(context) { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
-    val executor = remember { Executors.newSingleThreadExecutor() }
-    DisposableEffect(previewView, lifecycleOwner) {
+    val previewView = remember(context) { PreviewView(context).apply {
+        scaleType = PreviewView.ScaleType.FILL_CENTER
+        implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+    } }
+    DisposableEffect(previewView, lifecycleOwner, useFrontCamera, isActive) {
         var boundProvider: ProcessCameraProvider? = null
         var boundPreview: Preview? = null
-        var boundAnalysis: ImageAnalysis? = null
         val providerFuture = ProcessCameraProvider.getInstance(context)
         providerFuture.addListener({
             try {
                 val provider = providerFuture.get()
                 boundProvider = provider
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-                val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
                 boundPreview = preview
-                boundAnalysis = analysis
-                var lastFrameAt = 0L
-                analysis.setAnalyzer(executor) { imageProxy ->
-                    try {
-                        val now = SystemClock.elapsedRealtime()
-                        if (latestActive && now - lastFrameAt >= 4000L) {
-                            lastFrameAt = now
-                            val source = imageProxy.toBitmap()
-                            val rotation = imageProxy.imageInfo.rotationDegrees
-                            val bitmap = if (rotation == 0) source else Bitmap.createBitmap(source, 0, 0, source.width, source.height, Matrix().apply { postRotate(rotation.toFloat()) }, true)
-                            mainHandler.post { latestOnFrame(bitmap) }
-                        }
-                    } catch (_: Exception) {
-                    } finally { imageProxy.close() }
-                }
-                val owner = lifecycleOwner
-                val selector = when {
-                    provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
-                    provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
-                    else -> error("设备未检测到可用摄像头")
-                }
-                provider.bindToLifecycle(owner, selector, preview, analysis)
+                val selector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+                if (!provider.hasCamera(selector)) error(if (useFrontCamera) "设备没有可用的前置摄像头" else "设备没有可用的后置摄像头")
+                provider.bindToLifecycle(lifecycleOwner, selector, preview)
             } catch (error: Exception) {
-                mainHandler.post { latestOnError("摄像头启动失败：${error.message ?: error.javaClass.simpleName}。请检查系统相机权限并关闭占用摄像头的应用。") }
+                mainHandler.post { latestOnError("摄像头启动失败：${error.message ?: error.javaClass.simpleName}。请检查权限或关闭占用摄像头的应用。") }
             }
         }, ContextCompat.getMainExecutor(context))
         onDispose {
             runCatching {
                 val provider = boundProvider
                 val preview = boundPreview
-                val analysis = boundAnalysis
-                if (provider != null && preview != null && analysis != null) provider.unbind(preview, analysis)
+                if (provider != null && preview != null) provider.unbind(preview)
             }
-            executor.shutdown()
         }
     }
     AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
