@@ -192,36 +192,76 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
 
 private fun requestSpeechAudio(endpoint: String, apiKey: String, model: String, voice: String, input: String, speed: Float): ByteArray {
     val rawBase = endpoint.trim().trimEnd('/')
-    val base = rawBase.removeSuffix("/chat/completions")
+    val base = rawBase.removeSuffix("/chat/completions").removeSuffix("/audio/speech")
     require(base.startsWith("https://") || base.startsWith("http://")) { "TTS 服务地址必须是有效的 HTTP/HTTPS 地址" }
-    val apiUrl = when {
-        base.endsWith("/audio/speech") -> base
-        base.endsWith("/v1") -> "$base/audio/speech"
-        else -> "$base/v1/audio/speech"
+    val isXiaomiMiMo = model.trim().startsWith("mimo-v2.5-tts", ignoreCase = true)
+    val apiUrl = if (isXiaomiMiMo) {
+        if (base.endsWith("/v1")) "$base/chat/completions" else "$base/v1/chat/completions"
+    } else {
+        when {
+            base.endsWith("/audio/speech") -> base
+            base.endsWith("/v1") -> "$base/audio/speech"
+            else -> "$base/v1/audio/speech"
+        }
     }
-    val payload = JSONObject().put("model", model.trim()).put("voice", voice.trim().ifBlank { "alloy" })
-        .put("input", input).put("response_format", "mp3").put("speed", speed.coerceIn(0.6f, 1.6f).toDouble())
+    val payload = if (isXiaomiMiMo) {
+        val supportedVoices = setOf("mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean")
+        val selectedVoice = voice.trim().takeIf { it in supportedVoices } ?: "mimo_default"
+        val messages = org.json.JSONArray()
+        val rate = speed.coerceIn(0.6f, 1.6f)
+        val style = if (kotlin.math.abs(rate - 1.0f) < 0.05f) {
+            "请使用自然、清晰的语气播报。"
+        } else {
+            "请使用自然、清晰的语气，并以约${String.format(Locale.US, "%.1f", rate)}倍语速播报。"
+        }
+        messages.put(JSONObject().put("role", "user").put("content", style))
+        messages.put(JSONObject().put("role", "assistant").put("content", input))
+        JSONObject().put("model", model.trim()).put("messages", messages)
+            .put("audio", JSONObject().put("format", "wav").put("voice", selectedVoice))
+            .put("stream", false)
+    } else {
+        JSONObject().put("model", model.trim()).put("voice", voice.trim().ifBlank { "alloy" })
+            .put("input", input).put("response_format", "mp3")
+            .put("speed", speed.coerceIn(0.6f, 1.6f).toDouble())
+    }
     val connection = URL(apiUrl).openConnection() as HttpURLConnection
     try {
         connection.requestMethod = "POST"; connection.connectTimeout = 15000; connection.readTimeout = 90000; connection.doOutput = true
         connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-        connection.setRequestProperty("Accept", "audio/mpeg, audio/*")
-        if (apiKey.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
+        connection.setRequestProperty("Accept", if (isXiaomiMiMo) "application/json" else "audio/mpeg, audio/*")
+        if (apiKey.isNotBlank()) {
+            if (isXiaomiMiMo) connection.setRequestProperty("api-key", apiKey)
+            else connection.setRequestProperty("Authorization", "Bearer $apiKey")
+        }
         connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
         val code = connection.responseCode
         if (code !in 200..299) {
             val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
             val message = runCatching { JSONObject(detail).optJSONObject("error")?.optString("message") }.getOrNull()
-            throw IllegalStateException("云端 TTS 请求失败（HTTP $code）${message?.takeIf { it.isNotBlank() } ?: detail.take(180)}")
+            throw IllegalStateException("云端 TTS 请求失败（HTTP $code）${message?.takeIf { it.isNotBlank() } ?: detail.take(240)}")
         }
-        val bytes = connection.inputStream.use { it.readBytes() }
+        val responseBytes = connection.inputStream.use { it.readBytes() }
+        if (responseBytes.isEmpty()) throw IllegalStateException("TTS 服务返回了空音频")
+        val bytes = if (isXiaomiMiMo) {
+            val response = JSONObject(String(responseBytes, Charsets.UTF_8))
+            val audioData = response.optJSONArray("choices")?.optJSONObject(0)
+                ?.optJSONObject("message")?.optJSONObject("audio")?.optString("data").orEmpty()
+            if (audioData.isBlank() || audioData == "null") {
+                val detail = response.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+                    ?.optString("content").orEmpty()
+                throw IllegalStateException("MiMo TTS 未返回音频数据${detail.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""}")
+            }
+            try { Base64.getDecoder().decode(audioData) }
+            catch (error: IllegalArgumentException) { throw IllegalStateException("MiMo TTS 返回的音频编码无法解析", error) }
+        } else responseBytes
         if (bytes.isEmpty()) throw IllegalStateException("TTS 服务返回了空音频")
         return bytes
     } finally { connection.disconnect() }
 }
 
 private suspend fun playSpeechAudio(context: Context, bytes: ByteArray) {
-    val file = withContext(Dispatchers.IO) { File.createTempFile("hypercat-tts-", ".mp3", context.cacheDir).apply { writeBytes(bytes) } }
+    val extension = if (bytes.size >= 4 && bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte()) ".wav" else ".mp3"
+    val file = withContext(Dispatchers.IO) { File.createTempFile("hypercat-tts-", extension, context.cacheDir).apply { writeBytes(bytes) } }
     try {
         suspendCancellableCoroutine<Unit> { continuation ->
             val player = MediaPlayer()
@@ -1582,7 +1622,7 @@ private fun SettingsPage(
                         Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
                         Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
                     }
-                    Text("云端接口需支持 POST /v1/audio/speech 与 MP3 响应；聊天模型本身不一定支持语音合成。", color = Muted, fontSize = 10.sp)
+                    Text("支持 OpenAI /v1/audio/speech；小米 MiMo-V2.5-TTS 自动使用 /v1/chat/completions，并解析 WAV Base64 音频。MiMo 音色可选 mimo_default、冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean。", color = Muted, fontSize = 10.sp)
                 } else {
                     Text("朗读语言", color = Muted, fontSize = 11.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
