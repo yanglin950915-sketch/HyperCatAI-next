@@ -51,7 +51,7 @@ object RearProjectionController {
             val scan = JSONObject(withContext(Dispatchers.IO) { service.scanCarriers() })
             if (!scan.optBoolean("success")) return scan.optString("message", "扫描卡片失败")
             val cards = scan.optJSONArray("cards") ?: return "未找到可用的背屏卡片载体"
-            if (cards.length() == 0) return "没有找到可替换的本地背屏卡片。请先在系统背屏设置中下载或添加一张卡片，再重试。"
+            if (cards.length() == 0) return scan.optString("message").ifBlank { "没有找到可替换的本地背屏卡片。请先在系统背屏设置中下载或添加一张卡片，再重试。" }
             if (cards.length() != 1) {
                 val names = (0 until cards.length()).mapNotNull { cards.optJSONObject(it)?.optString("name") }.joinToString("、")
                 return "检测到 ${cards.length()} 张兼容卡片（$names），为避免覆盖错误卡片，暂未修改任何文件。请先在系统背屏卡片管理中只保留一张可替换卡片后重试。"
