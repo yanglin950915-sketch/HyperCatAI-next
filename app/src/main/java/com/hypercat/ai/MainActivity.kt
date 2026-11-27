@@ -2789,7 +2789,7 @@ private fun PetSettingsPage(
                 Surface(color = Panel2, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                     Column(Modifier.fillMaxWidth().padding(14.dp)) {
                         Text("Live2D 模型", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text(if (live2dModel != null) "已导入模型：" + live2dModel.displayName else "尚未导入模型，当前使用内置二次元预览形象。", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
+                        Text(live2dModel?.let { "已导入模型：" + it.displayName } ?: "尚未导入模型，当前使用内置二次元预览形象。", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { modelPicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }, enabled = !modelImporting) { Text(if (modelImporting) "正在导入…" else "导入 Live2D ZIP") }
                             if (live2dModel != null) OutlinedButton(onClick = { Live2DModelStore.clear(context); Live2DModelStore.load(context) }) { Text("移除模型") }
