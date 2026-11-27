@@ -1,3 +1,9 @@
+## 0.9.40 开发更新
+- 启动页、Android Activity 窗口背景和首帧 Compose 背景统一为深色，避免系统默认浅色窗口在启动页退出与 Compose 首帧之间闪现。
+- 主屏二次元角色增加开心、思考、休息、难过和惊讶等差异化表情覆盖；背屏 HTML 复用同一组情绪语义，Agent 心情变化同步驱动表情。
+- 继续沿用仓库内 rearscreen 的离线 HTML/MAML 资源、相机避让布局、点按/长按、思考/休息触发、ContentProvider 状态读取和 Agent 事件队列；APK 通过 assets sourceSet 内置该目录。
+- 本轮找到的历史 ZIP 未包含“东海帝王哈基米”专属立绘文件，当前角色仍为项目内置原创 SVG/Compose 绘制形象，不冒充原作素材。
+
 ## 0.9.39 更新
 - 输入框提示文字增加左侧留白，避免紧贴附件按钮。
 - 使用 AndroidX SplashScreen 兼容主题覆盖启动首帧，减少启动时黑屏空档。
@@ -236,7 +242,7 @@ REAREye v2.0.0 的内置工作流不是简单把 ZIP 当 APK 安装：其工具�
 
 ## 版本与构建
 
-当前开发版本：**0.9.39**（versionCode 58）。
+当前开发版本：**0.9.40**（versionCode 59）。
 
 GitHub Actions 负责 Android CI、APK 构建、签名校验和版本 Release。正式版本及安装包请查看：
 
