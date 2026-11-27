@@ -51,6 +51,7 @@ object AvatarDeviceStateStore : SensorEventListener {
     @Volatile private var sensorRegistered = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var weatherStarted = false
+    @Volatile private var lastWeatherRefreshAt = 0L
     @Volatile private var requestedLyricsKey = ""
     @Volatile private var lyricLines: List<Pair<Long, String>> = emptyList()
 
@@ -100,15 +101,23 @@ object AvatarDeviceStateStore : SensorEventListener {
         val ctx = app ?: return
         if (!com.hypercat.ai.AgentDeviceTools.hasLocationPermission(ctx)) {
             mutable.value = mutable.value.copy(weather = "开启定位显示天气", temperature = "")
-        } else scope.launch { updateWeather(ctx) }
+        } else {
+            val now = System.currentTimeMillis()
+            if (now - lastWeatherRefreshAt >= 10 * 60 * 1000L) {
+                lastWeatherRefreshAt = now
+                scope.launch { updateWeather(ctx) }
+            }
+        }
         if (weatherStarted) return
         weatherStarted = true
         scope.launch {
             while (isActive) {
                 delay(10 * 60 * 1000L)
                 val current = app ?: continue
-                if (com.hypercat.ai.AgentDeviceTools.hasLocationPermission(current)) updateWeather(current)
-                else mutable.value = mutable.value.copy(weather = "开启定位显示天气", temperature = "")
+                if (com.hypercat.ai.AgentDeviceTools.hasLocationPermission(current)) {
+                    lastWeatherRefreshAt = System.currentTimeMillis()
+                    updateWeather(current)
+                } else mutable.value = mutable.value.copy(weather = "开启定位显示天气", temperature = "")
             }
         }
     }
