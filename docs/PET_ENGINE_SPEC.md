@@ -94,7 +94,7 @@ Agent 不发送骨骼名或欧拉角，只发送语义命令：
 - 保留旧版已验证的 GLTFLoader、toon 材质、outline、拖拽弹簧、物理链和主循环算法。
 - 把原先写死的 `POSE_BONE_NAMES` 改为 rig adapter 返回的骨骼列表。
 - `updatePose` 不得无条件访问 `pose['Upperarm L']` 等键；所有动作必须按能力检测执行。
-- `setupEarTwitch`、`setupChains` 在每次换模型前清理旧状态，避免跨宠物残留引用。
+- `setupEarTwitch`、`setupChains` 在每次换模型前清理旧状态，避免跨角色残留引用。
 - 表情图集与动画名必须逐模型声明，不允许对未知模型套用旧图集索引。
 - 先加载并校验新模型，成功后再切换当前 petId；失败时保留上一只已显示的虚拟形象。
 
