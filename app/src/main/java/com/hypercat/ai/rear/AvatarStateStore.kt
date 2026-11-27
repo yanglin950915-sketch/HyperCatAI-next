@@ -17,38 +17,53 @@ data class AvatarState(
     val backgroundColor: String = "#080B12"
 )
 
-/** Shared state bridge for the exported rear-screen provider and the foreground Agent UI. */
+/** Shared virtual-avatar state for the Agent UI and the Xiaomi rear-screen provider. */
 object AvatarStateStore {
-    private const val PREFS = "hypercat_rear_pet"
-    private const val KEY_NAME = "pet_name"
-    private const val KEY_EMOJI = "pet_emoji"
+    private const val PREFS = "hypercat_avatar"
+    private const val LEGACY_PREFS = "hypercat_rear_pet"
+    private const val KEY_NAME = "avatar_name"
+    private const val KEY_ID = "avatar_id"
     private const val KEY_MOOD = "mood"
     private const val KEY_REPLY = "reply"
     private const val KEY_UPDATED = "updated_at"
-    private const val KEY_ENABLED = "rear_pet_enabled"
+    private const val KEY_ENABLED = "rear_avatar_enabled"
     private const val KEY_USER_TEXT = "user_text"
     private const val KEY_BACKGROUND = "background_color"
-    val AVATAR_URI: Uri = Uri.parse("content://com.hypercat.ai.rear.provider/pet-state")
+
+    // The old URI remains readable by already-deployed MAML cards.
+    val AVATAR_URI: Uri = Uri.parse("content://com.hypercat.ai.rear.provider/avatar-state")
+    val LEGACY_URI: Uri = Uri.parse("content://com.hypercat.ai.rear.provider/pet-state")
 
     private val mutableState = MutableStateFlow(
-        AvatarState("小橘", "🤖", "normal", "你好！我是你的 AI 虚拟形象。", 0L, false)
+        AvatarState("小橘", "sakura", "normal", "你好！我是你的 AI 虚拟形象。", 0L, false)
     )
     val state: StateFlow<AvatarState> = mutableState.asStateFlow()
 
-    fun update(context: Context, name: String, emoji: String, mood: String, reply: String, enabled: Boolean? = null, userText: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_USER_TEXT, "").orEmpty(), backgroundColor: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_BACKGROUND, "#080B12").orEmpty()) {
+    fun update(
+        context: Context,
+        name: String,
+        avatarId: String,
+        mood: String,
+        reply: String,
+        enabled: Boolean? = null,
+        userText: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_USER_TEXT, "").orEmpty(),
+        backgroundColor: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_BACKGROUND, "#080B12").orEmpty()
+    ) {
+        val legacy = context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val next = AvatarState(
             avatarName = name.ifBlank { "小橘" }.take(16),
-            avatarId = emoji.ifBlank { "🤖" }.take(8),
+            avatarId = avatarId.ifBlank { "sakura" }.take(32),
             mood = mood.ifBlank { "normal" }.take(24),
             reply = reply.take(100),
             updatedAt = System.currentTimeMillis(),
-            enabled = enabled ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false),
+            enabled = enabled ?: prefs.getBoolean(KEY_ENABLED, legacy.getBoolean("rear_pet_enabled", false)),
             userText = userText.take(1000),
             backgroundColor = if (backgroundColor.matches(Regex("^#[0-9A-Fa-f]{6}$"))) backgroundColor else "#080B12"
         )
-        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        val saved = prefs.edit()
             .putString(KEY_NAME, next.avatarName)
-            .putString(KEY_EMOJI, next.avatarId)
+            .putString(KEY_ID, next.avatarId)
             .putString(KEY_MOOD, next.mood)
             .putString(KEY_REPLY, next.reply)
             .putLong(KEY_UPDATED, next.updatedAt)
@@ -59,6 +74,7 @@ object AvatarStateStore {
         check(saved) { "无法保存背屏虚拟形象状态" }
         mutableState.value = next
         context.contentResolver.notifyChange(AVATAR_URI, null)
+        context.contentResolver.notifyChange(LEGACY_URI, null)
     }
 
     fun setBackgroundColor(context: Context, color: String) {
@@ -73,15 +89,16 @@ object AvatarStateStore {
 
     fun read(context: Context): AvatarState {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val legacy = context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
         val result = AvatarState(
-            avatarName = prefs.getString(KEY_NAME, "小橘") ?: "小橘",
-            avatarId = prefs.getString(KEY_EMOJI, "🤖") ?: "🤖",
-            mood = prefs.getString(KEY_MOOD, "normal") ?: "normal",
-            reply = prefs.getString(KEY_REPLY, "你好！我是你的 AI 虚拟形象。") ?: "",
-            updatedAt = prefs.getLong(KEY_UPDATED, 0L),
-            enabled = prefs.getBoolean(KEY_ENABLED, false),
-            userText = prefs.getString(KEY_USER_TEXT, "") ?: "",
-            backgroundColor = prefs.getString(KEY_BACKGROUND, "#080B12") ?: "#080B12"
+            avatarName = prefs.getString(KEY_NAME, null) ?: legacy.getString("pet_name", "小橘") ?: "小橘",
+            avatarId = prefs.getString(KEY_ID, null) ?: legacy.getString("pet_emoji", "sakura") ?: "sakura",
+            mood = prefs.getString(KEY_MOOD, null) ?: legacy.getString(KEY_MOOD, "normal") ?: "normal",
+            reply = prefs.getString(KEY_REPLY, null) ?: legacy.getString(KEY_REPLY, "你好！我是你的 AI 虚拟形象。") ?: "",
+            updatedAt = prefs.getLong(KEY_UPDATED, legacy.getLong(KEY_UPDATED, 0L)),
+            enabled = prefs.getBoolean(KEY_ENABLED, legacy.getBoolean("rear_pet_enabled", false)),
+            userText = prefs.getString(KEY_USER_TEXT, legacy.getString(KEY_USER_TEXT, "")) ?: "",
+            backgroundColor = prefs.getString(KEY_BACKGROUND, legacy.getString(KEY_BACKGROUND, "#080B12")) ?: "#080B12"
         )
         mutableState.value = result
         return result
