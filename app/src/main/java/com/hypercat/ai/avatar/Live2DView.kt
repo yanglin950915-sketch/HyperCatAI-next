@@ -31,6 +31,7 @@ fun Live2DView(
     modifier: Modifier = Modifier,
     mood: String = "normal",
     speaking: Boolean = false,
+    musicPlaying: Boolean = false,
     halfBody: Boolean = true,
     safeTopRatio: Float = 0f,
     safeLeftRatio: Float = 0f,
@@ -145,6 +146,19 @@ fun Live2DView(
         )
     }
     LaunchedEffect(speaking, state.ready) { if (state.ready) controller.setSpeaking(speaking) }
+    LaunchedEffect(musicPlaying, state.ready) {
+        if (state.ready) {
+            if (!musicPlaying) controller.setMusicBeat(0f)
+            else {
+                var phase = false
+                while (true) {
+                    phase = !phase
+                    controller.setMusicBeat(if (phase) 1f else 0.18f)
+                    kotlinx.coroutines.delay(270L)
+                }
+            }
+        }
+    }
     AndroidView(factory = { webView }, modifier = modifier)
 }
 
@@ -154,6 +168,7 @@ class Live2DController internal constructor() {
     internal fun detach() { webView = null }
     private fun call(script: String) { webView?.post { webView?.evaluateJavascript(script, null) } }
     fun setSpeaking(value: Boolean) = call("window.__l2d&&window.__l2d.setSpeaking($value)")
+    fun setMusicBeat(value: Float) = call("window.__l2d&&window.__l2d.setMusicBeat(${value.coerceIn(0f,1f)})")
     fun setMouth(value: Float) = call("window.__l2d&&window.__l2d.setMouth(${value.coerceIn(0f, 1f)})")
     fun setEmotion(value: String) = call("window.__l2d&&window.__l2d.setEmotion('${value.replace("'", "")}')")
     fun setGaze(x: Float, y: Float) = call("window.__l2d&&window.__l2d.setGaze(${x.coerceIn(-1f,1f)},${y.coerceIn(-1f,1f)})")
