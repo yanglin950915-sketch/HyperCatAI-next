@@ -172,31 +172,6 @@ private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f)
 private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF262521)
 
 class MainActivity : ComponentActivity() {
-    /**
-     * Apply the saved app appearance before Android selects the splash and
-     * post-splash theme resources. Otherwise system night mode can select a
-     * black splash while HyperCat is saved as light, causing a black-to-white
-     * flash before Compose draws its first frame.
-     */
-    override fun attachBaseContext(newBase: Context) {
-        val mode = newBase.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
-            .getString("theme_mode", "system") ?: "system"
-        val requestedNightMode = when (mode) {
-            "dark" -> android.content.res.Configuration.UI_MODE_NIGHT_YES
-            "light" -> android.content.res.Configuration.UI_MODE_NIGHT_NO
-            "time" -> if (java.time.LocalTime.now().hour < 7 || java.time.LocalTime.now().hour >= 19)
-                android.content.res.Configuration.UI_MODE_NIGHT_YES
-                else android.content.res.Configuration.UI_MODE_NIGHT_NO
-            else -> null
-        }
-        if (requestedNightMode == null) {
-            super.attachBaseContext(newBase)
-        } else {
-            val configuration = android.content.res.Configuration(newBase.resources.configuration)
-            configuration.uiMode = (configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or requestedNightMode
-            super.attachBaseContext(newBase.createConfigurationContext(configuration))
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -213,6 +188,22 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
             window.isStatusBarContrastEnforced = false
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            var systemUi = window.decorView.systemUiVisibility
+            systemUi = if (initialDark) {
+                systemUi and android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+            } else {
+                systemUi or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                systemUi = if (initialDark) {
+                    systemUi and android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
+                } else {
+                    systemUi or android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                }
+            }
+            window.decorView.systemUiVisibility = systemUi
         }
         val updateCheck = PeriodicWorkRequestBuilder<ReleaseCheckWorker>(12, TimeUnit.HOURS).build()
         WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
