@@ -1,6 +1,6 @@
 <!-- SAFE_ZONE: BASE_CAM=301 | OUTER.x=321 OK | HEADER.x=344 OK | FACE.x=377 OK | REPLY.x=344 OK | BUTTONS.x=364/538/713 OK | CHILD.x=344 OK | max_x=862 <= 884 OK -->
-<!-- AVAIL: 563x532 ratio=1.06 | OUTER 563x532 fill=100% | CHILD 518x498 fillW=91.99% fillH=93.61% ratio=1.04 deviation=1.7% OK -->
-<!-- TOUCH: FACE 450x260 OK | PET 130x72 OK | THINK 130x72 OK | REST 130x72 OK | gaps=44/45px, hitPad=12px, effectiveGap>=20px OK -->
+<!-- AVAIL: 563x532 ratio=1.06 | OUTER 563x532 fill=100% | CHILD 518x497 fillW=92.01% fillH=93.42% ratio=1.04 deviation=1.5% OK -->
+<!-- TOUCH: FACE 450x261 OK | PET 130x60 OK | THINK 130x60 OK | REST 130x60 OK | gaps=44/45px, hitPad=12px, effectiveGap>=20px OK -->
 <!-- The engine uses cachePage="true"; clear the cache or reinstall the widget after editing the file. -->
 <!doctype html>
 <html lang="zh-CN">
@@ -52,11 +52,11 @@ var LAYOUT=Object.freeze({
   REPLY_LINE_SPACING:18,
   BUTTON_RADIUS:18,
   BUTTONS:[
-    {x:Math.round(AVAIL.x+AVAIL.w*.076),y:Math.round(AVAIL.y+AVAIL.h*.84),w:130,h:72,label:T.pet,mood:1},
-    {x:Math.round(AVAIL.x+AVAIL.w*.386),y:Math.round(AVAIL.y+AVAIL.h*.84),w:130,h:72,label:T.think,mood:2},
-    {x:Math.round(AVAIL.x+AVAIL.w*.696),y:Math.round(AVAIL.y+AVAIL.h*.84),w:130,h:72,label:T.rest,mood:3}
+    {x:Math.round(AVAIL.x+AVAIL.w*.076),y:Math.round(AVAIL.y+AVAIL.h*.86),w:130,h:60,label:T.pet,mood:1},
+    {x:Math.round(AVAIL.x+AVAIL.w*.386),y:Math.round(AVAIL.y+AVAIL.h*.86),w:130,h:60,label:T.think,mood:2},
+    {x:Math.round(AVAIL.x+AVAIL.w*.696),y:Math.round(AVAIL.y+AVAIL.h*.86),w:130,h:60,label:T.rest,mood:3}
   ],
-  CHILD:{x:Math.round(AVAIL.x+AVAIL.w*.04),y:Math.round(AVAIL.y+AVAIL.h*.04),w:Math.round(AVAIL.w*.92),h:Math.round(AVAIL.h*.936)}
+  CHILD:{x:Math.round(AVAIL.x+AVAIL.w*.04),y:Math.round(AVAIL.y+AVAIL.h*.04),w:Math.round(AVAIL.w*.92),h:Math.round(AVAIL.h*.934)}
 });
 var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:false});
 var W=0,H=0,dpr=1,CAM=0,FIT=1,DX=0,DY=0;
