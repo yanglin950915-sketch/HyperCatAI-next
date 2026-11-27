@@ -39,9 +39,15 @@ jobs:
           HYPERCAT_KEY_ALIAS: ${{ secrets.HYPERCAT_KEY_ALIAS }}
           HYPERCAT_KEY_PASSWORD: ${{ secrets.HYPERCAT_KEY_PASSWORD }}
         run: gradle --no-daemon :app:assembleDebug
+      - name: Rename APK with version
+        run: |
+          VERSION_NAME=$(sed -nE 's/.*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -n1)
+          test -n "$VERSION_NAME"
+          cp app/build/outputs/apk/debug/app-debug.apk "HyperCatAI-v${VERSION_NAME}-debug.apk"
       - name: Verify APK signature
         run: |
-          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk
+          VERSION_NAME=$(sed -nE 's/.*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -n1)
+          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs "HyperCatAI-v${VERSION_NAME}-debug.apk"
       - name: Package REAREye widget sources
         run: |
           cp rearscreen/web/index.html HyperCatAI-reareye-widget.html
@@ -54,8 +60,8 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HyperCatAI-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: HyperCatAI-v0.9.30-debug
+          path: HyperCatAI-v0.9.30-debug.apk
           if-no-files-found: error
           retention-days: 30
       - name: Upload REAREye HTML source artifact
