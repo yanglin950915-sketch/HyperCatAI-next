@@ -138,6 +138,7 @@ import android.webkit.URLUtil
 import com.hypercat.ai.rear.PetStateStore
 import com.hypercat.ai.rear.RearAgentInteractionDispatcher
 import com.hypercat.ai.rear.RearProjectionController
+import com.hypercat.ai.rear.RearCard
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
@@ -669,6 +670,10 @@ private fun HyperCatApp() {
     var petReply by remember { mutableStateOf(initialRearState.reply) }
     var rearPetEnabled by remember { mutableStateOf(initialRearState.enabled) }
     var rearProjectionStatus by remember { mutableStateOf("尚未连接背屏") }
+    var rearPickerCards by remember { mutableStateOf<List<RearCard>>(emptyList()) }
+    var rearPickerMode by remember { mutableStateOf("deploy") }
+    var showRearPicker by remember { mutableStateOf(false) }
+    var rearPickerBusy by remember { mutableStateOf(false) }
     var themeMode by remember { mutableStateOf("system") }
     var timeRefresh by remember { mutableIntStateOf(0) }
     var updateStatus by remember { mutableStateOf("尚未检查") }
