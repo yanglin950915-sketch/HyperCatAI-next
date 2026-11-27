@@ -63,7 +63,7 @@ var W=0,H=0,dpr=1,CAM=0,FIT=1,DX=0,DY=0;
 var rafPend=false,paused=false,lastDraw=-1e9,lastFrame=0,animTime=0,dead=false;
 var mood=0,localMoodUntil=0,blink=0,blinkAt=0,nextBlink=1900,gazeX=0,gazeY=0,petEmoji="sakura";
 var pointerId=null,pressStartedAt=0,pressAction="",DEMO_T=1200,petName=T.petDefault,agentReply=T.replyDefault;
-var fontCache=Object.create(null);
+var fontCache=Object.create(null),backgroundColor="#080B12";
 var moods=[
   {name:T.idle,eye:1,pupil:1,mouth:0},
   {name:T.happy,eye:.64,pupil:1,mouth:1},
@@ -82,10 +82,11 @@ function normalizeAvatarId(value){
   id=aliases[id]||id;
   return Object.prototype.hasOwnProperty.call(avatarPalette,id)?id:"sakura";
 }
-function applyAgentState(name,avatar,moodValue,reply){
+function applyAgentState(name,avatar,moodValue,reply,bgColor){
   if(name&&name!=="undefined")petName=String(name).slice(0,16);
   if(avatar&&avatar!=="undefined")petEmoji=normalizeAvatarId(avatar);
   if(reply&&reply!=="undefined")agentReply=String(reply).slice(0,100);
+  if(bgColor&&/^#[0-9a-fA-F]{6}$/.test(String(bgColor)))backgroundColor=String(bgColor);
   if(moodValue&&moodValue!=="undefined"&&now()>=localMoodUntil){
     var key=String(moodValue).toLowerCase(),map={normal:0,idle:0,happy:1,thinking:2,sleepy:3,sad:4,surprised:1};
     if(Object.prototype.hasOwnProperty.call(map,key))mood=map[key];
@@ -100,7 +101,8 @@ function syncMamlState(){
       bridge.getStringByName("petName"),
       bridge.getStringByName("petEmoji"),
       bridge.getStringByName("mood"),
-      bridge.getStringByName("reply")
+      bridge.getStringByName("reply"),
+      bridge.getStringByName("backgroundColor")
     );
   }catch(_){}
 }
@@ -208,10 +210,6 @@ function drawFace(t){
   var bob=window.__DIAL_NO_ANIM?0:Math.sin(t/550)*f.h*.008;
   ctx.save();
   var x=f.x,y=f.y+f.h*.02+bob,w=f.w,h=f.h*.96;
-  ctx.beginPath();
-  if(ctx.roundRect) ctx.roundRect(x,y,w,h,Math.min(w*.12,26));
-  else ctx.rect(x,y,w,h);
-  ctx.clip();
   if(img && img.complete && img.naturalWidth>0){
     var scale=Math.max(w/img.width,h/img.height);
     var dw=img.width*scale,dh=img.height*scale;
@@ -239,11 +237,8 @@ function drawButton(b,active,t){
 }
 function draw(t){
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle="#000";ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=backgroundColor;ctx.fillRect(0,0,W,H);
   ctx.save();ctx.translate(DX,DY);ctx.scale(FIT,FIT);
-  /* OUTER is the mandatory backing plate for the usable right-hand display. */
-  roundedRect(LAYOUT.OUTER.x,LAYOUT.OUTER.y,LAYOUT.OUTER.w,LAYOUT.OUTER.h,LAYOUT.OUTER_RADIUS);
-  ctx.fillStyle="#03090e";ctx.fill();ctx.strokeStyle="#102b39";ctx.lineWidth=2;ctx.stroke();
   if(!window.__DIAL_NO_ANIM)syncMamlState();
   ctx.fillStyle="#73dfff";ctx.font=getFont("bold",17);ctx.textAlign="left";ctx.textBaseline="middle";
   ctx.fillText(T.title,LAYOUT.HEADER.x,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.25);
