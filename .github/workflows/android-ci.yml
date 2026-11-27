@@ -76,7 +76,8 @@ jobs:
               assert (live2d / asset).is_file() and (live2d / asset).stat().st_size > 1000, f"Live2D renderer asset missing: {asset}"
           model_store = Path("app/src/main/java/com/hypercat/ai/avatar/Live2DModelStore.kt").read_text(encoding="utf-8")
           live2d_view = Path("app/src/main/java/com/hypercat/ai/avatar/Live2DView.kt").read_text(encoding="utf-8")
-          assert all(name in model_store for name in ("Haru.model3.json", "Hiyori.model3.json", "Mao.model3.json", "Natori.model3.json", "Rice.model3.json")), "multi-character Live2D catalogue missing"\n          assert all(name in Path("app/build.gradle.kts").read_text(encoding="utf-8") for name in ("Haru", "Hiyori", "Mao", "Natori", "Rice")), "official Live2D character bundle task missing"
+          assert all(name in model_store for name in ("Haru.model3.json", "Hiyori.model3.json", "Mao.model3.json", "Natori.model3.json", "Rice.model3.json")), "multi-character Live2D catalogue missing"
+          assert all(name in Path("app/build.gradle.kts").read_text(encoding="utf-8") for name in ("Haru", "Hiyori", "Mao", "Natori", "Rice")), "official Live2D character bundle task missing"
           assert "importZip" not in model_store and "modelPicker" not in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "user model import UI must be removed"
           gradle = Path("app/build.gradle.kts").read_text(encoding="utf-8")
           assert "downloadBuiltInAvatar" in gradle and "CubismWebSamples" in gradle and "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd" in gradle, "pinned official Live2D sample build task missing"
