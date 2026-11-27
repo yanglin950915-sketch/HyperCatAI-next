@@ -51,6 +51,12 @@ object RearCardPackageBuilder {
             require("web/index.html" in names) { "背屏资源包缺少 web/index.html" }
             require("web/live2d/render.html" in names) { "背屏资源包缺少 Live2D 渲染器" }
             require("web/models/active/model-entry.js" in names) { "背屏资源包缺少模型入口脚本" }
+            val expectedMarker = "window.HyperCatLive2DModel=" +
+                JSONObject().put("entry", model.entry).toString() + ";"
+            val actualMarker = archive.getInputStream(
+                archive.getEntry("web/models/active/model-entry.js")
+            ).bufferedReader().use { it.readText() }.trim()
+            require(actualMarker == expectedMarker) { "背屏模型入口与当前角色不一致" }
             requireFile(model.entry)
             val settings = JSONObject(archive.getInputStream(archive.getEntry(root + model.entry)).bufferedReader().use { it.readText() })
             val refs = settings.optJSONObject("FileReferences") ?: error("模型配置缺少 FileReferences")
@@ -62,7 +68,7 @@ object RearCardPackageBuilder {
 
             // A model can have valid MOC/textures but still fail to initialize if an
             // auxiliary file referenced by the settings was omitted from the exported ZIP.
-            listOf("Physics", "Pose", "UserData").forEach { key ->
+            listOf("Physics", "Pose", "UserData", "DisplayInfo").forEach { key ->
                 val path = refs.optString(key)
                 if (path.isNotBlank() && path != "null") requireFile(path)
             }
@@ -77,8 +83,11 @@ object RearCardPackageBuilder {
                 while (groups.hasNext()) {
                     val group = motions.getJSONArray(groups.next())
                     for (index in 0 until group.length()) {
-                        val path = group.optJSONObject(index)?.optString("File").orEmpty()
-                        if (path.isNotBlank()) requireFile(path)
+                        val motion = group.optJSONObject(index) ?: continue
+                        val path = motion.optString("File")
+                        if (path.isNotBlank() && path != "null") requireFile(path)
+                        val sound = motion.optString("Sound")
+                        if (sound.isNotBlank() && sound != "null") requireFile(sound)
                     }
                 }
             }
