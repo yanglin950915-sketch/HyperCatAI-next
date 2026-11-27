@@ -144,9 +144,9 @@ import com.hypercat.ai.rear.RearCard
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
-private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF5F3EE)
-private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFFAF9F6)
-private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFEFEEE8)
+private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF7F7F8)
+private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFF0F1F2)
+private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFE8EAED)
 private val Cyan get() = if (appDarkState) Color(0xFFE6E6E6) else Color(0xFF2563EB)
 private val Muted get() = if (appDarkState) Color(0xFFA0A0A0) else Color(0xFF77766F)
 private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f) else Color(0xFFE5E2DA)
@@ -672,6 +672,7 @@ private fun HyperCatApp() {
     var petMood by remember { mutableStateOf(initialRearState.mood) }
     var petReply by remember { mutableStateOf(initialRearState.reply) }
     var rearPetEnabled by remember { mutableStateOf(initialRearState.enabled) }
+    var rearBackgroundColor by remember { mutableStateOf(initialRearState.backgroundColor) }
     var rearProjectionStatus by remember { mutableStateOf("尚未连接背屏") }
     var rearPickerCards by remember { mutableStateOf<List<RearCard>>(emptyList()) }
     var rearPickerMode by remember { mutableStateOf("deploy") }
@@ -978,6 +979,8 @@ private fun HyperCatApp() {
                             onPetEmojiChange = { value -> petEmoji = value; chatPrefs.edit().putString("pet_emoji", value).apply() },
                             petMood = petMood,
                             rearPetEnabled = rearPetEnabled,
+                            rearBackgroundColor = rearBackgroundColor,
+                            onRearBackgroundColorChange = { color -> rearBackgroundColor = color; PetStateStore.setBackgroundColor(context, color) },
                             rearProjectionStatus = rearProjectionStatus,
                             onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                             onRearPetRestore = {
@@ -1936,7 +1939,7 @@ private fun ChatPage(
                 TextButton(onClick = { selectedMessageIndices = emptySet() }) { Text("取消") }
             }
         }
-        LazyColumn(state = chatListState, modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (appDarkState) Bg else Color.White).padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
+        LazyColumn(state = chatListState, modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Bg).padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("开始与 Agent 对话", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
@@ -2083,6 +2086,9 @@ private fun ChatPage(
             Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 15.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(Modifier.requiredSize(34.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted, modifier = Modifier.size(19.dp)) }
+                    }
                     BasicTextField(value = draft, onValueChange = onDraft,
                         modifier = Modifier.weight(1f).heightIn(min = 42.dp, max = 132.dp).padding(vertical = 10.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
@@ -2099,9 +2105,6 @@ private fun ChatPage(
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                Surface(Modifier.requiredSize(40.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
-                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted, modifier = Modifier.size(20.dp)) }
-                }
                 Surface(Modifier.requiredSize(42.dp).clickable(enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) {
                     onSend(draft, selectedFiles, selectedPhotos); selectedFiles = emptyList(); selectedPhotos = emptyList()
                 }, color = if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
@@ -2576,6 +2579,8 @@ private fun PetSettingsPage(
     onPetEmojiChange: (String) -> Unit,
     petMood: String,
     rearPetEnabled: Boolean,
+    rearBackgroundColor: String,
+    onRearBackgroundColorChange: (String) -> Unit,
     rearProjectionStatus: String,
     onRearPetEnabledChange: (Boolean) -> Unit,
     onRearPetRestore: () -> Unit,
@@ -2671,6 +2676,16 @@ private fun PetSettingsPage(
                         Text(if (rearPetEnabled) "已开启" else "关闭状态 · 不影响主屏虚拟形象", color = Muted, fontSize = 11.sp)
                     }
                     Switch(checked = rearPetEnabled, onCheckedChange = onRearPetEnabledChange)
+                }
+                Text("背屏背景颜色", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
+                val rearColors = listOf("#080B12", "#F4F1EA", "#E8EEF8", "#FBE7EF", "#DCEFE8", "#242424", "#1C2942", "#4A3048")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    rearColors.forEach { hex ->
+                        val swatch = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color.Black)
+                        Box(Modifier.size(30.dp).clip(CircleShape).background(swatch).clickable { onRearBackgroundColorChange(hex) }, contentAlignment = Alignment.Center) {
+                            if (rearBackgroundColor.equals(hex, true)) Icon(Icons.Outlined.Check, contentDescription = "已选择", tint = if (hex in listOf("#F4F1EA", "#E8EEF8", "#DCEFE8")) Color.Black else Color.White, modifier = Modifier.size(16.dp))
+                        }
+                    }
                 }
                 Text("仅支持具备背屏的 Xiaomi Pro 系列设备。需要先启动 Shizuku 并授权。首次部署后，还需在系统背屏卡片管理中重新应用卡片。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
                 Text(rearProjectionStatus, color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
