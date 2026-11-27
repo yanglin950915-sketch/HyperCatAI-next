@@ -1189,24 +1189,37 @@ private fun HyperCatApp() {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                 Text(if (rearPickerMode == "deploy") "已扫描 .ai_wallpaper/maml/ 和旧版 .ai_app。请选择一张 AI 壁纸，程序只替换其中的 rearscreen 文件，不会覆盖整个壁纸目录。" else "选择此前备份过原始资源的背屏卡片。恢复只影响所选卡片。", color = Muted, fontSize = 11.sp)
                 Spacer(Modifier.height(10.dp))
+                if (rearProjectionStatus.isNotBlank() && rearProjectionStatus != "尚未检查") {
+                    Text(rearProjectionStatus, color = if (rearPickerBusy) Cyan else Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp))
+                }
                 rearPickerCards.sortedByDescending { it.modifiedAt }.forEach { card ->
-                    Surface(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(enabled = !rearPickerBusy) {
-                        rearPickerBusy = true
-                        scope.launch {
-                            try {
-                                rearProjectionStatus = if (rearPickerMode == "deploy") RearProjectionController.deploy(context, card) else RearProjectionController.restore(context, card.cardId)
-                                rearPetEnabled = rearPickerMode == "deploy"
-                                PetStateStore.setEnabled(context, rearPetEnabled)
-                                showRearPicker = false
-                            } catch (error: Exception) { rearProjectionStatus = error.message ?: "背屏操作失败" }
-                            finally { rearPickerBusy = false }
-                        }
-                    }, color = Panel2, shape = RoundedCornerShape(12.dp)) {
+                    Surface(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = Panel2, shape = RoundedCornerShape(12.dp)) {
                         Column(Modifier.padding(12.dp)) {
                             Text(card.name, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                             Text(if (card.modifiedAt > 0L) "资源时间：" + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(card.modifiedAt)) else "资源时间：系统未提供", color = Muted, fontSize = 10.sp)
                             Text("大小：" + android.text.format.Formatter.formatShortFileSize(context, card.sizeBytes) + " · " + card.root + "/" + card.path, color = Muted, fontSize = 9.sp, maxLines = 3)
-                            Text(if (rearPickerMode == "deploy") "点击后备份原资源并替换此卡片" else "点击后恢复此卡片的原始资源", color = Cyan, fontSize = 10.sp)
+                            Text(if (rearPickerMode == "deploy") "确认后备份原资源并替换此卡片" else "确认后恢复此卡片的原始资源", color = Cyan, fontSize = 10.sp)
+                            Spacer(Modifier.height(6.dp))
+                            Button(
+                                enabled = !rearPickerBusy,
+                                onClick = {
+                                    rearPickerBusy = true
+                                    rearProjectionStatus = if (rearPickerMode == "deploy") "正在替换「${card.name}」…" else "正在恢复「${card.name}」…"
+                                    scope.launch {
+                                        try {
+                                            rearProjectionStatus = if (rearPickerMode == "deploy") RearProjectionController.deploy(context, card) else RearProjectionController.restore(context, card.cardId)
+                                            rearPetEnabled = rearPickerMode == "deploy"
+                                            PetStateStore.setEnabled(context, rearPetEnabled)
+                                            showRearPicker = false
+                                            android.widget.Toast.makeText(context, rearProjectionStatus, android.widget.Toast.LENGTH_LONG).show()
+                                        } catch (error: Exception) {
+                                            rearProjectionStatus = error.message ?: "背屏操作失败"
+                                            android.widget.Toast.makeText(context, "操作失败：$rearProjectionStatus", android.widget.Toast.LENGTH_LONG).show()
+                                        } finally { rearPickerBusy = false }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(if (rearPickerMode == "deploy") "替换这张卡片" else "恢复这张卡片") }
                         }
                     }
                 }
