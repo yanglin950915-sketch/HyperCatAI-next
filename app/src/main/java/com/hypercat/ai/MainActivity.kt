@@ -2142,19 +2142,20 @@ private fun ChatPage(
         }
         }
         if (chatListState.canScrollForward && messages.isNotEmpty()) {
-            Surface(
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
-                    .size(42.dp).clickable {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                Surface(
+                    modifier = Modifier.padding(bottom = 12.dp).size(42.dp).clickable {
                         userMovedChat = false
                         speechScope.launch { chatListState.animateScrollToItem(messages.lastIndex) }
                     },
-                color = if (appDarkState) Color(0xFF30343A) else Color.White,
-                shape = CircleShape,
-                shadowElevation = 5.dp,
-                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("↓", color = MainText, fontSize = 23.sp, fontWeight = FontWeight.Medium)
+                    color = if (appDarkState) Color(0xFF30343A) else Color.White,
+                    shape = CircleShape,
+                    shadowElevation = 5.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("↓", color = MainText, fontSize = 23.sp, fontWeight = FontWeight.Medium)
+                    }
                 }
             }
         }
