@@ -101,7 +101,7 @@ jobs:
               if forbidden.lower() in body.lower():
                   line = next((i for i, value in enumerate(body.splitlines(), 1) if forbidden.lower() in value.lower()), 0)
                   raise AssertionError(f"legacy product name remains in {path}:{line}")
-          assert "versionName = \"0.9.63\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "versionName = \"0.9.64\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           main_activity = Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8")
           assert "val controller = remember { Live2DController() }" in live2d_view and "key(model.id)" not in main_activity and "key(selected.first)" not in main_activity, "Live2D preview must reuse its WebView when the selected model changes"
           assert "AvatarPortrait" in main_activity and "Live2DView(" in main_activity and "onPortrait = { dataUrl ->" in main_activity, "Agent chat portraits must be captured from the actual Live2D model"
