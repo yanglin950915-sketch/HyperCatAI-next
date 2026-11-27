@@ -5,6 +5,14 @@
 - 背屏萌宠作为同一 APK 内的独立 Activity 运行，主屏与背屏共用 PetStateStore 和 Agent 交互分发器；可从主屏关闭投放。
 - 直接投放依赖设备系统允许 shell 身份在目标 display 启动 Activity；若 ROM 不暴露背屏 display 或拒绝启动，会显示具体诊断，不会伪报连接成功。Shizuku 无线调试方式在重启后需要重新启动服务。
 
+### 0.9.24 直接投放使用说明
+1. 安装并启动 Shizuku（非 Root 设备可使用系统「无线调试」启动；手机重启后需要重新启动 Shizuku）。
+2. 打开 HyperCat AI → 设置 → 萌宠伙伴，开启「萌宠投放到背屏」。
+3. 在 Shizuku 授权弹窗中允许 HyperCat AI；应用会读取系统显示器信息，只在唯一识别到背屏时尝试启动背屏萌宠。
+4. 关闭开关会向背屏发送关闭指令；如果系统拒绝第三方 Activity 投放，设置页会显示诊断原因。
+
+当前直接投放为实验性 HyperOS 适配：未识别到明确背屏时不会猜测 display ID。Shizuku 仅提供 shell 身份，不会替代系统背屏服务；AOD、锁屏和触摸交互仍需目标机型实测。
+
 ## 0.9.23 更新
 - Agent 主程序与 REAREye 背屏 MAML/HTML 组件源一起打包进同一个 APK；设置中的萌宠伙伴卡片可导出内置组件 ZIP，供 REAREye 首次导入。
 - 萌宠伙伴设置增加「萌宠投放到背屏」开关；关闭时背屏组件隐藏，开启后同步 Agent 名称、情绪和回复。
@@ -122,7 +130,7 @@ Agent 可根据用户请求调用 Android 系统能力或外部数据服务，�
 
 应用内置 Shizuku 直接投放通道：设置 → 萌宠伙伴开启投放，按提示授权 Shizuku 后自动识别背屏并启动独立萌宠 Activity。主屏与背屏共用 PetStateStore 和 Agent 事件分发器。REAREye/MAML 资源作为兼容模式保留，不再要求常规用户手动导出。
 
-组件源码已通过 Android Gradle assets source set 内置于主 APK；应用内「设置 → 萌宠伙伴」可开启/关闭背屏投放，并通过「导出内置背屏组件包」将 ZIP 分享给 REAREye。主屏萌宠的轻触和长按与背屏使用同一个 Agent 事件分发器。
+常规背屏投放通过 Shizuku 将同一 APK 内的独立萌宠 Activity 启动到背屏，不需要导出 ZIP 或创建 REAREye 卡片；REAREye/MAML 资源保留为兼容模式。主屏与背屏共用 PetStateStore 和 Agent 事件分发器。
 
 背屏与主屏 Agent 共用同一份萌宠状态。主应用通过只读 ContentProvider 暴露名称、情绪和最新回复；REAREye 的 MAML 组件负责刷新数据，WebView 负责离线绘制表情与触摸区域。触摸动作通过 MAML WebView 内部 Trigger 回传 Android 广播，经身份校验后交由 WorkManager 排队调用当前 Agent 模型，生成的回复再同步到背屏状态。
 
