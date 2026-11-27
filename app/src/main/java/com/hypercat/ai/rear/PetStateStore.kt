@@ -33,7 +33,7 @@ object PetStateStore {
     )
     val state: StateFlow<RearPetState> = mutableState.asStateFlow()
 
-    fun update(context: Context, name: String, emoji: String, mood: String, reply: String, enabled: Boolean? = null, userText: String = "") {
+    fun update(context: Context, name: String, emoji: String, mood: String, reply: String, enabled: Boolean? = null, userText: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_USER_TEXT, "").orEmpty()) {
         val next = RearPetState(
             petName = name.ifBlank { "小橘" }.take(16),
             petEmoji = emoji.ifBlank { "🤖" }.take(8),
