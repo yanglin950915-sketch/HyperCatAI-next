@@ -20,6 +20,10 @@ import android.os.Bundle
 import android.os.Environment
 import android.content.Intent
 import android.net.Uri
+import java.io.File
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.RecognitionListener
@@ -132,6 +136,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import android.webkit.URLUtil
 import com.hypercat.ai.rear.PetStateStore
+import com.hypercat.ai.rear.RearAgentInteractionDispatcher
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
@@ -635,6 +640,7 @@ private fun HyperCatApp() {
     var petName by remember { mutableStateOf(initialRearState.petName) }
     var petMood by remember { mutableStateOf(initialRearState.mood) }
     var petReply by remember { mutableStateOf(initialRearState.reply) }
+    var rearPetEnabled by remember { mutableStateOf(initialRearState.enabled) }
     var themeMode by remember { mutableStateOf("system") }
     var timeRefresh by remember { mutableIntStateOf(0) }
     var updateStatus by remember { mutableStateOf("尚未检查") }
@@ -907,6 +913,10 @@ private fun HyperCatApp() {
                             onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
                              petName = petName,
                              petMood = petMood,
+                             rearPetEnabled = rearPetEnabled,
+                             onRearPetEnabledChange = { enabled -> rearPetEnabled = enabled; chatPrefs.edit().putBoolean("rear_pet_enabled", enabled).apply(); PetStateStore.setEnabled(context, enabled) },
+                             onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                             onExportRearWidget = { exportRearWidgetPackage(context) },
                              onPetNameChange = { value ->
                                  val clean = value.trim().take(16).ifBlank { "小橘" }
                                  petName = clean
@@ -964,6 +974,10 @@ private fun HyperCatApp() {
                             onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
                     petName = petName,
                     petMood = petMood,
+                    rearPetEnabled = rearPetEnabled,
+                    onRearPetEnabledChange = { enabled -> rearPetEnabled = enabled; chatPrefs.edit().putBoolean("rear_pet_enabled", enabled).apply(); PetStateStore.setEnabled(context, enabled) },
+                    onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                    onExportRearWidget = { exportRearWidgetPackage(context) },
                     onPetNameChange = { value ->
                         val clean = value.trim().take(16).ifBlank { "小橘" }
                         petName = clean
@@ -2174,7 +2188,7 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 
 @Composable
 private fun SettingsPage(
-    modifier: Modifier, petName: String, petMood: String, onPetNameChange: (String) -> Unit,
+    modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, onRearPetEnabledChange: (Boolean) -> Unit, onPetInteraction: (String) -> Unit, onExportRearWidget: () -> Unit, onPetNameChange: (String) -> Unit,
     provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit, onDeleteProfile: (ModelProfile) -> Unit,
     ttsProfiles: List<TtsProfile>, onAddTtsProfile: (TtsProfile) -> Unit, onSelectTtsProfile: (TtsProfile) -> Unit, onDeleteTtsProfile: (TtsProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
@@ -2306,14 +2320,26 @@ private fun SettingsPage(
         ) {
             Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.fillMaxWidth().height(168.dp), contentAlignment = Alignment.Center) {
-                    CatFace(Modifier.fillMaxWidth(.78f).fillMaxHeight(.96f), petMood)
+                    CatFace(Modifier.fillMaxWidth(.78f).fillMaxHeight(.96f).pointerInput(petMood) {
+                        detectTapGestures(onTap = { onPetInteraction("pet_touch") }, onLongPress = { onPetInteraction("pet_long_press") })
+                    }, petMood)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(petName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.width(8.dp))
                     TextButton(onClick = { petNameDraft = petName; showPetNameDialog = true }) { Text("修改名称") }
                 }
-                Text("轻触萌宠可查看互动反应；Agent 对话会影响萌宠情绪。", color = Muted, fontSize = 10.sp)
+                Text("轻触萌宠可摸摸互动，长按可主动开启交流；Agent 对话会同步改变萌宠情绪。", color = Muted, fontSize = 10.sp)
+                Divider(color = GlassBorder, modifier = Modifier.padding(vertical = 10.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("萌宠投放到背屏", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (rearPetEnabled) "已开启背屏状态同步" else "关闭后背屏萌宠将隐藏", color = Muted, fontSize = 10.sp)
+                    }
+                    Switch(checked = rearPetEnabled, onCheckedChange = onRearPetEnabledChange)
+                }
+                Text("仅支持具备背屏的 Xiaomi 17 Pro / 17 Pro Max、Xiaomi 18 Pro 系列机型，并需使用兼容的背屏组件宿主。", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                OutlinedButton(onClick = onExportRearWidget, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("导出内置背屏组件包（供 REAREye 导入）") }
             }
         }
         Spacer(Modifier.height(18.dp))
