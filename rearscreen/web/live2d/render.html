@@ -58,6 +58,13 @@
   var SAFE_LEFT_RATIO = safeRatio('safeLeft');
   var SAFE_RIGHT_RATIO = safeRatio('safeRight');
   var SAFE_BOTTOM_RATIO = safeRatio('safeBottom');
+  // The deployed Xiaomi MAML card opens this page directly (without Live2DView URL args).
+  // In that path Android DisplayCutout data is unavailable to the WebView, so the
+  // camera-island exclusion must use the measured rear-panel layout fallback.
+  // The camera island occupies about 31% of the 976px panel; 38% adds a clearance buffer.
+  if (params.get('safeLeft') === null && window.maml) {
+    SAFE_LEFT_RATIO = 0.38;
+  }
   var VIEW_OFFSET_X = 0;
   var PORTRAIT_CAPTURED = false;
   // Per-model horizontal correction. Default is zero; only Xiaomi Rice receives a tuned value.
