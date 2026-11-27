@@ -70,18 +70,29 @@ object Live2DModelStore {
             val settings = destination.walkTopDown().firstOrNull {
                 it.isFile && it.name.endsWith(".model3.json", ignoreCase = true)
             } ?: error("压缩包中没有找到 .model3.json 模型入口文件")
-            val json = settings.readText()
-            require(json.contains("FileReferences") && json.contains("Moc")) { "模型配置缺少必要的 FileReferences/Moc 信息" }
+            val json = org.json.JSONObject(settings.readText())
+            val references = json.optJSONObject("FileReferences") ?: error("模型配置缺少 FileReferences")
             val modelDir = settings.parentFile ?: error("模型目录无效")
+            val mocPath = references.optString("Moc")
+            require(mocPath.isNotBlank() && !mocPath.split('/').contains("..") && File(modelDir, mocPath).isFile) { "模型 MOC3 文件缺失或路径无效" }
+            val textures = references.optJSONArray("Textures") ?: error("模型配置缺少贴图列表")
+            require(textures.length() > 0) { "模型没有贴图资源" }
+            for (index in 0 until textures.length()) {
+                val texture = textures.optString(index)
+                require(texture.isNotBlank() && !texture.split('/').contains("..") && File(modelDir, texture).isFile) { "模型贴图文件缺失或路径无效：$texture" }
+            }
             val model = Live2DModel(
                 directory = Uri.fromFile(modelDir).toString().trimEnd('/') + "/",
                 entry = settings.name,
                 displayName = settings.name.removeSuffix(".model3.json")
             )
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString(KEY_DIRECTORY, model.directory)
-                .putString(KEY_ENTRY, model.entry)
-                .commit()
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val previousDirectory = prefs.getString(KEY_DIRECTORY, null)
+            check(prefs.edit().putString(KEY_DIRECTORY, model.directory).putString(KEY_ENTRY, model.entry).commit()) { "无法保存 Live2D 模型配置" }
+            if (previousDirectory != null) {
+                val previous = File(Uri.parse(previousDirectory).path.orEmpty())
+                if (previous.canonicalPath.startsWith(root.canonicalPath + File.separator)) previous.deleteRecursively()
+            }
             mutableModel.value = model
             model
         } catch (error: Throwable) {
@@ -91,8 +102,10 @@ object Live2DModelStore {
     }
 
     fun clear(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .remove(KEY_DIRECTORY).remove(KEY_ENTRY).apply()
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val directory = prefs.getString(KEY_DIRECTORY, null)
+        prefs.edit().remove(KEY_DIRECTORY).remove(KEY_ENTRY).apply()
+        if (directory != null) runCatching { File(Uri.parse(directory).path.orEmpty()).deleteRecursively() }
         mutableModel.value = null
     }
 }
