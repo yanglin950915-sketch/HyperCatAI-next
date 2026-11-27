@@ -35,6 +35,7 @@
             android:name=".rear.RearAvatarInteractionReceiver"
             android:exported="true">
             <intent-filter>
+                <action android:name="com.hypercat.ai.rear.AVATAR_INTERACTION" />
                 <action android:name="com.hypercat.ai.rear.PET_INTERACTION" />
             </intent-filter>
         </receiver>
