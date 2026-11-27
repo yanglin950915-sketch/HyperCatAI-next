@@ -136,6 +136,7 @@ import java.net.URL
 import android.webkit.URLUtil
 import com.hypercat.ai.rear.PetStateStore
 import com.hypercat.ai.rear.RearAgentInteractionDispatcher
+import com.hypercat.ai.rear.RearProjectionController
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
@@ -666,6 +667,7 @@ private fun HyperCatApp() {
     var petMood by remember { mutableStateOf(initialRearState.mood) }
     var petReply by remember { mutableStateOf(initialRearState.reply) }
     var rearPetEnabled by remember { mutableStateOf(initialRearState.enabled) }
+    var rearProjectionStatus by remember { mutableStateOf("尚未连接背屏") }
     var themeMode by remember { mutableStateOf("system") }
     var timeRefresh by remember { mutableIntStateOf(0) }
     var updateStatus by remember { mutableStateOf("尚未检查") }
@@ -692,6 +694,42 @@ private fun HyperCatApp() {
         else -> systemDark
     }
     SideEffect { appDarkState = darkNow }
+    fun setRearProjectionEnabled(enabled: Boolean) {
+        if (!enabled) {
+            rearPetEnabled = false
+            chatPrefs.edit().putBoolean("rear_pet_enabled", false).apply()
+            PetStateStore.setEnabled(context, false)
+            rearProjectionStatus = "正在关闭背屏萌宠…"
+            scope.launch {
+                rearProjectionStatus = withContext(Dispatchers.IO) {
+                    RearProjectionController.hide(context)
+                }
+            }
+            return
+        }
+        val host = context as? ComponentActivity
+        if (host == null) {
+            rearProjectionStatus = "无法获取应用界面上下文，请返回设置页重试"
+            return
+        }
+        RearProjectionController.requestPermission(host) { granted, message ->
+            if (!granted) {
+                rearProjectionStatus = message
+                return@requestPermission
+            }
+            scope.launch {
+                rearProjectionStatus = "正在检测背屏并启动萌宠…"
+                val result = withContext(Dispatchers.IO) {
+                    RearProjectionController.connect(context)
+                }
+                rearProjectionStatus = result
+                val connected = result.startsWith("已请求背屏显示")
+                rearPetEnabled = connected
+                chatPrefs.edit().putBoolean("rear_pet_enabled", connected).apply()
+                PetStateStore.setEnabled(context, connected)
+            }
+        }
+    }
     val messages = remember { mutableStateListOf<ChatLine>() }
     var isThinking by remember { mutableStateOf(false) }
     val weatherPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
@@ -939,9 +977,9 @@ private fun HyperCatApp() {
                              petName = petName,
                              petMood = petMood,
                              rearPetEnabled = rearPetEnabled,
-                             onRearPetEnabledChange = { enabled -> rearPetEnabled = enabled; chatPrefs.edit().putBoolean("rear_pet_enabled", enabled).apply(); PetStateStore.setEnabled(context, enabled) },
+                             onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                              onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
-                             onExportRearWidget = { exportRearWidgetPackage(context) },
+                             rearProjectionStatus = rearProjectionStatus,
                              onPetNameChange = { value ->
                                  val clean = value.trim().take(16).ifBlank { "小橘" }
                                  petName = clean
@@ -1000,9 +1038,9 @@ private fun HyperCatApp() {
                     petName = petName,
                     petMood = petMood,
                     rearPetEnabled = rearPetEnabled,
-                    onRearPetEnabledChange = { enabled -> rearPetEnabled = enabled; chatPrefs.edit().putBoolean("rear_pet_enabled", enabled).apply(); PetStateStore.setEnabled(context, enabled) },
+                    onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                     onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
-                    onExportRearWidget = { exportRearWidgetPackage(context) },
+                    rearProjectionStatus = rearProjectionStatus,
                     onPetNameChange = { value ->
                         val clean = value.trim().take(16).ifBlank { "小橘" }
                         petName = clean
@@ -2213,7 +2251,7 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 
 @Composable
 private fun SettingsPage(
-    modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, onRearPetEnabledChange: (Boolean) -> Unit, onPetInteraction: (String) -> Unit, onExportRearWidget: () -> Unit, onPetNameChange: (String) -> Unit,
+    modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, rearProjectionStatus: String, onRearPetEnabledChange: (Boolean) -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
     provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit, onDeleteProfile: (ModelProfile) -> Unit,
     ttsProfiles: List<TtsProfile>, onAddTtsProfile: (TtsProfile) -> Unit, onSelectTtsProfile: (TtsProfile) -> Unit, onDeleteTtsProfile: (TtsProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
@@ -2363,8 +2401,9 @@ private fun SettingsPage(
                     }
                     Switch(checked = rearPetEnabled, onCheckedChange = onRearPetEnabledChange)
                 }
-                Text("仅支持具备背屏的 Xiaomi 17 Pro 系列和 Xiaomi 18 Pro 系列机型。首次使用需先导出 ZIP，解压后按包内 REAREye_IMPORT_PROMPT.md 的步骤创建卡片；此开关控制已安装组件的显示。", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
-                OutlinedButton(onClick = onExportRearWidget, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("导出背屏组件包（含 REAREye 导入说明）") }
+                Text("直接在背屏启动 HyperCat AI 独立萌宠界面，不需要导出 ZIP 或创建 REAREye 卡片。首次连接需安装并启动 Shizuku，授权后自动检测背屏；Shizuku 的无线调试授权可能需要在手机重启后重新启动。", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                Text(rearProjectionStatus, color = if (rearProjectionStatus.startsWith("已请求背屏显示")) Color(0xFF4CAF50) else Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                OutlinedButton(onClick = { onRearPetEnabledChange(true) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("连接 / 重新检测背屏") }
             }
         }
         Spacer(Modifier.height(18.dp))

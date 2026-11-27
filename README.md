@@ -1,5 +1,10 @@
 # HyperCat AI
 
+## 0.9.24 更新
+- 新增 Shizuku 可选授权通道：在设置中开启背屏投放后，自动请求授权、检测 Xiaomi 背屏显示器，并尝试将 HyperCat AI 独立萌宠 Activity 直接启动到背屏；不再要求导出 ZIP 或创建 REAREye 卡片。
+- 背屏萌宠作为同一 APK 内的独立 Activity 运行，主屏与背屏共用 PetStateStore 和 Agent 交互分发器；可从主屏关闭投放。
+- 直接投放依赖设备系统允许 shell 身份在目标 display 启动 Activity；若 ROM 不暴露背屏 display 或拒绝启动，会显示具体诊断，不会伪报连接成功。Shizuku 无线调试方式在重启后需要重新启动服务。
+
 ## 0.9.23 更新
 - Agent 主程序与 REAREye 背屏 MAML/HTML 组件源一起打包进同一个 APK；设置中的萌宠伙伴卡片可导出内置组件 ZIP，供 REAREye 首次导入。
 - 萌宠伙伴设置增加「萌宠投放到背屏」开关；关闭时背屏组件隐藏，开启后同步 Agent 名称、情绪和回复。
@@ -57,7 +62,7 @@
 
 HyperCat AI 的主要目标是把大模型对话、语音交互、个人记忆和手机工具能力整合到 Android 应用中，让用户可以通过文字或语音与 Agent 交流，并在明确授权后调用系统功能。小米 Pro 系列背屏萌宠作为 Agent 的可选交互终端，能够显示萌宠状态并将触摸事件交给 Agent 模型处理；具体可用性仍取决于 REAREye 宿主和设备适配。
 
-> **背屏状态：v0.9.23 将 Agent 主程序和背屏组件源合并打包为一个 APK，并增加萌宠投放开关与主屏触摸互动。** 首次使用仍需从应用萌宠设置导出内置组件包，并交由 REAREye 导入/创建卡片；APK 本身不能替代小米背屏宿主安装 MAML 卡片。仅支持具备背屏的 Xiaomi 17 Pro 系列与 Xiaomi 18 Pro 系列机型，需实机验证宿主、权限与 AOD。
+> **背屏状态：v0.9.24 增加 Shizuku 直接投放实验通道。** 在兼容机型上授权 Shizuku 后，应用会尝试把内置萌宠 Activity 直接启动到背屏 display，不再需要 REAREye 卡片导入；此能力依赖 HyperOS 是否允许 shell 启动背屏 Activity，尚需实机验证。REAREye/MAML 组件资源仍保留为兼容路径。
 
 ## v0.9.12
 - 新增完整对话历史保存与恢复；最近对话可重新打开并分享整段问答，当前对话支持一键分享，长按单条消息可分享该条消息或关联问答。
@@ -115,7 +120,7 @@ Agent 可根据用户请求调用 Android 系统能力或外部数据服务，�
 
 ## 背屏 AI 萌宠（REAREye 接入）
 
-组件源码已通过 Android Gradle assets source set 内置于主 APK；应用内「设置 → 萌宠伙伴」可开启/关闭背屏投放，并通过「导出内置背屏组件包」将 ZIP 分享给 REAREye。主屏萌宠的轻触和长按与背屏使用同一个 Agent 事件分发器。
+应用内置 Shizuku 直接投放通道：设置 → 萌宠伙伴开启投放，按提示授权 Shizuku 后自动识别背屏并启动独立萌宠 Activity。主屏与背屏共用 PetStateStore 和 Agent 事件分发器。REAREye/MAML 资源作为兼容模式保留，不再要求常规用户手动导出。
 
 组件源码已通过 Android Gradle assets source set 内置于主 APK；应用内「设置 → 萌宠伙伴」可开启/关闭背屏投放，并通过「导出内置背屏组件包」将 ZIP 分享给 REAREye。主屏萌宠的轻触和长按与背屏使用同一个 Agent 事件分发器。
 
@@ -159,7 +164,7 @@ REAREye v2.0.0 的内置工作流不是简单把 ZIP 当 APK 安装：其工具�
 
 ## 版本与构建
 
-当前版本：**0.9.23**（versionCode 42）。
+当前版本：**0.9.24**（versionCode 43）。
 
 GitHub Actions 负责 Android CI、APK 构建、签名校验和版本 Release。正式版本及安装包请查看：
 

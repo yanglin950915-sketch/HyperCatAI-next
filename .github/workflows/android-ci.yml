@@ -3,7 +3,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22 ]
+    branches: [ main, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.24 ]
 permissions:
   contents: read
 jobs:
@@ -47,6 +47,12 @@ jobs:
           assert '<meta name="viewport"' in html, "viewport meta missing"
           assert "SAFE_ZONE:" in html and "AVAIL:" in html and "TOUCH:" in html, "layout audit comments missing"
           assert "BASE_W=904,BASE_H=572" in html, "target design space mismatch"
+          projection = Path("app/src/main/java/com/hypercat/ai/rear/RearProjectionController.kt").read_text(encoding="utf-8")
+          rear_activity = Path("app/src/main/java/com/hypercat/ai/rear/RearPetActivity.kt").read_text(encoding="utf-8")
+          assert "Shizuku.newProcess" in projection and "am start --display" in projection, "direct Shizuku projection path missing"
+          assert "findRearDisplayId" in projection and "candidates.singleOrNull()" in projection, "rear display detection must fail closed"
+          assert "RearAgentInteractionDispatcher.enqueue" in rear_activity, "rear activity must share Agent interaction pipeline"
+          assert "versionName = \"0.9.24\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           assert "bridge.getStringByName" in html and "window.maml.doAction" in html, "MAML bridge integration missing"
           for name in ("__fit", "__setAod", "__debugSize", "__setMoodIndex"):
               assert f"window.{name}" in html, f"{name} lifecycle API missing"
