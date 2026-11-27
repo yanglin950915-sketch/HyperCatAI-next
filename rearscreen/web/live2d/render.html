@@ -41,8 +41,10 @@
 
   var params = new URLSearchParams(location.search);
   var SHOW_INTERFACE = params.get('ui') === '1';
-  var DIR = params.get('dir') || '';
-  if (DIR && DIR.charAt(DIR.length - 1) !== '/') DIR += '/';
+  // Resolve model assets against this document, not the MAML host's working directory.
+  // The rear card hosts this renderer directly, without a nested file:// iframe.
+  var DIR = new URL(params.get('dir') || '../models/active/', document.baseURI).href;
+  if (DIR.charAt(DIR.length - 1) !== '/') DIR += '/';
 
   // 初始构图由 URL 参数决定，原生侧后续可用 __l2d.setView() 动态切换。
   var VIEW_HALF = params.get('half') === '1';
@@ -117,7 +119,7 @@
 
   function loadModel(dir, entry) {
     PORTRAIT_CAPTURED = false;
-    var url = dir + (entry || 'model.model3.json');
+    var url = new URL(entry || 'model.model3.json', dir).href;
     log('L2D loading', url);
 
     var xhr = new XMLHttpRequest();
@@ -135,7 +137,7 @@
       }
       // 用改写后的 JSON 直接构造，避免再发一次请求（原包 Groups 里 EyeBlink/LipSync 是空数组，
       // pixi-live2d-display 会因此完全不眨眼、不张嘴）。
-      var settings = new PIXI.live2d.Cubism4ModelSettings(json, dir);
+      var settings = new PIXI.live2d.Cubism4ModelSettings(json);
       PIXI.live2d.Live2DModel.from(settings, { autoInteract: false }).then(function (m) {
         attach(m);
       }).catch(function (e) {
@@ -647,12 +649,72 @@
     reset: function () { location.reload(); }
   };
 
-  try {
-    initPixi();
-    loadModel(DIR, params.get('entry'));
-  } catch (e) {
-    fail('init ' + e);
+  // MAML lifecycle and Agent commands now execute in this same WebView.
+  // This replaces the old outer-page/inner-iframe bridge.
+  function applyAgentState(name, avatar, mood, reply) {
+    if (name && name !== 'undefined') uiState.name = String(name).slice(0, 18);
+    if (reply && reply !== 'undefined') uiState.reply = String(reply).slice(0, 120);
+    if (mood && mood !== 'undefined') {
+      var key = String(mood).toLowerCase();
+      var labels = {normal:'待机中',idle:'待机中',happy:'很开心',thinking:'正在思考',curious:'好奇中',sleepy:'休息中',sad:'有点难过',surprised:'有点惊讶'};
+      uiState.mood = labels[key] || String(mood).slice(0, 12);
+      var expressions = {happy:'happy',thinking:'thinking',curious:'curious',sleepy:'sleepy',sad:'sad',surprised:'surprised'};
+      if (expressions[key] && window.__l2d) window.__l2d.setEmotion(expressions[key]);
+    }
+    updateLive2DInterface();
   }
+  window.__setAgentState = applyAgentState;
+  window.__setAgentJson = function (value) {
+    try {
+      var data = typeof value === 'string' ? JSON.parse(value) : value;
+      if (data) applyAgentState(data.avatar_name, data.avatar_id, data.mood, data.reply);
+    } catch (error) { log('MAML state JSON', String(error)); }
+  };
+  window.__fit = function () { onResize(); };
+  window.__setAod = function (value) {
+    var active = value === true || value === 1 || value === '1';
+    document.body.style.backgroundColor = active ? '#000000' : 'transparent';
+    var stage = document.getElementById('stage');
+    if (stage) stage.style.backgroundColor = active ? '#000000' : 'transparent';
+  };
+  window.__debugSize = function () {
+    return [window.innerWidth, window.innerHeight, window.devicePixelRatio || 1, location.href].join(' ');
+  };
+  window.__setMoodIndex = function (value) {
+    var moods = ['idle','happy','thinking','sleepy','sad','surprised'];
+    applyAgentState(null, null, moods[Math.max(0, Math.min(5, Number(value) || 0))], null);
+  };
+  window.addEventListener('unhandledrejection', function (event) {
+    fail('unhandled promise: ' + (event.reason && (event.reason.stack || event.reason.message) || event.reason || 'unknown'));
+  });
+
+  function startModel() {
+    var explicitEntry = params.get('entry');
+    if (explicitEntry) {
+      initPixi();
+      loadModel(DIR, explicitEntry);
+      return;
+    }
+    var marker = document.createElement('script');
+    marker.src = new URL('model-entry.js', DIR).href;
+    marker.onload = function () {
+      var info = window.HyperCatLive2DModel;
+      if (!info || typeof info.entry !== 'string' ||
+          !info.entry.toLowerCase().endsWith('.model3.json') ||
+          !info.entry || info.entry.split('/').indexOf('..') >= 0) {
+        fail('invalid model-entry.js at ' + marker.src);
+        return;
+      }
+      try {
+        initPixi();
+        loadModel(DIR, info.entry);
+      } catch (error) { fail('init ' + error); }
+    };
+    marker.onerror = function () { fail('model-entry.js load failed: ' + marker.src); };
+    document.head.appendChild(marker);
+  }
+
+  try { startModel(); } catch (e) { fail('init ' + e); }
 })();
 </script>
 </body>
