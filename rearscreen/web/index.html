@@ -8,7 +8,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <meta name="theme-color" content="#000000">
-<title>HyperCat AI Rear</title>
+<title>HyperCat AI 背屏萌宠</title>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
@@ -24,6 +24,8 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 /* For four-language support, replace only this section. */
 var T={
   title:"HYPERCAT AI",
+  petDefault:"小橘",
+  replyDefault:"你好！我是你的 AI 萌宠。",
   pet:"摸摸",
   think:"思考",
   rest:"休息",
@@ -41,9 +43,14 @@ var BASE_W=904,BASE_H=572,BASE_CAM=Math.floor(BASE_W/3);
 var FRAME_RATE=30,FRAME_MS=1000/FRAME_RATE;
 var LAYOUT=Object.freeze({
   OUTER:{x:321,y:20,w:563,h:532},
+  OUTER_RADIUS:28,
   HEADER:{x:345,y:40,w:515,h:64},
   FACE:{x:405,y:130,w:355,h:270},
   REPLY:{x:345,y:410,w:515,h:36},
+  REPLY_RULE_HEIGHT:1,
+  REPLY_TEXT_TOP:8,
+  REPLY_LINE_SPACING:18,
+  BUTTON_RADIUS:18,
   BUTTONS:[
     {x:345,y:465,w:155,h:72,label:T.pet,mood:1},
     {x:520,y:465,w:155,h:72,label:T.think,mood:2},
@@ -55,7 +62,7 @@ var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:fal
 var W=0,H=0,dpr=1,CAM=0,FIT=1,DX=0,DY=0;
 var rafPend=false,paused=false,lastDraw=-1e9,lastFrame=0,dead=false;
 var mood=0,localMoodUntil=0,blink=0,blinkAt=0,nextBlink=1900,gazeX=0,gazeY=0;
-var pointerId=null,DEMO_T=1200,petName="小橘",agentReply="你好！我是你的 AI 萌宠。";
+var pointerId=null,DEMO_T=1200,petName=T.petDefault,agentReply=T.replyDefault;
 var moods=[
   {name:T.idle,eye:1,pupil:1,mouth:0},
   {name:T.happy,eye:.64,pupil:1,mouth:1},
@@ -168,7 +175,7 @@ function drawFace(t){
 }
 function drawButton(b,active,t){
   ctx.save();
-  roundedRect(b.x,b.y,b.w,b.h,18);
+  roundedRect(b.x,b.y,b.w,b.h,LAYOUT.BUTTON_RADIUS);
   ctx.fillStyle=active?"#103b50":"#081b28";ctx.fill();
   ctx.strokeStyle=active?"#65dcff":"#20465a";ctx.lineWidth=2;ctx.stroke();
   ctx.fillStyle="#d7f7ff";ctx.font="bold 21px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
@@ -180,7 +187,7 @@ function draw(t){
   ctx.fillStyle="#000";ctx.fillRect(0,0,W,H);
   ctx.save();ctx.translate(DX,DY);ctx.scale(FIT,FIT);
   /* OUTER is the mandatory backing plate for the usable right-hand display. */
-  roundedRect(LAYOUT.OUTER.x,LAYOUT.OUTER.y,LAYOUT.OUTER.w,LAYOUT.OUTER.h,28);
+  roundedRect(LAYOUT.OUTER.x,LAYOUT.OUTER.y,LAYOUT.OUTER.w,LAYOUT.OUTER.h,LAYOUT.OUTER_RADIUS);
   ctx.fillStyle="#03090e";ctx.fill();ctx.strokeStyle="#102b39";ctx.lineWidth=2;ctx.stroke();
   if(!window.__DIAL_NO_ANIM)syncMamlState();
   ctx.fillStyle="#73dfff";ctx.font="bold 17px system-ui,sans-serif";ctx.textAlign="left";ctx.textBaseline="middle";
@@ -190,13 +197,13 @@ function draw(t){
   ctx.fillStyle="#73dfff";ctx.font="14px system-ui,sans-serif";ctx.textAlign="right";
   ctx.fillText((moods[mood]||moods[0]).name,LAYOUT.HEADER.x+LAYOUT.HEADER.w,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
   drawFace(t);
-  ctx.fillStyle="#31566b";ctx.fillRect(LAYOUT.REPLY.x,LAYOUT.REPLY.y,LAYOUT.REPLY.w,1);
+  ctx.fillStyle="#31566b";ctx.fillRect(LAYOUT.REPLY.x,LAYOUT.REPLY.y,LAYOUT.REPLY.w,LAYOUT.REPLY_RULE_HEIGHT);
   ctx.fillStyle="#a8d7e8";ctx.font="14px system-ui,sans-serif";ctx.textAlign="left";ctx.textBaseline="top";
   var replyText=String(agentReply||"").replace(/\s+/g," "),replyLines=[],current="";
   Array.from(replyText).forEach(function(ch){var candidate=current+ch;if(ctx.measureText(candidate).width>LAYOUT.REPLY.w&&current){replyLines.push(current);current=ch;}else current=candidate;});
   if(current)replyLines.push(current);
   if(replyLines.length>2){replyLines=replyLines.slice(0,2);replyLines[1]=replyLines[1].slice(0,Math.max(0,replyLines[1].length-1))+"…";}
-  replyLines.slice(0,2).forEach(function(line,i){ctx.fillText(line,LAYOUT.REPLY.x,LAYOUT.REPLY.y+8+i*18);});
+  replyLines.slice(0,2).forEach(function(line,i){ctx.fillText(line,LAYOUT.REPLY.x,LAYOUT.REPLY.y+LAYOUT.REPLY_TEXT_TOP+i*LAYOUT.REPLY_LINE_SPACING);});
   LAYOUT.BUTTONS.forEach(function(b,i){drawButton(b,mood===b.mood,t);});
   if(window.__DIAL_NO_ANIM){
     ctx.save();ctx.strokeStyle="#ff3b3b";ctx.lineWidth=3;ctx.setLineDash([10,8]);ctx.strokeRect(0,0,BASE_CAM,BASE_H);ctx.restore();
