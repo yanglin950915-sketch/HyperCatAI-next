@@ -154,12 +154,25 @@
     // Cubism4ModelSettings 的基类强制要求顶层存在字符串 url，否则直接抛
     // TypeError: The `url` field in settings JSON must be defined as a string.
     // 原导出包没有这个字段，必须自己补。
-    json.url = selfUrl;
+    // pixi-live2d-display resolves every FileReferences value against json.url.
+    // Keep asset paths relative to the model settings file; prefixing them with
+    // DIR here makes resolveURL() append the model directory a second time.
+    // Resolve the settings URL once so APK assets and rear ZIP-relative paths
+    // follow the same URL rules.
+    json.url = new URL(selfUrl, document.baseURI).href;
     if (!json.FileReferences) json.FileReferences = {};
     var fr = json.FileReferences;
 
-    // 相对路径改成绝对，否则会相对 render.html 解析。
-    function abs(p) { if (!p) return p; var normalized = String(p).split(String.fromCharCode(92)).join('/'); if (normalized.indexOf('://') >= 0 || normalized.charAt(0) === '/' || normalized.split('/').indexOf('..') >= 0) throw new Error('model asset path escapes its imported directory'); return dir + normalized; }
+    // Validate and normalize model-relative paths without changing their base.
+    function abs(p) {
+      if (!p) return p;
+      var normalized = String(p).split(String.fromCharCode(92)).join('/');
+      if (normalized.indexOf('://') >= 0 || normalized.charAt(0) === '/' ||
+          normalized.split('/').indexOf('..') >= 0) {
+        throw new Error('model asset path escapes its imported directory');
+      }
+      return normalized;
+    }
     if (fr.Moc) fr.Moc = abs(fr.Moc);
     if (fr.Physics) fr.Physics = abs(fr.Physics);
     if (fr.DisplayInfo) fr.DisplayInfo = abs(fr.DisplayInfo);
