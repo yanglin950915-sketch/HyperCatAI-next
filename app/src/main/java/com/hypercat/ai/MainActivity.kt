@@ -163,6 +163,22 @@ private fun resolveInitialDarkMode(context: Context): Boolean {
     }
 }
 
+/** Keep Android 12+ resource qualifiers (including the system splash) in sync with the app theme. */
+private fun applyPlatformNightMode(context: Context, mode: String) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    val manager = context.getSystemService(android.app.UiModeManager::class.java) ?: return
+    when (mode) {
+        "dark" -> manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_YES)
+        "light" -> manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_NO)
+        "time" -> {
+            manager.setCustomNightModeStart(java.time.LocalTime.of(19, 0))
+            manager.setCustomNightModeEnd(java.time.LocalTime.of(7, 0))
+            manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_CUSTOM)
+        }
+        else -> manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_AUTO)
+    }
+}
+
 private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF7F7F8)
 private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFF0F1F2)
 private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFE8EAED)
@@ -174,6 +190,11 @@ private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Persist the app-local night mode before Activity/theme inflation so Android 12+
+        // can choose the matching light/dark starting-window resources on the next launch.
+        val savedMode = getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+            .getString("theme_mode", "system") ?: "system"
+        runCatching { applyPlatformNightMode(this, savedMode) }
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         var splashThemeReady = false
@@ -1197,7 +1218,7 @@ private fun HyperCatApp() {
                                 saved = endpoint.isNotBlank() && model.isNotBlank()
                             },
                             saved = saved, themeMode = themeMode,
-                            onThemeMode = { mode -> themeMode = mode; chatPrefs.edit().putString("theme_mode", mode).apply() },
+                            onThemeMode = { mode -> themeMode = mode; chatPrefs.edit().putString("theme_mode", mode).apply(); runCatching { applyPlatformNightMode(context, mode) } },
                             currentVersion = currentVersion, updateStatus = updateStatus, latestRelease = latestRelease,
                             onCheckUpdates = {
                                 scope.launch {
@@ -1281,6 +1302,7 @@ private fun HyperCatApp() {
                     onThemeMode = { mode ->
                         themeMode = mode
                         context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit().putString("theme_mode", mode).apply()
+                        runCatching { applyPlatformNightMode(context, mode) }
                     },
                     currentVersion = currentVersion,
                     updateStatus = updateStatus,
