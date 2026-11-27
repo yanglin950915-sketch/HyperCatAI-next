@@ -126,7 +126,7 @@ function __setAod(value){
   kick();
 }
 function __debugSize(){return [W,H,dpr,canvas.width,canvas.height,FIT].join(" ");}
-function setupDemo(){mood=1;blink=0;gazeX=0;gazeY=0;animTime=DEMO_T;lastFrame=now();nextBlink=1900;}
+function setupDemo(){mood=1;blink=0;gazeX=0;gazeY=0;animTime=DEMO_T;nextBlink=1900;}
 function roundedRect(x,y,w,h,r){
   r=clamp(Number.isFinite(r)?r:0,0,Math.min(w,h)/2);
   ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
@@ -265,7 +265,7 @@ window.__debugSize=__debugSize;
 window.__setMoodIndex=__setMoodIndex;
 window.__setPetState=function(nextMood){__setMoodIndex(nextMood);};
 window.__DIAL_NO_ANIM=!!window.__DIAL_NO_ANIM;
-if(window.__DIAL_NO_ANIM){setupDemo();__fit();}
+if(window.__DIAL_NO_ANIM){__fit();}
 else{__fit();lastFrame=now();kick();}
 }());
 </script>
