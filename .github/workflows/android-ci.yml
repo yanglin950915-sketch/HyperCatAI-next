@@ -119,7 +119,7 @@ jobs:
           assert "new URL(selfUrl, document.baseURI).href" in renderer_source, "Live2D settings URL must be normalized against the renderer document"
           assert "return normalized;" in renderer_source and "return dir + normalized" not in renderer_source, "Live2D model-relative files must not be double-prefixed"
           assert "expectedMarker" in package_builder and '"DisplayInfo"' in package_builder and 'motion.optString("Sound")' in package_builder, "rear package verifier must validate model marker and auxiliary files"
-          assert "</div></div>\n<!-- SAFE_ZONE:" not in html, "rear error panel markup has an unmatched closing tag"
+          assert "</div></div></div>\n<!-- SAFE_ZONE:" not in html, "rear error panel markup has an unmatched closing tag"
           assert "window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(initialWindowColor))" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "Activity window must match resolved theme before Compose"
           assert "Mood-specific facial expressions" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "main avatar mood expressions missing"
           assert "__onRearLive2DReady" in html and "__onRearLive2DError" in html, "rear Live2D readiness bridge missing"
