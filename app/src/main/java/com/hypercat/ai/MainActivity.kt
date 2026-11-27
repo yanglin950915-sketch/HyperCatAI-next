@@ -146,6 +146,18 @@ import com.hypercat.ai.rear.RearCard
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
+
+private fun resolveInitialDarkMode(context: Context): Boolean {
+    val mode = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+        .getString("theme_mode", "system") ?: "system"
+    return when (mode) {
+        "dark" -> true
+        "light" -> false
+        "time" -> java.time.LocalTime.now().hour < 7 || java.time.LocalTime.now().hour >= 19
+        else -> (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+    }
+}
+
 private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF7F7F8)
 private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFF0F1F2)
 private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFE8EAED)
@@ -158,12 +170,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        // The splash exit frame, Android window and initial Compose surface all use
-        // the same dark base color so no default light window can flash between them.
-        window.setBackgroundDrawableResource(android.R.color.black)
-        window.decorView.setBackgroundColor(android.graphics.Color.BLACK)
-        window.statusBarColor = android.graphics.Color.BLACK
-        window.navigationBarColor = android.graphics.Color.BLACK
+        // Resolve saved appearance before the first Activity/Compose frame.
+        // Avoid the former one-frame black flash before Compose SideEffect updated it.
+        val initialDark = resolveInitialDarkMode(this)
+        appDarkState = initialDark
+        val initialWindowColor = if (initialDark) android.graphics.Color.BLACK else android.graphics.Color.rgb(247, 247, 248)
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(initialWindowColor))
+        window.decorView.setBackgroundColor(initialWindowColor)
+        window.statusBarColor = initialWindowColor
+        window.navigationBarColor = initialWindowColor
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
             window.isStatusBarContrastEnforced = false
