@@ -612,6 +612,8 @@ private fun HyperCatApp() {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
+    val initialRearState = remember { PetStateStore.read(context) }
+    val rearPetState by PetStateStore.state.collectAsState()
     var page by remember { mutableStateOf(Page.CHAT) }
     var openSettingsDrawer by remember { mutableStateOf(false) }
     var chatDrawerExpanded by remember { mutableStateOf(false) }
@@ -630,9 +632,9 @@ private fun HyperCatApp() {
     var ttsVoice by remember { mutableStateOf("alloy") }
     var saved by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
-    var petName by remember { mutableStateOf("小橘") }
-    var petMood by remember { mutableStateOf("normal") }
-    var petReply by remember { mutableStateOf(PetStateStore.read(context).reply) }
+    var petName by remember { mutableStateOf(initialRearState.petName) }
+    var petMood by remember { mutableStateOf(initialRearState.mood) }
+    var petReply by remember { mutableStateOf(initialRearState.reply) }
     var themeMode by remember { mutableStateOf("system") }
     var timeRefresh by remember { mutableIntStateOf(0) }
     var updateStatus by remember { mutableStateOf("尚未检查") }
@@ -745,6 +747,14 @@ private fun HyperCatApp() {
             }
         } catch (_: Exception) {
             updateStatus = "自动检查暂不可用，可稍后手动检查"
+        }
+    }
+
+    LaunchedEffect(rearPetState.updatedAt) {
+        if (rearPetState.updatedAt > 0L) {
+            petName = rearPetState.petName
+            petMood = rearPetState.mood
+            petReply = rearPetState.reply
         }
     }
 
