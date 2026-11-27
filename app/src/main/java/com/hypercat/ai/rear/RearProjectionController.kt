@@ -96,26 +96,26 @@ object RearProjectionController {
 
     private fun findRearDisplayId(dump: String): Int? {
         val candidates = linkedSetOf<Int>()
-        val displayInfo = Regex("""DisplayInfo\\{([^}]+)}""")
-        val idPattern = Regex("""displayId[ =]+(\\d+)""")
+        val displayInfo = Regex("""DisplayInfo\{([^}]+)}""")
+        val idPattern = Regex("""displayId[ =]+(\d+)""")
         val rearName = Regex("""(?i)(rear|back|subscreen|secondary|副屏|背屏)""")
         displayInfo.findAll(dump).forEach { match ->
             val block = match.groupValues[1]
             val id = idPattern.find(block)?.groupValues?.getOrNull(1)?.toIntOrNull()
             if (id != null && id != 0 && rearName.containsMatchIn(block)) candidates += id
         }
-        // Xiaomi 17 Pro rear panels are commonly reported as a 904x572 local
-        // display. Use this fingerprint only when the framework exposes it.
-        val deviceInfo = Regex("""DisplayDeviceInfo\\{([^}]+)}""")
-        val localId = Regex("""uniqueId="local:(\\d+)"""")
-        val size = Regex("""(\\d+)\\s*x\\s*(\\d+)""")
-        deviceInfo.findAll(dump).forEach { match ->
+        // Prefer a logical DisplayInfo record with the known rear-panel
+        // dimensions. Do not confuse physical device uniqueId values with
+        // logical display IDs; those identifiers are not guaranteed to match.
+        val dimensions = Regex("""(?:logicalWidth|realWidth|appWidth)[ =]+(\\d+).*?(?:logicalHeight|realHeight|appHeight)[ =]+(\\d+)""")
+        displayInfo.findAll(dump).forEach { match ->
             val block = match.groupValues[1]
-            val id = localId.find(block)?.groupValues?.getOrNull(1)?.toIntOrNull()
-            val dimensions = size.find(block)
-            val width = dimensions?.groupValues?.getOrNull(1)?.toIntOrNull()
-            val height = dimensions?.groupValues?.getOrNull(2)?.toIntOrNull()
-            if (id != null && id != 0 && width == 904 && height == 572) candidates += id
+            val id = idPattern.find(block)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val size = dimensions.find(block)
+            val width = size?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val height = size?.groupValues?.getOrNull(2)?.toIntOrNull()
+            val rearSize = (width == 904 && height == 572) || (width == 572 && height == 904)
+            if (id != null && id != 0 && (rearName.containsMatchIn(block) || rearSize)) candidates += id
         }
         return candidates.singleOrNull()
     }
