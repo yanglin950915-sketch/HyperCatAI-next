@@ -103,7 +103,7 @@ jobs:
                   raise AssertionError(f"legacy product name remains in {path}:{line}")
           assert "versionName = \"0.9.51\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           main_activity = Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8")
-          assert "key(model.id)" in main_activity and "key(selected.first)" in main_activity, "Live2D preview must be recreated when the selected model changes"
+          assert "val controller = remember { Live2DController() }" in live2d_view and "key(model.id)" not in main_activity and "key(selected.first)" not in main_activity, "Live2D preview must reuse its WebView when the selected model changes"
           assert "AvatarPortrait" in main_activity and "Live2DView(" in main_activity and "onPortrait = { dataUrl ->" in main_activity, "Agent chat portraits must be captured from the actual Live2D model"
           assert "我的AI小伙伴" in main_activity, "Profile card title was not updated"
           render_html = Path("rearscreen/web/live2d/render.html").read_text(encoding="utf-8")
