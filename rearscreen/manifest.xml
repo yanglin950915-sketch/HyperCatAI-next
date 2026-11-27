@@ -3,7 +3,7 @@
     <Var name="avatarUri" type="string" expression="'content://com.hypercat.ai.rear.provider/avatar-state'" const="true"/>
     <Var name="resultJson" type="string" expression="'{}'"/>
     <Var name="avatarName" type="string" expression="'小橘'"/>
-    <Var name="avatarId" type="string" expression="'🐱'"/>
+    <Var name="avatarId" type="string" expression="'sakura'"/>
     <Var name="mood" type="string" expression="'normal'"/>
     <Var name="reply" type="string" expression="'你好！我是你的 AI 虚拟形象。'"/>
     <Var name="backgroundColor" type="string" expression="'#080B12'"/>
