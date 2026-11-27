@@ -44,7 +44,7 @@
   var VIEW_HALF = params.get('half') === '1';
   var VIEW_RATIO = parseFloat(params.get('ratio') || '0.48');
 
-  var NATIVE = window.NativeBridge || null;
+  var NATIVE = window.NativeBridge || window.maml || null;
   function log() {
     console.log.apply(console, arguments);
   }
@@ -413,6 +413,7 @@
     var action = pointerStart.moved ? 'pet_drag' : (elapsed >= 520 ? 'pet_long_press' : 'pet_touch');
     pointerStart = null;
     if (NATIVE && NATIVE.onGesture) NATIVE.onGesture(action, part);
+    else if (NATIVE && NATIVE.doAction) NATIVE.doAction(action);
     else if (NATIVE && NATIVE.onPoke) NATIVE.onPoke(part);
   }
   window.addEventListener('pointerup', finishPointer, { passive: true });
