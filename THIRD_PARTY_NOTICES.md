@@ -41,6 +41,12 @@ HyperCat AI includes or adapts the following components for its optional Live2D 
 - Live2D's sample terms restrict inappropriate sexual, violent, or otherwise image-damaging uses. The character must not be presented in a way that conflicts with its official settings or terms.
 
 
+## Additional Live2D sample characters
+
+- Bundled sample directories from the same pinned upstream commit: `Samples/Resources/Hiyori`, `Mao`, `Natori`, and `Rice`.
+- These are official Live2D sample materials, not original HyperCat AI illustrations. Each model remains subject to the [Live2D Free Material License Agreement](https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html) and the [Cubism Sample Data Terms of Use](https://www.live2d.com/eula/live2d-sample-model-terms_en.html).
+- The required Live2D copyright notice and character-use restrictions stated above apply to every bundled sample character.
+
 ## Publication reminder
 
 Live2D's SDK publication licensing may apply when distributing an application that embeds Cubism Core. The appropriate plan depends on the application and distribution model; user-importable model functionality may require additional review. Check the current official [SDK publication license guidance](https://www.live2d.com/zh-CHS/sdk/license/) before public release.
