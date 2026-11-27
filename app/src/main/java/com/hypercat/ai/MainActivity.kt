@@ -763,8 +763,8 @@ private fun HyperCatApp() {
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> HyperCatAppVisibility.isForeground = true
-                Lifecycle.Event.ON_STOP -> HyperCatAppVisibility.isForeground = false
+                Lifecycle.Event.ON_START -> { HyperCatAppVisibility.isForeground = true; AvatarDeviceStateStore.resume(context) }
+                Lifecycle.Event.ON_STOP -> { HyperCatAppVisibility.isForeground = false; AvatarDeviceStateStore.pause() }
                 else -> Unit
             }
         }
