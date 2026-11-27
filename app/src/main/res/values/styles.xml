@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Keep the real Activity window in the same dark color as the first Compose frame. -->
+    <!-- Light-mode launch window; MainActivity applies the saved app preference before splash exit. -->
     <style name="Theme.HyperCat" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:windowBackground">#F7F7F8</item>
         <item name="android:colorAccent">#E6E6E6</item>
