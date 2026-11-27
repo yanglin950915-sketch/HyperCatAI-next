@@ -334,7 +334,8 @@
     var core = model.internalModel.coreModel;
 
     // 平滑：口型快跟，视线慢跟，避免抖动。
-    var mouthTarget = target.speaking && target.mouth < 0.01 ? (0.10 + Math.max(0, Math.sin(t * 10.5)) * 0.42) : target.mouth;\n    smooth.mouth += (mouthTarget - smooth.mouth) * 0.45;
+    var mouthTarget = target.speaking && target.mouth < 0.01 ? (0.10 + Math.max(0, Math.sin(t * 10.5)) * 0.42) : target.mouth;
+    smooth.mouth += (mouthTarget - smooth.mouth) * 0.45;
     smooth.gazeX += (target.gazeX - smooth.gazeX) * 0.08;
     smooth.gazeY += (target.gazeY - smooth.gazeY) * 0.08;
 
