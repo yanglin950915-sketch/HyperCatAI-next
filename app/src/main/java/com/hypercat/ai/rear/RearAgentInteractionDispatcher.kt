@@ -11,7 +11,7 @@ import androidx.work.workDataOf
 /** Shared entry point for touch and voice interactions from the rear display. */
 object RearAgentInteractionDispatcher {
     private const val UNIQUE_WORK_NAME = "hypercat-rear-agent-interactions"
-    private val supportedActions = setOf("pet_touch", "pet_happy", "pet_long_press", "pet_thinking", "pet_rest", "pet_voice")
+    private val supportedActions = setOf("pet_touch", "pet_happy", "pet_long_press", "pet_drag", "pet_thinking", "pet_rest", "pet_voice")
 
     fun enqueue(context: Context, action: String): Boolean = enqueue(context, action, "")
 
@@ -23,6 +23,7 @@ object RearAgentInteractionDispatcher {
             "pet_thinking" -> "thinking"
             "pet_rest" -> "sleepy"
             "pet_voice" -> "thinking"
+            "pet_drag" -> "curious"
             else -> "happy"
         }
         val immediateReply = when (action) {
@@ -30,6 +31,7 @@ object RearAgentInteractionDispatcher {
             "pet_rest" -> "我准备休息啦。"
             "pet_long_press" -> "我在听，你想和我聊什么？"
             "pet_voice" -> "我听到啦，正在回答你……"
+            "pet_drag" -> "咦？你在带我移动吗？"
             else -> "嘿嘿，你摸到我啦！"
         }
         PetStateStore.update(context, current.petName, current.petEmoji, immediateMood, immediateReply, userText = userText)
