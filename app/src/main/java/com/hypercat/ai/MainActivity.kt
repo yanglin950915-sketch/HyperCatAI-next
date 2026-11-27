@@ -794,7 +794,8 @@ private fun HyperCatApp() {
         if (ttsProfiles.isEmpty()) modelProfiles.firstOrNull { it.name == ttsProfileName }?.let { old -> val p=TtsProfile(old.name,old.endpoint,old.apiKey); ttsProfiles.add(p); ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; prefs.edit().putString("tts_profiles",org.json.JSONArray().put(JSONObject().put("name",p.name).put("endpoint",p.endpoint).put("apiKey",p.apiKey)).toString()).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() }
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
         autoReadReplies = prefs.getBoolean("auto_read_replies", false)
-        petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"\n        petEmoji = prefs.getString("pet_emoji", "🐱") ?: "🐱"\n        petEmoji = prefs.getString("pet_emoji", "🐱") ?: "🐱"
+        petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
+        petEmoji = prefs.getString("pet_emoji", "🐱") ?: "🐱"
         themeMode = prefs.getString("theme_mode", "system") ?: "system"
     }
 
@@ -833,8 +834,8 @@ private fun HyperCatApp() {
         if (isThinking) petMood = "thinking"
     }
 
-    LaunchedEffect(petName, petMood, petReply) {
-        PetStateStore.update(context, petName, "🤖", petMood, petReply)
+    LaunchedEffect(petName, petEmoji, petMood, petReply) {
+        PetStateStore.update(context, petName, petEmoji, petMood, petReply)
     }
 
     MaterialTheme(colorScheme = if (darkNow) darkColorScheme(
@@ -955,6 +956,7 @@ private fun HyperCatApp() {
                     openSettings = { page = Page.CHAT; openSettingsDrawer = true },
                     configured = saved,
                     petName = petName,
+                    petEmoji = petEmoji,
                     petMood = petMood,
                     ttsLanguage = ttsLanguage, ttsRate = ttsRate, ttsPitch = ttsPitch,
                     ttsMode = ttsMode, ttsProfileName = ttsProfileName, ttsModel = ttsModel, ttsVoice = ttsVoice,
@@ -966,6 +968,8 @@ private fun HyperCatApp() {
                         PetSettingsPage(
                             modifier = drawerModifier,
                             petName = petName,
+                            petEmoji = petEmoji,
+                            onPetEmojiChange = { value -> petEmoji = value; chatPrefs.edit().putString("pet_emoji", value).apply() },
                             petMood = petMood,
                             rearPetEnabled = rearPetEnabled,
                             rearProjectionStatus = rearProjectionStatus,
@@ -1397,7 +1401,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @Composable
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
-    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
+    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String, petEmoji: String,
     petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
     ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
     showSettingsOnEnter: Boolean,
@@ -2374,6 +2378,8 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 private fun PetSettingsPage(
     modifier: Modifier,
     petName: String,
+    petEmoji: String,
+    onPetEmojiChange: (String) -> Unit,
     petMood: String,
     rearPetEnabled: Boolean,
     rearProjectionStatus: String,
@@ -2391,7 +2397,7 @@ private fun PetSettingsPage(
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(76.dp).background(Panel2, CircleShape), contentAlignment = Alignment.Center) {
-                        CatFace(Modifier.fillMaxSize(), petMood)
+                        Text(petEmoji, fontSize = 72.sp)
                     }
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
@@ -2400,6 +2406,12 @@ private fun PetSettingsPage(
                     }
                 }
                 Spacer(Modifier.height(14.dp))
+                Text("选择萌宠形象", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    listOf("🐱", "🦊", "🐼", "🐰", "🐸", "🐲").forEach { emoji ->
+                        Surface(onClick = { onPetEmojiChange(emoji) }, color = if (petEmoji == emoji) Cyan.copy(alpha = .22f) else Panel2, shape = RoundedCornerShape(14.dp)) { Text(emoji, modifier = Modifier.padding(10.dp), fontSize = 28.sp) }
+                    }
+                }
                 OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) }, label = { Text("萌宠名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Button(onClick = { onPetNameChange(nameDraft) }, modifier = Modifier.fillMaxWidth()) { Text("保存萌宠资料") }
                 OutlinedButton(onClick = { onPetInteraction("pet_touch") }, modifier = Modifier.fillMaxWidth()) { Text("和萌宠互动") }
