@@ -73,7 +73,10 @@ jobs:
           assert "versionName = \"0.9.40\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           assert "Theme.HyperCat.Starting" in Path("app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"), "launch splash theme missing"
           styles = Path("app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
-          assert 'windowSplashScreenBackground">#000000' in styles and 'android:windowBackground">#000000' in styles, "splash and activity window backgrounds must match"
+          assert 'windowSplashScreenBackground">#F7F7F8' in styles and 'android:windowBackground">#F7F7F8' in styles, "light splash and Activity backgrounds must match"
+          night_styles = Path("app/src/main/res/values-night/styles.xml").read_text(encoding="utf-8")
+          assert 'windowSplashScreenBackground">#000000' in night_styles and 'android:windowBackground">#000000' in night_styles, "dark splash and Activity backgrounds must match"
+          assert "resolveInitialDarkMode(this)" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "theme must be resolved before first Activity frame"
           assert "window.setBackgroundDrawableResource(android.R.color.black)" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "Activity window must be initialized before Compose"
           assert "Mood-specific facial expressions" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "main avatar mood expressions missing"
           assert "expression overlays" in html, "rear avatar mood expressions missing"
