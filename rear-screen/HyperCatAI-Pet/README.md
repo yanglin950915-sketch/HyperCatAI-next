@@ -10,10 +10,19 @@ rearscreen/
 ```
 Release 会额外提供 `HyperCatAI-rearscreen-v0.9.21.zip`，ZIP 根目录直接包含 `manifest.xml` 和 `web/index.html`。
 
-## 安装
-1. 在 REAREye「背屏中心 → 背屏个性化 → 组件模板管理器」导入 ZIP。
-2. 到「卡片管理器」添加该组件对应的卡片并启用。
-3. 安装 HyperCat AI v0.9.21；首次使用需确认 REAREye 能读取 `content://com.hypercat.ai.rear.provider/pet-state`。
+## REAREye v2.0.0 创建流程
+
+APK 内置工具描述明确了流程：
+1. `get_html_widget_spec` 获取 HTML widget 规范。
+2. `create_html_widget` 用完整 HTML 和标题创建组件；默认尺寸 904×572。
+3. 使用返回的 `business` 调用 `create_card`，创建实际显示卡片。
+4. 组件创建/激活需要在 REAREye 内按提示确认。
+
+Release 提供两个文件：
+- `HyperCatAI-reareye-widget.html`：可交给 REAREye 的 `create_html_widget` 使用的单文件 HTML。
+- `HyperCatAI-rearscreen.zip`：包含 MAML WebView 包装与 HyperCat Provider/触摸绑定的参考包；不要假定 REAREye 的 HTML-only 创建流程会自动导入 ZIP 中的 manifest。
+
+`register_app_card` 创建的是应用启动入口，不是显示卡片。只有需要把 HyperCat AI 加入背屏应用启动列表时才使用它。
 
 ## Agent 同步
 - HyperCat AI 的 ContentProvider 暴露 `pet_name`、`mood`、`reply` 和更新时间。
