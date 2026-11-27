@@ -17,7 +17,7 @@ class RearAvatarProvider : ContentProvider() {
         if (!RearCallerVerifier.isTrustedUid(appContext, Binder.getCallingUid())) {
             throw SecurityException("Only Xiaomi Theme Manager may read HyperCat AI avatar state")
         }
-        if (uri.authority != AUTHORITY || uri.path !in setOf("/avatar-state", "/pet-state")) {
+        if (uri.authority != AUTHORITY || uri.path != "/avatar-state" && uri.path != "/pet-state") {
             throw IllegalArgumentException("Unknown HyperCat avatar-state URI")
         }
         return cursor(readAvatarJson())
