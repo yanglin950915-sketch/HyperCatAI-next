@@ -18,7 +18,7 @@ import org.json.JSONObject
 @Keep
 class RearShellUserService : IRearShellService.Stub() {
     override fun exec(command: String): String {
-        val displayId = Regex("""am start --display (\\d+) -n com\\.hypercat\\.ai/\\.rear\\.RearPetActivity""").matchEntire(command)
+        val displayId = Regex("""am start --display (\d+) -n com\.hypercat\.ai/\.rear\.RearPetActivity""").matchEntire(command)
         val allowed = command == "dumpsys display" || displayId != null ||
             command == "am broadcast -a com.hypercat.ai.rear.ACTION_HIDE_PROJECTION -p com.hypercat.ai"
         if (!allowed) throw SecurityException("Unsupported rear projection command")
