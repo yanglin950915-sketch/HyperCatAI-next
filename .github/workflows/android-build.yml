@@ -1,9 +1,9 @@
 name: Android build
 on:
   pull_request:
-    branches: [main, feat/live2d-avatar-agent-integration, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/unified-rear-pet-toggle-v0.9.23, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29]
+    branches: [main, feat/live2d-avatar-agent-integration, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29, fix/live2d-model-zip-import]
   push:
-    branches: [fix/v0.9.40-splash-rearscreen-anime, feat/rear-voice-v0.9.36, main, feat/multi-pet-engine, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29]
+    branches: [fix/v0.9.40-splash-rearscreen-anime, feat/rear-voice-v0.9.36, main, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29]
   workflow_dispatch:
 
 permissions:
@@ -48,23 +48,11 @@ jobs:
         run: |
           VERSION_NAME=$(sed -nE 's/.*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -n1)
           $ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs "HyperCatAI-v${VERSION_NAME}-debug.apk"
-      - name: Package native HyperCat MAML rear-screen card
-        run: |
-          cd rearscreen
-          zip -r ../HyperCatAI-rearscreen.zip manifest.xml web
-          test -s ../HyperCatAI-rearscreen.zip
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HyperCatAI-v0.9.42-debug
-          path: HyperCatAI-v0.9.42-debug.apk
-          if-no-files-found: error
-          retention-days: 30
-      - name: Upload HyperCat rear-screen ZIP artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: HyperCatAI-rearscreen-package
-          path: HyperCatAI-rearscreen.zip
+          name: HyperCatAI-v0.9.43-debug
+          path: HyperCatAI-v0.9.43-debug.apk
           if-no-files-found: error
           retention-days: 30
       - name: Publish GitHub Release for pushed versions
