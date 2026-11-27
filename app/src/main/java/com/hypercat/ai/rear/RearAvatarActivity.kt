@@ -145,7 +145,10 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         @JavascriptInterface
         fun doAction(action: String) {
             activity.runOnUiThread {
-                if (action in setOf("avatar_touch", "avatar_happy", "avatar_long_press", "avatar_drag", "avatar_thinking", "avatar_rest")) {
+                if (action in setOf(
+                    "avatar_touch", "avatar_happy", "avatar_long_press", "avatar_drag", "avatar_thinking", "avatar_rest",
+                    "pet_touch", "pet_happy", "pet_long_press", "pet_drag", "pet_thinking", "pet_rest"
+                )) {
                     RearAgentInteractionDispatcher.enqueue(activity, action)
                 }
             }
