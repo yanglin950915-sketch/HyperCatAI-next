@@ -411,7 +411,7 @@
     if (!pointerStart || pointerStart.id !== ev.pointerId) return;
     var elapsed = performance.now() - pointerStart.at;
     var part = (pointerStart.y / Math.max(1, window.innerHeight)) < .48 ? 'head' : 'body';
-    var action = pointerStart.moved ? 'pet_drag' : (elapsed >= 520 ? 'pet_long_press' : 'pet_touch');
+    var action = pointerStart.moved ? 'avatar_drag' : (elapsed >= 520 ? 'avatar_long_press' : 'avatar_touch');
     pointerStart = null;
     if (NATIVE && NATIVE.onGesture) NATIVE.onGesture(action, part);
     else if (NATIVE && NATIVE.doAction) NATIVE.doAction(action);
