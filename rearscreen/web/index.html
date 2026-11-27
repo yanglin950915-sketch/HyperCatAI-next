@@ -1,285 +1,34 @@
-<!-- SAFE_ZONE: BASE_CAM=301 | OUTER.x=321 OK | HEADER.x=344 OK | FACE.x=377 OK | REPLY.x=344 OK | BUTTONS.x=364/538/713 OK | CHILD.x=344 OK | max_x=862 <= 884 OK -->
-<!-- AVAIL: 563x532 ratio=1.06 | OUTER 563x532 fill=100% | CHILD 518x497 fillW=92.01% fillH=93.42% ratio=1.04 deviation=1.5% OK -->
-<!-- TOUCH: FACE 450x261 OK | PET 130x60 OK | THINK 130x60 OK | REST 130x60 OK | gaps=44/45px, hitPad=12px, effectiveGap>=20px OK -->
-<!-- The engine uses cachePage="true"; clear the cache or reinstall the widget after editing the file. -->
 <!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<meta name="theme-color" content="#000000">
-<title>HyperCat AI 背屏虚拟形象</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#101522">
+<title>HyperCat AI Live2D</title>
 <style>
 *{box-sizing:border-box}
-#live2d-stage{position:fixed;left:39%;top:18%;width:55%;height:59%;border:0;background:transparent;z-index:4;touch-action:none;pointer-events:auto}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
-canvas{display:block;width:100%;height:100%;touch-action:none}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}
+#live2d-stage{position:fixed;inset:0;width:100%;height:100%;border:0;background:transparent;display:block;touch-action:none}
 </style>
 </head>
 <body>
-<canvas id="rear" aria-label="HyperCat AI 背屏虚拟形象"></canvas>
 <script>
 (function(){
 "use strict";
-
-/* For four-language support, replace only this section. */
-var T={
-  title:"HYPERCAT AI",
-  avatarDefault:"小橘",
-  replyDefault:"你好！我是你的 AI 虚拟形象。",
-  touch:"轻触互动",
-  think:"思考",
-  rest:"休息",
-  thinking:"正在思考",
-  idle:"待机中",
-  happy:"很开心",
-  sleepy:"休息一下",
-  sad:"有点难过",
-  curious:"好奇中"
+var marker=document.createElement("script");
+marker.src="models/active/model-entry.js";
+marker.onload=function(){
+  var info=window.HyperCatLive2DModel;
+  if(!info||!info.entry){console.error("HyperCat Live2D entry missing");return;}
+  var frame=document.createElement("iframe");
+  frame.id="live2d-stage";
+  frame.title="HyperCat AI Live2D";
+  frame.setAttribute("aria-label","Live2D 虚拟形象与交互界面");
+  frame.src="live2d/render.html?dir=../models/active/&entry="+encodeURIComponent(info.entry)+"&half=1&ratio=0.78&fps=30&ui=1";
+  document.body.appendChild(frame);
 };
-
-/* BASE uses the actual Xiaomi 17 Pro rear display resolution. */
-var BASE_W=976,BASE_H=596,BASE_CAM=296;
-var FRAME_RATE=30,FRAME_MS=1000/FRAME_RATE;
-var AVAIL={x:BASE_CAM+20,y:20,w:BASE_W-BASE_CAM-40,h:BASE_H-40};
-var LAYOUT=Object.freeze({
-  OUTER:{x:AVAIL.x,y:AVAIL.y,w:AVAIL.w,h:AVAIL.h},
-  OUTER_RADIUS:28,
-  HEADER:{x:Math.round(AVAIL.x+AVAIL.w*.04),y:Math.round(AVAIL.y+AVAIL.h*.04),w:Math.round(AVAIL.w*.92),h:Math.round(AVAIL.h*.12)},
-  FACE:{x:Math.round(AVAIL.x+AVAIL.w*.10),y:Math.round(AVAIL.y+AVAIL.h*.22),w:Math.round(AVAIL.w*.80),h:Math.round(AVAIL.h*.49)},
-  REPLY:{x:Math.round(AVAIL.x+AVAIL.w*.04),y:Math.round(AVAIL.y+AVAIL.h*.75),w:Math.round(AVAIL.w*.92),h:Math.round(AVAIL.h*.08)},
-  REPLY_RULE_HEIGHT:1,
-  REPLY_TEXT_TOP:8,
-  REPLY_LINE_SPACING:18,
-  CHILD:{x:Math.round(AVAIL.x+AVAIL.w*.04),y:Math.round(AVAIL.y+AVAIL.h*.04),w:Math.round(AVAIL.w*.92),h:Math.round(AVAIL.h*.934)}
-});
-var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:false});\nvar rearLive2DReady=false,rearLive2DFrame=null;\nwindow.__onRearLive2DReady=function(){rearLive2DReady=true;kick();};\nwindow.__onRearLive2DError=function(message){rearLive2DReady=false;console.error("Rear Live2D failed:",String(message||"unknown"));kick();};
-// If the deployed card contains a user-imported Cubism model, layer its Live2D renderer
-// over the existing lightweight canvas character. The canvas remains underneath as fallback.
-(function activateImportedLive2D(){
-  var marker=document.createElement("script");
-  marker.src="models/active/model-entry.js";
-  marker.onload=function(){
-    var info=window.HyperCatLive2DModel;
-    if(!info || !info.entry)return;
-    var frame=document.createElement("iframe");
-    frame.id="live2d-stage";
-    frame.title="HyperCat AI Live2D";
-    frame.setAttribute("aria-label","Live2D 虚拟形象");
-    frame.src="live2d/render.html?dir=../models/active/&entry="+encodeURIComponent(info.entry)+"&half=1&ratio=0.78&fps=20";
-    frame.addEventListener("load",function(){
-      var names=["neutral","happy","thinking","sleepy","sad","surprised"];
-      if(frame.contentWindow&&frame.contentWindow.__l2d)frame.contentWindow.__l2d.setEmotion(names[mood]||"neutral");
-    });
-    document.body.appendChild(frame);
-  };
-  marker.onerror=function(){ console.error("Rear Live2D model package is missing: models/active/model-entry.js"); };
-  document.head.appendChild(marker);
-})();;
-var W=0,H=0,dpr=1,CAM=0,FIT=1,DX=0,DY=0;
-var rafPend=false,paused=false,lastDraw=-1e9,lastFrame=0,animTime=0,dead=false;
-var mood=0,localMoodUntil=0,blink=0,blinkAt=0,nextBlink=1900,gazeX=0,gazeY=0,avatarId="sakura";
-var pointerId=null,pressStartedAt=0,pressAction="",pressStartX=0,pressStartY=0,dragDetected=false,DEMO_T=1200,avatarName=T.avatarDefault,agentReply=T.replyDefault;
-var fontCache=Object.create(null),backgroundColor="#080B12";
-var moods=[
-  {name:T.idle,eye:1,pupil:1,mouth:0},
-  {name:T.happy,eye:.64,pupil:1,mouth:1},
-  {name:T.thinking,eye:.9,pupil:.82,mouth:2},
-  {name:T.sleepy,eye:.22,pupil:.35,mouth:3},
-  {name:T.sad,eye:.78,pupil:.9,mouth:4},
-  {name:"惊讶",eye:1.15,pupil:1.2,mouth:5}
-];
-
-function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
-function now(){return Date.now();}
-function getFont(weight,size){var n=Math.max(12,Math.floor(size)),key=weight+":"+n;return fontCache[key]||(fontCache[key]=weight+" "+n+"px system-ui,sans-serif");}
-function fitFont(value,maxWidth,baseSize,weight){var size=Math.floor(baseSize);while(size>12){ctx.font=getFont(weight,size);if(ctx.measureText(String(value)).width<=maxWidth)break;size--;}return getFont(weight,Math.max(12,size));}
-function normalizeAvatarId(value){
-  var id=String(value||"sakura").trim().toLowerCase();
-  var aliases={"🌸":"sakura","樱花":"sakura","蓝色":"aoi","月亮":"luna","星月":"luna","优奈":"yuna"};
-  id=aliases[id]||id;
-  return Object.prototype.hasOwnProperty.call(avatarPalette,id)?id:"sakura";
-}
-function applyAgentState(name,avatar,moodValue,reply,bgColor){
-  if(name&&name!=="undefined")avatarName=String(name).slice(0,16);
-  if(avatar&&avatar!=="undefined")avatarId=normalizeAvatarId(avatar);
-  if(reply&&reply!=="undefined")agentReply=String(reply).slice(0,100);
-  if(bgColor&&/^#[0-9a-fA-F]{6}$/.test(String(bgColor)))backgroundColor=String(bgColor);
-  if(moodValue&&moodValue!=="undefined"&&now()>=localMoodUntil){
-    var key=String(moodValue).toLowerCase(),map={normal:0,idle:0,happy:1,thinking:2,curious:2,sleepy:3,sad:4,surprised:5};
-    if(Object.prototype.hasOwnProperty.call(map,key)){
-      mood=map[key];
-      var frame=document.getElementById("live2d-stage");
-      if(frame&&frame.contentWindow&&frame.contentWindow.__l2d){
-        var expression={happy:"happy",thinking:"thinking",curious:"curious",sleepy:"sleepy",sad:"sad",surprised:"surprised",normal:"neutral",idle:"neutral"};
-        frame.contentWindow.__l2d.setEmotion(expression[key]||"neutral");
-      }
-    }
-  }
-  kick();
-}
-function applyAgentJson(json){
-  try{
-    var data=typeof json==="string"?JSON.parse(json):json;
-    if(!data)return;
-    applyAgentState(data.avatar_name,data.avatar_id,data.mood,data.reply,data.background_color);
-  }catch(_){}
-}
-function syncMamlState(){
-  try{
-    var bridge=window.maml;
-    if(!bridge||typeof bridge.getStringByName!=="function")return;
-    applyAgentState(
-      bridge.getStringByName("avatarName"),
-      bridge.getStringByName("avatarId"),
-      bridge.getStringByName("mood"),
-      bridge.getStringByName("reply"),
-      bridge.getStringByName("backgroundColor")
-    );
-  }catch(_){}
-}
-function dispatchRearAction(action,nextMood){
-  setMoodIndex(nextMood,false);localMoodUntil=now()+4000;
-  try{if(window.maml&&typeof window.maml.doAction==="function")window.maml.doAction(action);}catch(_){}
-}
-function kick(){if(dead||paused||window.__DIAL_NO_ANIM||rafPend)return;rafPend=true;requestAnimationFrame(frame);}
-function __fit(){
-  dpr=window.devicePixelRatio||1;
-  W=window.CANVAS_W||window.innerWidth||canvas.clientWidth||BASE_W;
-  H=window.CANVAS_H||window.innerHeight||canvas.clientHeight||BASE_H;
-  var bw=Math.round(W*dpr),bh=Math.round(H*dpr);
-  if(canvas.width!==bw)canvas.width=bw;
-  if(canvas.height!==bh)canvas.height=bh;
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  CAM=Math.floor(W/3);
-  FIT=Math.min((W-CAM)/(BASE_W-BASE_CAM),H/BASE_H);
-  DX=Math.round((CAM+(W-CAM)/2)-((BASE_CAM+BASE_W)/2)*FIT);
-  DY=Math.round((H-BASE_H*FIT)/2);
-  window.__DIAL_CANVAS_SIZE={width:W,height:H};
-  if(window.__DIAL_NO_ANIM){setupDemo();draw(DEMO_T);return;}
-  if(!paused){lastDraw=-1e9;kick();}
-}
-function setMoodIndex(value,fromAgent){
-  var next=clamp(Math.round(Number(value)||0),0,moods.length-1);
-  if(fromAgent!==false&&now()<localMoodUntil)return;
-  mood=next;
-  if(mood===1){blink=0;}
-  kick();
-}
-function __setMoodIndex(value){setMoodIndex(value,true);}
-function __setAod(value){
-  var next=Number(value)===1;
-  if(next===paused)return;
-  paused=next;
-  if(paused)return;
-  lastDraw=-1e9;
-  lastFrame=now();
-  kick();
-}
-function __debugSize(){return [W,H,dpr,canvas.width,canvas.height,FIT].join(" ");}
-function setupDemo(){mood=1;blink=0;gazeX=0;gazeY=0;animTime=DEMO_T;nextBlink=1900;}
-function roundedRect(x,y,w,h,r){
-  r=clamp(Number.isFinite(r)?r:0,0,Math.min(w,h)/2);
-  ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
-  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
-}
-// The old hand-drawn SVG/Canvas avatar renderer has been removed.
-
-function draw(t){
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle=backgroundColor;ctx.fillRect(0,0,W,H);
-  ctx.save();ctx.translate(DX,DY);ctx.scale(FIT,FIT);
-  if(!window.__DIAL_NO_ANIM)syncMamlState();
-  ctx.fillStyle="#73dfff";ctx.font=getFont("bold",17);ctx.textAlign="left";ctx.textBaseline="middle";
-  ctx.fillText(T.title,LAYOUT.HEADER.x,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.25);
-  ctx.fillStyle="#e7f8ff";ctx.font=fitFont(avatarName,LAYOUT.HEADER.w*.52,18,"bold");
-  ctx.fillText(avatarName,LAYOUT.HEADER.x,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
-  ctx.fillStyle="#73dfff";ctx.font=getFont("normal",14);ctx.textAlign="right";
-  ctx.fillText((moods[mood]||moods[0]).name,LAYOUT.HEADER.x+LAYOUT.HEADER.w,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
-  // Character pixels are rendered exclusively by the shared Live2D iframe.
-
-  ctx.fillStyle="#31566b";ctx.fillRect(LAYOUT.REPLY.x,LAYOUT.REPLY.y,LAYOUT.REPLY.w,LAYOUT.REPLY_RULE_HEIGHT);
-  ctx.fillStyle="#a8d7e8";ctx.font=getFont("normal",14);ctx.textAlign="left";ctx.textBaseline="top";
-  var replyText=String(agentReply||"").replace(/\s+/g," "),replyLines=[],current="";
-  Array.from(replyText).forEach(function(ch){var candidate=current+ch;if(ctx.measureText(candidate).width>LAYOUT.REPLY.w&&current){replyLines.push(current);current=ch;}else current=candidate;});
-  if(current)replyLines.push(current);
-  if(replyLines.length>2){replyLines=replyLines.slice(0,2);replyLines[1]=replyLines[1].slice(0,Math.max(0,replyLines[1].length-1))+"…";}
-  replyLines.slice(0,2).forEach(function(line,i){ctx.fillText(line,LAYOUT.REPLY.x,LAYOUT.REPLY.y+LAYOUT.REPLY_TEXT_TOP+i*LAYOUT.REPLY_LINE_SPACING);});
-  ctx.fillStyle="#56788a";ctx.font=getFont("normal",12);ctx.textAlign="center";ctx.textBaseline="middle";
-  ctx.fillText("轻触互动  ·  长按聊天  ·  拖动跟随",LAYOUT.REPLY.x+LAYOUT.REPLY.w/2,LAYOUT.REPLY.y+LAYOUT.REPLY.h+18);
-  if(window.__DIAL_NO_ANIM){
-    ctx.save();ctx.strokeStyle="#ff3b3b";ctx.lineWidth=3;ctx.setLineDash([10,8]);ctx.strokeRect(0,0,BASE_CAM,BASE_H);ctx.restore();
-  }
-  ctx.restore();
-}
-function frame(){
-  rafPend=false;
-  if(paused||dead||window.__DIAL_NO_ANIM)return;
-  if(document.hidden){kick();return;}
-  var t=now();
-  if(t-lastDraw<FRAME_MS){kick();return;}
-  var dt=clamp(t-(lastFrame||t),0,200);
-  lastFrame=t;lastDraw=t;animTime+=dt;
-  if(blink===0&&animTime>=nextBlink&&mood!==3){blink=1;blinkAt=animTime;nextBlink=animTime+1900+(Math.random()*2600);}
-  if(blink>0){var p=(animTime-blinkAt)/180;blink=p<.5?p*2:Math.max(0,1-(p-.5)*2);if(p>=1)blink=0;}
-  draw(animTime);
-  kick();
-}
-function pointFromEvent(e){
-  var r=canvas.getBoundingClientRect();
-  var vx=(e.clientX-r.left)*(W/r.width),vy=(e.clientY-r.top)*(H/r.height);
-  return {x:(vx-DX)/FIT,y:(vy-DY)/FIT};
-}
-function handlePointer(e){
-  if(pointerId!==null&&e.pointerId!==pointerId)return;
-  var p=pointFromEvent(e);
-  if(e.type==="pointerdown"){
-    e.preventDefault();
-    if(p.x<LAYOUT.FACE.x-24||p.x>LAYOUT.FACE.x+LAYOUT.FACE.w+24||p.y<LAYOUT.FACE.y-24||p.y>LAYOUT.FACE.y+LAYOUT.FACE.h+24)return;
-    pointerId=e.pointerId;pressStartedAt=now();pressAction="avatar_touch";
-    pressStartX=p.x;pressStartY=p.y;dragDetected=false;
-    try{canvas.setPointerCapture(pointerId);}catch(_){}
-    gazeX=clamp((p.x-(LAYOUT.FACE.x+LAYOUT.FACE.w/2))/(LAYOUT.FACE.w/2),-1,1);
-    gazeY=clamp((p.y-(LAYOUT.FACE.y+LAYOUT.FACE.h/2))/(LAYOUT.FACE.h/2),-1,1);
-    setMoodIndex(1,false);draw(animTime);
-  }else if(e.type==="pointermove"){
-    e.preventDefault();
-    if(pointerId!==null){
-      gazeX=clamp((p.x-(LAYOUT.FACE.x+LAYOUT.FACE.w/2))/(LAYOUT.FACE.w/2),-1,1);
-      gazeY=clamp((p.y-(LAYOUT.FACE.y+LAYOUT.FACE.h/2))/(LAYOUT.FACE.h/2),-1,1);
-      var dx=p.x-pressStartX,dy=p.y-pressStartY;
-      if(!dragDetected&&Math.sqrt(dx*dx+dy*dy)>24)dragDetected=true;
-      kick();
-    }
-  }else if(e.type==="pointerup"){
-    e.preventDefault();
-    if(pressAction){
-      var held=now()-pressStartedAt;
-      var action=dragDetected?"avatar_drag":held>=650?"avatar_long_press":"avatar_touch";
-      dispatchRearAction(action,action==="avatar_long_press"?2:1);
-    }
-    pointerId=null;pressStartedAt=0;pressAction="";dragDetected=false;gazeX=0;gazeY=0;
-  }else if(e.type==="pointercancel"){
-    pointerId=null;pressStartedAt=0;pressAction="";dragDetected=false;gazeX=0;gazeY=0;
-  }
-}
-canvas.addEventListener("pointerdown",handlePointer,{passive:false});
-canvas.addEventListener("pointermove",handlePointer,{passive:false});
-canvas.addEventListener("pointerup",handlePointer,{passive:false});
-canvas.addEventListener("pointercancel",handlePointer,{passive:false});
-canvas.addEventListener("contextmenu",function(e){e.preventDefault();});
-window.addEventListener("resize",__fit);
-document.addEventListener("visibilitychange",function(){if(document.hidden)return;if(!paused&&!window.__DIAL_NO_ANIM)kick();});
-window.__fit=__fit;
-window.__setAod=__setAod;
-window.__debugSize=__debugSize;
-window.__setMoodIndex=__setMoodIndex;
-window.__setAvatarState=function(nextMood){__setMoodIndex(nextMood);};
-window.__setAgentState=applyAgentState;
-window.__setAgentJson=applyAgentJson;
-window.__DIAL_NO_ANIM=!!window.__DIAL_NO_ANIM;
-if(window.__DIAL_NO_ANIM){__fit();}
-else{__fit();lastFrame=now();kick();}
+marker.onerror=function(){console.error("Rear Live2D model package is missing: models/active/model-entry.js");};
+document.head.appendChild(marker);
 }());
 </script>
 </body>
