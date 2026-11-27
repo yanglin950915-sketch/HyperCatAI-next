@@ -1,7 +1,7 @@
 name: Android CI
 on:
   push:
-    branches: [fix/v0.9.40-splash-rearscreen-anime, feat/rear-voice-v0.9.36,  main, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29, fix/live2d-model-zip-import, fix/live2d-smoothness-clarity-v0.9.46 ]
+    branches: [fix/v0.9.40-splash-rearscreen-anime, feat/rear-voice-v0.9.36,  main, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29, fix/live2d-model-zip-import, fix/live2d-smoothness-clarity-v0.9.46, feature/multiple-live2d-avatars-v0.9.47 ]
   pull_request:
     branches: [ main, feat/live2d-avatar-agent-integration, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29 ]
 permissions:
@@ -76,7 +76,7 @@ jobs:
               assert (live2d / asset).is_file() and (live2d / asset).stat().st_size > 1000, f"Live2D renderer asset missing: {asset}"
           model_store = Path("app/src/main/java/com/hypercat/ai/avatar/Live2DModelStore.kt").read_text(encoding="utf-8")
           live2d_view = Path("app/src/main/java/com/hypercat/ai/avatar/Live2DView.kt").read_text(encoding="utf-8")
-          assert "Haru.model3.json" in model_store and "file:///android_asset/avatar/default/" in model_store, "built-in Live2D model default missing"
+          assert all(name in model_store for name in ("Haru.model3.json", "Hiyori.model3.json", "Mao.model3.json", "Natori.model3.json", "Rice.model3.json")), "multi-character Live2D catalogue missing"\n          assert all(name in Path("app/build.gradle.kts").read_text(encoding="utf-8") for name in ("Haru", "Hiyori", "Mao", "Natori", "Rice")), "official Live2D character bundle task missing"
           assert "importZip" not in model_store and "modelPicker" not in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "user model import UI must be removed"
           gradle = Path("app/build.gradle.kts").read_text(encoding="utf-8")
           assert "downloadBuiltInAvatar" in gradle and "CubismWebSamples" in gradle and "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd" in gradle, "pinned official Live2D sample build task missing"
@@ -100,7 +100,7 @@ jobs:
               if forbidden.lower() in body.lower():
                   line = next((i for i, value in enumerate(body.splitlines(), 1) if forbidden.lower() in value.lower()), 0)
                   raise AssertionError(f"legacy product name remains in {path}:{line}")
-          assert "versionName = \"0.9.46\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "versionName = \"0.9.47\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           assert "Theme.HyperCat.Starting" in Path("app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"), "launch splash theme missing"
           styles = Path("app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           assert 'windowSplashScreenBackground">#F7F7F8' in styles and 'android:windowBackground">#F7F7F8' in styles, "light splash and Activity backgrounds must match"
