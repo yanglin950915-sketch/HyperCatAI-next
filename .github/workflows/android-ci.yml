@@ -101,7 +101,7 @@ jobs:
               if forbidden.lower() in body.lower():
                   line = next((i for i, value in enumerate(body.splitlines(), 1) if forbidden.lower() in value.lower()), 0)
                   raise AssertionError(f"legacy product name remains in {path}:{line}")
-          assert "versionName = \"0.9.68\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "versionName = \"0.9.69\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           main_activity = Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8")
           assert "val controller = remember { Live2DController() }" in live2d_view and "key(model.id)" not in main_activity and "key(selected.first)" not in main_activity, "Live2D preview must reuse its WebView when the selected model changes"
           assert "AvatarPortrait" in main_activity and "Live2DView(" in main_activity and "onPortrait = { dataUrl ->" in main_activity, "Agent chat portraits must be captured from the actual Live2D model"
@@ -130,7 +130,8 @@ jobs:
           for name in ("__fit", "__setAod", "__debugSize", "__setMoodIndex"):
               assert f"window.{name}" in renderer_source, f"{name} lifecycle API missing from direct MAML renderer"
           assert "window.__setAgentJson" in renderer_source and "window.__setAgentState" in renderer_source, "direct MAML Agent state bridge missing"
-          assert "var SHOW_INTERFACE = params.get('ui') === '1'" in renderer_source and "var VIEW_HALF = params.get('half') === '1'" in renderer_source, "rear renderer must default to clean full-body character without legacy overlays"\n          assert "SAFE_TOP_RATIO" in renderer_source and "safeTop + (usableH - bounds.height) / 2" in renderer_source, "rear avatar must be centred inside the camera-safe viewport"
+          assert "var SHOW_INTERFACE = params.get('ui') === '1'" in renderer_source and "var VIEW_HALF = params.get('half') === '1'" in renderer_source, "rear renderer must default to clean full-body character without legacy overlays"
+          assert "SAFE_TOP_RATIO" in renderer_source and "safeTop + (usableH - bounds.height) / 2" in renderer_source, "rear avatar must be centred inside the camera-safe viewport"
           assert "model-entry.js" in renderer_source and "marker.onerror" in renderer_source, "direct renderer must load and diagnose model-entry.js"
           scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
           assert len(scripts) == 1, "expected one self-contained inline script"
