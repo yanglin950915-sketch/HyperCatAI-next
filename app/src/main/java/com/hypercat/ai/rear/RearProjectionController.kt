@@ -82,12 +82,12 @@ object RearProjectionController {
         val backup = File(File(requireNotNull(context.getExternalFilesDir(null)), "rear-backups"), "$cardId-original.zip")
         val response = JSONObject(service.restoreCarrier(cardId, backup.absolutePath))
         if (!response.optBoolean("success")) error(response.optString("message", "恢复失败"))
-        PetStateStore.setEnabled(context, false)
+        AvatarStateStore.setEnabled(context, false)
         response.optString("message")
     }
 
     suspend fun hide(context: Context): String = runCatching {
-        PetStateStore.setEnabled(context, false)
+        AvatarStateStore.setEnabled(context, false)
         "已关闭背屏虚拟形象状态同步；卡片仍保留在系统中，可再次开启或恢复原始卡片"
     }.getOrElse { "关闭背屏虚拟形象失败：${it.message ?: it.javaClass.simpleName}" }
 
