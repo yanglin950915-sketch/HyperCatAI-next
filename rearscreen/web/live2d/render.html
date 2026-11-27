@@ -522,8 +522,8 @@
     var mood = new PIXI.Text(uiState.mood, {fontFamily:'system-ui,sans-serif',fontSize:14,fill:0x83e7ff});
     var reply = new PIXI.Text(uiState.reply, {fontFamily:'system-ui,sans-serif',fontSize:15,fill:0xd8edf7,wordWrap:true,wordWrapWidth:520,breakWords:true,lineHeight:21});
     var hint = new PIXI.Text('轻触互动 · 长按聊天 · 拖动跟随', {fontFamily:'system-ui,sans-serif',fontSize:12,fill:0x7fa6b8,align:'center'});
-    [title,name,mood,reply,hint].forEach(function(t){t.resolution=Math.min(window.devicePixelRatio||1,2);root.addChild(t);});
     root.addChild(panel);
+    [title,name,mood,reply,hint].forEach(function(t){t.resolution=Math.min(window.devicePixelRatio||1,2);root.addChild(t);});
     ui={root:root,bg:bg,panel:panel,title:title,name:name,mood:mood,reply:reply,hint:hint};
     layoutLive2DInterface();
   }
