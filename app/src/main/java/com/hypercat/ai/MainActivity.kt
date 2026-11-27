@@ -1879,9 +1879,10 @@ private fun ChatPage(
             items(messages.mapIndexed { index, message -> index to message }.filter { searchQuery.isBlank() || it.second.text.contains(searchQuery, ignoreCase = true) }) { (messageIndex, line) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
                     if (!line.fromUser) {
-                        Box(Modifier.padding(end = 8.dp).size(34.dp).clip(RoundedCornerShape(11.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8C7BFF)))), contentAlignment = Alignment.Center) {
-                            Text(avatarName.take(1), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
+                        AvatarPortrait(
+                            character = live2dModel.id,
+                            modifier = Modifier.padding(end = 8.dp).size(34.dp).clip(CircleShape)
+                        )
                     }
                     if (selectedMessageIndices.isNotEmpty()) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
                     Surface(modifier = (if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices) Cyan else GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
@@ -2333,14 +2334,29 @@ private fun AvatarRenderer(
     onGesture: (String, String) -> Unit = { _, _ -> }
 ) {
     if (model != null) {
-        Live2DView(model = model, modifier = modifier, mood = mood, speaking = speaking, halfBody = true, onGesture = onGesture)
+        key(model.id) {
+            Live2DView(model = model, modifier = modifier, mood = mood, speaking = speaking, halfBody = true, onGesture = onGesture)
+        }
     } else {
         AnimeGirlAvatar(character, modifier, mood)
     }
 }
 
+/** Small, non-animated portrait matching the currently selected virtual character. */
 @Composable
-private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier, mood: String = "normal") {
+private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
+    Box(modifier.background(Brush.verticalGradient(listOf(Color(0xFFFFE6F0), Color(0xFFE9E8FF))))) {
+        AnimeGirlAvatar(character, Modifier.fillMaxSize(), "normal", animated = false)
+    }
+}
+
+@Composable
+private fun AnimeGirlAvatar(
+    character: String,
+    modifier: Modifier = Modifier,
+    mood: String = "normal",
+    animated: Boolean = true
+) {
     val idleMotion = rememberInfiniteTransition(label = "avatarIdleMotion")
     val bob by idleMotion.animateFloat(
         initialValue = -2.5f, targetValue = 2.5f,
@@ -2356,13 +2372,18 @@ private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier, mo
         targetValue = when (mood) { "happy" -> 1.025f; "thinking" -> .99f; "sleepy" -> .985f; else -> 1f },
         animationSpec = tween(320), label = "avatarReactionScale"
     )
-    val animatedModifier = modifier.graphicsLayer {
+    val animatedModifier = if (animated) modifier.graphicsLayer {
         translationY = bob.dp.toPx()
         rotationZ = sway
         scaleX = reactionScale
         scaleY = reactionScale
-    }
+    } else modifier
     val palette = when (character) {
+        "haru" -> listOf(Color(0xFFFFD9E8), Color(0xFFB95D85), Color(0xFFEE9AB9), Color(0xFF713650))
+        "hiyori" -> listOf(Color(0xFFFFE7B8), Color(0xFFB87942), Color(0xFFFFC66D), Color(0xFF75452D))
+        "mao" -> listOf(Color(0xFFFFD6D0), Color(0xFF9E526B), Color(0xFFE58CA0), Color(0xFF633448))
+        "natori" -> listOf(Color(0xFFD9E8FF), Color(0xFF536D9D), Color(0xFF8FADE0), Color(0xFF303E69))
+        "rice" -> listOf(Color(0xFFE8E1FF), Color(0xFF8272B6), Color(0xFFB5A5E8), Color(0xFF4A416F))
         "aoi" -> listOf(Color(0xFFBDEBFF), Color(0xFF4C80D8), Color(0xFF2CADD9), Color(0xFF193A78))
         "luna" -> listOf(Color(0xFFEDEBFF), Color(0xFF8582C8), Color(0xFFB6A7F4), Color(0xFF49446F))
         "yuna" -> listOf(Color(0xFFFFD9EC), Color(0xFFB94F86), Color(0xFFEE91B7), Color(0xFF71365C))
@@ -2373,6 +2394,11 @@ private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier, mo
     val hairBright = palette[2]
     val hairDark = palette[3]
     val iris = when (character) {
+        "haru" -> Color(0xFFB84F79)
+        "hiyori" -> Color(0xFFB47A32)
+        "mao" -> Color(0xFF9B4F72)
+        "natori" -> Color(0xFF4C78B8)
+        "rice" -> Color(0xFF7666C8)
         "aoi" -> Color(0xFF258BCB)
         "luna" -> Color(0xFF7666C8)
         "yuna" -> Color(0xFF9B4F9C)
@@ -2625,7 +2651,11 @@ private fun AvatarSettingsPage(
                         } else Modifier),
                     contentAlignment = Alignment.Center
                 ) {
-                    AvatarRenderer(selected.first, Modifier.fillMaxSize(), avatarMood, model = live2dModel) { action, _ -> onAvatarInteraction(action) }
+                    val selectedModel = Live2DModelStore.characters.firstOrNull { it.id == selected.first }
+                        ?: Live2DModelStore.characters.first()
+                    key(selected.first) {
+                        AvatarRenderer(selected.first, Modifier.fillMaxSize(), avatarMood, model = selectedModel) { action, _ -> onAvatarInteraction(action) }
+                    }
  
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
