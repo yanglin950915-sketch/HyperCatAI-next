@@ -144,10 +144,10 @@ import com.hypercat.ai.rear.RearAgentInteractionDispatcher
 import com.hypercat.ai.rear.RearProjectionController
 import com.hypercat.ai.rear.RearCardPackageBuilder
 import com.hypercat.ai.rear.RearCard
-import com.hypercat.ai.pet.Live2DModel
-import com.hypercat.ai.pet.Live2DModelStore
-import com.hypercat.ai.pet.Live2DView
-import com.hypercat.ai.pet.Live2DControllerHub
+import com.hypercat.ai.avatar.Live2DModel
+import com.hypercat.ai.avatar.Live2DModelStore
+import com.hypercat.ai.avatar.Live2DView
+import com.hypercat.ai.avatar.Live2DControllerHub
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
