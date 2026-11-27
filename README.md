@@ -2,7 +2,7 @@
 
 **HyperCat AI 是面向 Android 手机的 AI Agent 智能助手。** Agent 主应用可在其他 Android 设备上使用，不要求手机具备背屏；只有背屏虚拟形象投放与互动功能，目标机型包括 Xiaomi 17 Pro / 17 Pro Max、Xiaomi 18 Pro / 18 Pro Max；具体背屏能力仍需结合机型与系统版本进行实机验证。背屏不是独立运行的虚拟形象应用，而是 Agent 的第二交互界面：主屏与背屏共享角色资料、情绪和交互状态。
 
-- **当前版本：** 0.9.43（versionCode 62）
+- **当前版本：** 0.9.44（versionCode 63）
 - **平台：** Android
 - **技术栈：** Kotlin、Jetpack Compose、Coroutines、Android 系统 API
 - **仓库：** [GitHub](https://github.com/yanglin950915-sketch/HyperCatAI-next)
@@ -83,17 +83,18 @@
 - 优化帧率、内存、发热和息屏/AOD 时的资源占用。
 - 不直接复制未经授权的角色模型、立绘、动作或音频；先以原创或明确许可素材验证技术方案。
 
-## Live2D 二次元虚拟形象（0.9.43 起）
+## 内置 Live2D 二次元虚拟形象（0.9.44 起）
 
-- 在「虚拟形象」设置中可导入用户自有的 Live2D Cubism ZIP 模型；当前渲染核心基于 Cubism 4.x，建议导入 Cubism 4 模型。ZIP 内需要包含 `*.model3.json`（也接受 `model3.json`）、对应 `.moc3` 和贴图文件；支持按文件签名识别有限层级的嵌套 ZIP（内层 ZIP 不要求带 .zip 扩展名），不支持 RAR/7z。
-- 主屏资料卡、虚拟形象设置预览与独立背屏 Activity 共用同一模型与 Agent 情绪状态。
-- 支持眼球跟随、眨眼、呼吸/待机摆动、开心/难过/害羞/思考/好奇等表情，以及轻触、长按、拖动回传 Agent。
+- 安装 APK 即可使用完整 Live2D 角色，不再提供用户导入模型 ZIP 的入口。
+- 默认角色采用 Live2D 官方原创角色 Haru 样例，模型、MOC3、高清贴图、表情、物理和动作文件在 APK 构建时从固定版本的官方样例仓库获取，并随 APK 一起打包。
+- 主屏资料卡、虚拟形象设置预览与背屏 Activity 共用同一角色模型和 Agent 情绪状态。
+- 支持眼球跟随、眨眼、呼吸/待机摆动、开心/难过/害羞/思考等表情，以及轻触、长按、拖动回传 Agent。
 - 云端 TTS 播放时，在麦克风权限已授予的情况下尝试读取播放波形驱动口型；系统 TTS 或无法读取波形时使用轻量说话口型动画。
-- 背屏渲染模板、PixiJS、Cubism 运行时和 MAML 清单已随 APK 内置；无需另行下载或手动导入背屏资源 ZIP。开启背屏投放时，应用会在本机自动组装所需卡片资源，并通过 Shizuku 部署到用户选择的主题卡片。
-- 为控制发热和功耗，Live2D 默认限制主屏/背屏 WebGL 渲染帧率（背屏 WebGL 默认 20 FPS，Android 宿主默认 24 FPS）。
+- 背屏渲染模板、PixiJS、Cubism 运行时和 MAML 清单随 APK 内置；无需另行下载或手动导入背屏资源 ZIP。开启背屏投放时，应用会在本机自动组装卡片资源并通过 Shizuku 部署。
 
-### 模型与 SDK 授权
-应用内置基础二次元虚拟形象回退表现与 Live2D 渲染运行时；第三方 Live2D 角色模型不随 APK 分发。用户可导入本人制作或已获得使用许可的模型。PixiJS 与 pixi-live2d-display 按各自 MIT 许可保留声明。Live2D Cubism Core 是 Live2D 专有组件，不受本项目 MIT 许可覆盖，需遵守其原始许可与发行规则；公开发布前应核对当前 SDK 发行许可，尤其是允许终端用户导入模型的可扩展应用场景。详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+### 角色素材与授权
+
+默认角色来自 [Live2D 官方 Haru 样例](https://www.live2d.com/en/learn/sample/haru/)。使用前需遵守 [Live2D 无偿素材许可协议](https://www.live2d.com/zh-CHS/learn/sample/model-terms/)及 [Live2D 样例角色使用条件](https://www.live2d.com/zh-CHS/learn/sample/model-terms/)。应用关于页/第三方声明中保留 Live2D 版权说明。该角色不作改名、重绘或不符合角色形象的用途；不得用于成人、暴力或损害角色形象的内容。
 
 ## 权限与隐私
 - 麦克风、摄像头和位置权限按需申请。
@@ -104,6 +105,11 @@
 
 ## 构建与发布
 项目通过 GitHub Actions 执行 Android CI、APK 构建和签名校验。请从 [Releases](https://github.com/yanglin950915-sketch/HyperCatAI-next/releases) 获取正式发布包，并查看对应版本说明。开发分支上的构建产物不等同于正式发布版本。
+
+## 0.9.44 更新
+- 移除用户导入 Live2D 模型 ZIP 的流程，改为 APK 内置 Live2D 官方 Haru 完整角色模型。
+- 模型文件在构建时从固定版本的官方样例仓库下载并随 APK 打包，首次启动无需联网下载。
+- 主屏与背屏默认加载同一内置 Live2D 角色。
 
 ## 0.9.43 更新
 - 统一虚拟形象命名与 Agent 交互状态，清理未引用的旧预览和角色引擎文件。
