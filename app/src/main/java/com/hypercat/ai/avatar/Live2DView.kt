@@ -109,7 +109,8 @@ fun Live2DView(
     LaunchedEffect(model.directory, model.entry, halfBody) {
         val dir = android.net.Uri.encode(model.directory, "/:")
         val entry = android.net.Uri.encode(model.entry, "/")
-        // Center each character using its measured model bounds.\n        val offsetX = "0"
+        // Center each character using its measured model bounds.
+        val offsetX = "0"
         webView.loadUrl("file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=${if (halfBody) 1 else 0}&ratio=0.55&fps=60&offsetX=$offsetX&portrait=1")
     }
     LaunchedEffect(mood, state.ready) {
