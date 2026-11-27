@@ -152,5 +152,3 @@ private fun AvatarStatusBadge(t: String, modifier: Modifier = Modifier) {
         modifier = modifier.background(Color(0xB8222B3B), RoundedCornerShape(20.dp))
             .padding(horizontal = 8.dp, vertical = 6.dp))
 }
-@Composable
-private fun AvatarStatusBadge(t: String, modifier: Modifier = Modifier) { Text(t, color = Color.White, fontSize = 9.sp, maxLines = 1, modifier = modifier.background(Color(0xB8222B3B), RoundedCornerShape(20.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) }
