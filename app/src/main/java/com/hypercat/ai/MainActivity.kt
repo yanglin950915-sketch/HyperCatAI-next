@@ -1903,12 +1903,6 @@ private fun ChatPage(
             }
             items(messages.mapIndexed { index, message -> index to message }.filter { searchQuery.isBlank() || it.second.text.contains(searchQuery, ignoreCase = true) }) { (messageIndex, line) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
-                    if (!line.fromUser) {
-                        AvatarPortrait(
-                            character = live2dModel.id,
-                            modifier = Modifier.padding(end = 8.dp).size(34.dp).clip(CircleShape)
-                        )
-                    }
                     if (selectedMessageIndices.isNotEmpty()) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
                     Surface(modifier = (if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices) Cyan else GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
