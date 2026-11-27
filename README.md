@@ -59,7 +59,7 @@
 
 ## 背屏资源包
 
-APK 内置 `rearscreen/manifest.xml` 与完整 `rearscreen/web/` 资源树；GitHub Actions 单独打包为 `HyperCatAI-rearscreen.zip`，ZIP 根目录包含 `manifest.xml` 和 `web/`。资源包由 HyperCat AI 自行生成和部署，不使用第三方 REAREye 导入流程。
+APK 内置 `rearscreen/manifest.xml` 与完整 `rearscreen/web/` 资源树；GitHub Actions 单独打包为 `HyperCatAI-rearscreen.zip`，ZIP 根目录包含 `manifest.xml` 和 `web/`。资源包由 HyperCat AI 自行生成和部署，直接供小米系统主题管理器的 MAML 引擎加载。
 
 ## 接下来开发计划
 
