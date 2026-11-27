@@ -59,7 +59,7 @@ marker.onload=function(){
   frame.id="live2d-stage";
   frame.title="HyperCat AI Live2D";
   frame.setAttribute("aria-label","Live2D 虚拟形象与交互界面");
-  frame.src="live2d/render.html?dir=../models/active/&entry="+encodeURIComponent(info.entry)+"&half=1&ratio=0.78&fps=30&ui=1";
+  frame.src="live2d/render.html?dir=../models/active/&entry="+encodeURIComponent(info.entry)+"&half=0&safeTop=0.18&fps=30";
   live2dFrame=frame;
   frame.onerror=function(){showLoadError("无法打开 Live2D 渲染页面：web/live2d/render.html");};
   document.body.appendChild(frame);
