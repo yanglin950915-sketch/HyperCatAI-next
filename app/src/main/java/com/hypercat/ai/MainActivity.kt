@@ -2867,11 +2867,11 @@ private fun AvatarSettingsPage(
                                         RearProjectionController.scan(context).firstOrNull { it.cardId == cardId }
                                             ?: error("找不到上次投放的背屏卡片，请重新开启背屏投放")
                                     }
-                                    rearProjectionStatus = "正在同步主屏虚拟形象并替换背屏卡片…"
-                                    rearProjectionStatus = RearProjectionController.deploy(context, card)
-                                }.onFailure {
-                                    rearProjectionStatus = it.message ?: "背屏自动更新失败"
-                                    Toast.makeText(context, "背屏卡片更新失败：$rearProjectionStatus", Toast.LENGTH_LONG).show()
+                                    RearProjectionController.deploy(context, card)
+                                }.onSuccess { message ->
+                                    Toast.makeText(context, message + "。请在手机系统设置中重新应用背屏卡片。", Toast.LENGTH_LONG).show()
+                                }.onFailure { error ->
+                                    Toast.makeText(context, "背屏卡片自动更新失败：" + (error.message ?: "未知错误"), Toast.LENGTH_LONG).show()
                                 }
                             }
                         }
