@@ -31,7 +31,7 @@
     </Function>
 
     <!-- Local offline HTML renderer; content itself reserves the left camera exclusion zone. -->
-    <WebView name="wv" x="0" y="0" w="#view_width" h="#view_height" local="true" cachePage="true" uri="web/index.html">
+    <WebView name="wv" x="0" y="0" w="#view_width" h="#view_height" local="true" cachePage="false" uri="web/index.html">
         <Triggers>
             <Trigger action="pet_touch">
                 <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
