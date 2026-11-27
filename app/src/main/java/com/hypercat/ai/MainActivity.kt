@@ -447,6 +447,32 @@ private fun inferMood(reply: String): String = when {
     listOf("思考", "考虑", "分析", "让我想想").any { reply.contains(it) } -> "thinking"
     else -> "normal"
 }
+private fun exportRearWidgetPackage(context: Context) {
+    runCatching {
+        val directory = File(context.cacheDir, "rear-widget").apply { mkdirs() }
+        val archive = File(directory, "HyperCatAI-RearWidget.zip")
+        ZipOutputStream(FileOutputStream(archive)).use { zip ->
+            listOf("manifest.xml", "web/index.html").forEach { assetPath ->
+                zip.putNextEntry(ZipEntry(assetPath))
+                context.assets.open(assetPath).use { input -> input.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context, "${context.packageName}.fileprovider", archive
+        )
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "HyperCat AI 背屏萌宠组件")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(send, "将背屏组件包分享给 REAREye"))
+    }.onFailure {
+        android.widget.Toast.makeText(context, "组件包导出失败：${it.message ?: "未知错误"}", android.widget.Toast.LENGTH_LONG).show()
+    }
+}
+
 private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "")
 
 private fun serializeChatHistory(messages: List<ChatLine>): String = org.json.JSONArray().apply {
