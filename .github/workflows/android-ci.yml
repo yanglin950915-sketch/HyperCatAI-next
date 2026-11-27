@@ -48,7 +48,7 @@ jobs:
           assert "data:image/svg+xml;charset=utf-8" in html and "avatarSvg(id)" in html, "rear character art must be embedded inline"
           assert 'assets.srcDir("../rearscreen")' in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "rear widget assets must be bundled in APK"
           assert "RearAgentInteractionDispatcher.enqueue(context, action)" in receiver, "rear receiver must use shared dispatcher"
-          pet_store = Path("app/src/main/java/com/hypercat/ai/rear/AvatarStateStore.kt").read_text(encoding="utf-8")
+          avatar_store = Path("app/src/main/java/com/hypercat/ai/rear/AvatarStateStore.kt").read_text(encoding="utf-8")
           rear_worker = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionWorker.kt").read_text(encoding="utf-8")
           assert "user_text" in Path("app/src/main/java/com/hypercat/ai/rear/RearAvatarProvider.kt").read_text(encoding="utf-8"), "rear interaction text must be exposed to the app state bridge"
           assert "userText = if (action == \"avatar_voice\") userText else eventPrompt" in rear_worker, "rear Agent turn must retain original user text"
