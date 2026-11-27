@@ -70,7 +70,6 @@ import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.VolumeUp
@@ -2152,7 +2151,6 @@ private fun ChatPage(
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { drawerSection = "pet" }) { Text("‹ 返回个人页", color = MainText) }
                             Spacer(Modifier.weight(1f)); Text("虚拟形象设置", color = MainText, fontWeight = FontWeight.Bold)
-                            IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭虚拟形象设置", tint = Muted) }
                         }
                         petSettingsContent(Modifier.weight(1f).fillMaxWidth())
                     }
@@ -2161,7 +2159,6 @@ private fun ChatPage(
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { drawerSection = "pet" }) { Text("‹ 返回个人页", color = MainText) }
                             Spacer(Modifier.weight(1f)); Text("设置", color = MainText, fontWeight = FontWeight.Bold)
-                            IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭设置", tint = Muted) }
                         }
                         settingsContent(Modifier.weight(1f).fillMaxWidth())
                     }
@@ -2169,7 +2166,6 @@ private fun ChatPage(
                     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) { Text("我的虚拟形象", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
-                            IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭侧栏", tint = Muted) }
                         }
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().clickable { drawerSection = "pet_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
