@@ -1361,6 +1361,7 @@ private fun ChatPage(
 ) {
     val context: Context = LocalContext.current
     val live2dModel by Live2DModelStore.state.collectAsState()
+    val avatarBubbleText = messages.lastOrNull { !it.fromUser }?.text?.trim().orEmpty()
     LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var userMovedChat by remember(currentSessionTitle) { mutableStateOf(false) }
@@ -2078,7 +2079,24 @@ private fun ChatPage(
                                 Column(Modifier.weight(1f)) {
                                     Text(avatarName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                     Text(when (avatarMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
-                                    Text("点击头像管理虚拟形象与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                                    if (avatarBubbleText.isNotBlank()) {
+                                        Surface(
+                                            color = if (appDarkState) Color(0xFF282333) else Color(0xFFF1EDFF),
+                                            shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomEnd = 12.dp),
+                                            modifier = Modifier.padding(top = 7.dp).widthIn(max = 220.dp)
+                                        ) {
+                                            Text(
+                                                avatarBubbleText.take(220),
+                                                color = MainText,
+                                                fontSize = 10.sp,
+                                                lineHeight = 14.sp,
+                                                maxLines = 4,
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
+                                            )
+                                        }
+                                    } else {
+                                        Text("点击头像管理虚拟形象与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                                    }
                                 }
                             }
                         }
@@ -2332,9 +2350,7 @@ private fun AvatarRenderer(
     onGesture: (String, String) -> Unit = { _, _ -> }
 ) {
     if (model != null) {
-        key(model.id) {
-            Live2DView(model = model, modifier = modifier, mood = mood, speaking = speaking, halfBody = true, onGesture = onGesture)
-        }
+        Live2DView(model = model, modifier = modifier, mood = mood, speaking = speaking, halfBody = true, onGesture = onGesture)
     } else {
         AnimeGirlAvatar(character, modifier, mood)
     }
@@ -2347,31 +2363,28 @@ private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
         ?: Live2DModelStore.characters.first()
     var portrait by remember(character) { mutableStateOf<Bitmap?>(null) }
     Box(modifier.clip(CircleShape).background(Color(0xFFEDEAF4))) {
-        val captured = portrait
-        if (captured != null) {
+        // Keep the Live2D surface mounted as a live fallback. The captured bitmap is
+        // layered above it instead of replacing/destroying the WebView; this avoids a
+        // blank portrait if WebGL's first extraction is transient or partially transparent.
+        Live2DView(
+            model = model,
+            modifier = Modifier.size(128.dp).align(Alignment.Center),
+            halfBody = true,
+            onPortrait = { dataUrl ->
+                runCatching {
+                    val encoded = dataUrl.substringAfter(',', "")
+                    val bytes = Base64.getDecoder().decode(encoded)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                }.getOrNull()?.takeIf { !it.isRecycled && it.width > 1 && it.height > 1 }?.let { portrait = it }
+            }
+        )
+        portrait?.let { captured ->
             Image(
                 bitmap = captured.asImageBitmap(),
                 contentDescription = model.displayName,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
-        } else {
-            // Render the real bundled Live2D model once, extract its PIXI canvas as a PNG,
-            // then replace the WebView with that static bitmap. No hand-drawn avatar art.
-            key(model.id) {
-                Live2DView(
-                    model = model,
-                    modifier = Modifier.size(128.dp).align(Alignment.Center),
-                    halfBody = true,
-                    onPortrait = { dataUrl ->
-                        runCatching {
-                            val encoded = dataUrl.substringAfter(',', "")
-                            val bytes = Base64.getDecoder().decode(encoded)
-                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                        }.getOrNull()?.let { portrait = it }
-                    }
-                )
-            }
         }
     }
 }
@@ -2678,9 +2691,7 @@ private fun AvatarSettingsPage(
                 ) {
                     val selectedModel = Live2DModelStore.characters.firstOrNull { it.id == selected.first }
                         ?: Live2DModelStore.characters.first()
-                    key(selected.first) {
-                        AvatarRenderer(selected.first, Modifier.fillMaxSize(), avatarMood, model = selectedModel) { action, _ -> onAvatarInteraction(action) }
-                    }
+                    AvatarRenderer(selected.first, Modifier.fillMaxSize(), avatarMood, model = selectedModel) { action, _ -> onAvatarInteraction(action) }
  
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
