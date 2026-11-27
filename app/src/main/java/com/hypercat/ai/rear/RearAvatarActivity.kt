@@ -117,10 +117,22 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             var safeBottom = bottom
             if (isKnownRear && left == 0 && top == 0 && right == 0 && bottom == 0) {
                 when (rearDisplay.rotation) {
-                    Surface.ROTATION_0 -> if (landscape) safeLeft = (width * 0.32f).toInt()
-                    Surface.ROTATION_90 -> if (landscape) safeBottom = (height * 0.32f).toInt()
-                    Surface.ROTATION_180 -> if (landscape) safeRight = (width * 0.32f).toInt()
-                    Surface.ROTATION_270 -> if (landscape) safeTop = (height * 0.32f).toInt()
+                    Surface.ROTATION_0 -> if (landscape) safeLeft = (width * 0.38f).toInt()
+                    Surface.ROTATION_90 -> if (landscape) safeBottom = (height * 0.38f).toInt()
+                    Surface.ROTATION_180 -> if (landscape) safeRight = (width * 0.38f).toInt()
+                    Surface.ROTATION_270 -> if (landscape) safeTop = (height * 0.38f).toInt()
+                }
+            }
+
+            // Add a visual buffer beyond the reported cutout edge so the character
+            // stays clear of the camera island and is centered in the remaining panel.
+            if (isKnownRear && (left > 0 || top > 0 || right > 0 || bottom > 0)) {
+                val cameraBuffer = (if (landscape) width else height) * 0.05f
+                when (rearDisplay.rotation) {
+                    Surface.ROTATION_0 -> if (landscape) safeLeft += cameraBuffer.toInt()
+                    Surface.ROTATION_90 -> if (landscape) safeBottom += cameraBuffer.toInt()
+                    Surface.ROTATION_180 -> if (landscape) safeRight += cameraBuffer.toInt()
+                    Surface.ROTATION_270 -> if (landscape) safeTop += cameraBuffer.toInt()
                 }
             }
 
