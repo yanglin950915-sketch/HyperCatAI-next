@@ -730,7 +730,7 @@ private fun HyperCatApp() {
     var saved by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
     var avatarName by remember { mutableStateOf(initialRearState.avatarName) }
-    var avatarId by remember { mutableStateOf(initialRearState.avatarId.takeIf { it in setOf("sakura", "aoi", "luna", "yuna") } ?: "sakura") }
+    var avatarId by remember { mutableStateOf(initialRearState.avatarId.takeIf { it in setOf("haru", "hiyori", "mao", "natori", "rice") } ?: "haru") }
     var avatarMood by remember { mutableStateOf(initialRearState.mood) }
     var avatarReply by remember { mutableStateOf(initialRearState.reply) }
     var rearAvatarEnabled by remember { mutableStateOf(initialRearState.enabled) }
@@ -868,7 +868,7 @@ private fun HyperCatApp() {
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
         autoReadReplies = prefs.getBoolean("auto_read_replies", false)
         avatarName = prefs.getString("avatar_name", prefs.getString("pet_name", "小橘"))?.takeIf { it.isNotBlank() } ?: "小橘"
-        avatarId = (prefs.getString("avatar_id", prefs.getString("pet_emoji", "sakura")) ?: "sakura").let { if (it in setOf("sakura", "aoi", "luna", "yuna")) it else "sakura" }
+        avatarId = (prefs.getString("avatar_id", prefs.getString("pet_emoji", "sakura")) ?: "sakura").let { if (it in setOf("haru", "hiyori", "mao", "natori", "rice")) it else "haru" }
         themeMode = prefs.getString("theme_mode", "system") ?: "system"
     }
 
@@ -2593,17 +2593,16 @@ private fun AvatarSettingsPage(
     val context = LocalContext.current
     val live2dModel by Live2DModelStore.state.collectAsState()
     LaunchedEffect(Unit) { Live2DModelStore.load(context) }
-    val characters = listOf(
-        Triple("haru", "春", "Live2D 官方原创角色。拥有完整的二次元立绘、头发与身体物理摆动、眨眼、表情和动作。")
-    )
+    val characters = Live2DModelStore.characters.map { Triple(it.id, it.displayName, it.personality) }
     var selectedIndex by remember(avatarId) { mutableIntStateOf(characters.indexOfFirst { it.first == avatarId }.coerceAtLeast(0)) }
     var nameDraft by remember(avatarName) { mutableStateOf(avatarName) }
     var dragTotal by remember { mutableFloatStateOf(0f) }
     val selected = characters[selectedIndex]
+    LaunchedEffect(selected.first) { Live2DModelStore.select(context, selected.first) }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
         Text("虚拟形象", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Text("内置完整 Live2D 二次元角色，安装后即可互动，无需导入模型", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+        Spacer(Modifier.height(18.dp))
         Surface(color = Panel, shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
@@ -2627,15 +2626,7 @@ private fun AvatarSettingsPage(
                     contentAlignment = Alignment.Center
                 ) {
                     AvatarRenderer(selected.first, Modifier.fillMaxSize(), avatarMood, model = live2dModel) { action, _ -> onAvatarInteraction(action) }
-                    Text("Live2D · 直接触摸互动", color = Color(0xFF754A67), fontSize = 11.sp,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
-                }
-                Surface(color = Panel2, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                        Text("内置 Live2D 角色", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("已内置：${live2dModel.displayName}", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
-                        Text("模型、贴图、表情、物理与动作资源随 APK 一起安装。无需下载模型包或手动导入；主屏与背屏共用同一角色和 Agent 状态。", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
-                    }
+ 
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = { selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size) }) { Text("‹ 上一个") }
