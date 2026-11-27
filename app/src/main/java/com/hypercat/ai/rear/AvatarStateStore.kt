@@ -84,7 +84,7 @@ object AvatarStateStore {
 
     fun setEnabled(context: Context, enabled: Boolean) {
         val current = read(context)
-        update(context, current.avatarName, current.avatarId, current.mood, current.reply, enabled)
+        update(context, current.avatarName, current.avatarId, current.mood, current.reply, enabled, current.userText, current.backgroundColor)
     }
 
     fun read(context: Context): AvatarState {
