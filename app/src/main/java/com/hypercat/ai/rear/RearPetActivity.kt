@@ -108,10 +108,10 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         view.evaluateJavascript(script, null)
     }
 
-    private class RearMamlBridge(private val activity: RearPetActivity) {
+    class RearMamlBridge(private val activity: RearPetActivity) {
         @JavascriptInterface
         fun getStringByName(name: String): String {
-            val state = PetStateStore.read(activity.applicationContext)
+            val state = PetStateStore.state.value
             return when (name) {
                 "petName" -> state.petName
                 "petEmoji" -> state.petEmoji
