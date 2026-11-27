@@ -2591,24 +2591,10 @@ private fun AvatarSettingsPage(
     onAvatarNameChange: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val live2dModel by Live2DModelStore.state.collectAsState()
-    var modelImporting by remember { mutableStateOf(false) }
-    val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch {
-            modelImporting = true
-            runCatching { Live2DModelStore.importZip(context, uri) }
-                .onSuccess { android.widget.Toast.makeText(context, "Live2D 模型导入成功", android.widget.Toast.LENGTH_LONG).show() }
-                .onFailure { error -> android.widget.Toast.makeText(context, "模型导入失败：" + error.message, android.widget.Toast.LENGTH_LONG).show() }
-            modelImporting = false
-        }
-    }
     LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val characters = listOf(
-        Triple("sakura", "樱花", "温柔、黏人又有一点小傲娇。喜欢樱花、甜点和被认真倾听；遇到你时总会先露出笑容。"),
-        Triple("aoi", "葵", "活泼开朗的蓝发歌姬。热爱音乐与新鲜事物，擅长用元气和鼓励陪你度过忙碌的一天。"),
-        Triple("luna", "露娜", "安静细腻的银发魔法师。好奇心强，喜欢探索知识；说话温柔，关键时刻十分可靠。"),
-        Triple("yuna", "优奈", "俏皮可爱的双马尾少女。喜欢恶作剧和分享日常，情绪表达直接，是个热情的小伙伴。")
+        Triple("haru", "春", "Live2D 官方原创角色。拥有完整的二次元立绘、头发与身体物理摆动、眨眼、表情和动作。")
     )
     var selectedIndex by remember(avatarId) { mutableIntStateOf(characters.indexOfFirst { it.first == avatarId }.coerceAtLeast(0)) }
     var nameDraft by remember(avatarName) { mutableStateOf(avatarName) }
@@ -2617,7 +2603,7 @@ private fun AvatarSettingsPage(
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
         Text("虚拟形象", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Text("左右滑动选择伙伴，也可以导入自己的 Live2D 模型", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+        Text("内置完整 Live2D 二次元角色，安装后即可互动，无需导入模型", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
         Surface(color = Panel, shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
@@ -2641,18 +2627,14 @@ private fun AvatarSettingsPage(
                     contentAlignment = Alignment.Center
                 ) {
                     AvatarRenderer(selected.first, Modifier.fillMaxSize(), avatarMood, model = live2dModel) { action, _ -> onAvatarInteraction(action) }
-                    Text(if (live2dModel != null) "Live2D · 直接触摸互动" else "点击角色互动", color = Color(0xFF754A67), fontSize = 11.sp,
+                    Text("Live2D · 直接触摸互动", color = Color(0xFF754A67), fontSize = 11.sp,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
                 }
                 Surface(color = Panel2, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                     Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                        Text("Live2D 模型", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text(live2dModel?.let { "已导入模型：" + it.displayName } ?: "尚未导入模型，当前使用内置二次元预览形象。", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { modelPicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }, enabled = !modelImporting) { Text(if (modelImporting) "正在导入…" else "导入 Live2D ZIP") }
-                            if (live2dModel != null) OutlinedButton(onClick = { Live2DModelStore.clear(context); Live2DModelStore.load(context) }) { Text("移除模型") }
-                        }
-                        Text("ZIP 内需包含 .model3.json、MOC3、Textures 等模型文件。请仅导入自己制作或获准使用的模型。", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                        Text("内置 Live2D 角色", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("已内置：${live2dModel.displayName}", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
+                        Text("模型、贴图、表情、物理与动作资源随 APK 一起安装。无需下载模型包或手动导入；主屏与背屏共用同一角色和 Agent 状态。", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
