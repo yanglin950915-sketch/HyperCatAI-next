@@ -2,17 +2,19 @@
 <resources>
     <!-- Keep the real Activity window in the same dark color as the first Compose frame. -->
     <style name="Theme.HyperCat" parent="android:style/Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowBackground">#F7F7F8</item>
         <item name="android:colorAccent">#E6E6E6</item>
-        <item name="android:statusBarColor">#000000</item>
-        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:statusBarColor">#F7F7F8</item>
+        <item name="android:navigationBarColor">#F7F7F8</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
     </style>
 
     <style name="Theme.HyperCat.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#000000</item>
+        <item name="windowSplashScreenBackground">#F7F7F8</item>
         <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
         <item name="postSplashScreenTheme">@style/Theme.HyperCat</item>
     </style>
