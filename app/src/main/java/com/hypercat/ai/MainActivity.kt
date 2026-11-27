@@ -158,6 +158,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        // The splash exit frame, Android window and initial Compose surface all use
+        // the same dark base color so no default light window can flash between them.
+        window.setBackgroundDrawableResource(android.R.color.black)
+        window.decorView.setBackgroundColor(android.graphics.Color.BLACK)
+        window.statusBarColor = android.graphics.Color.BLACK
+        window.navigationBarColor = android.graphics.Color.BLACK
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
         val updateCheck = PeriodicWorkRequestBuilder<ReleaseCheckWorker>(12, TimeUnit.HOURS).build()
         WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
             "hypercat-release-check", ExistingPeriodicWorkPolicy.KEEP, updateCheck
