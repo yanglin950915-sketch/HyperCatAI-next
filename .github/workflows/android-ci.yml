@@ -70,7 +70,7 @@ jobs:
           assert 'file:///android_asset/web/index.html' in rear_activity and 'addJavascriptInterface' in rear_activity, "direct rear display must use the shared anime renderer and Agent bridge"
           assert "aidl = true" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "Shizuku UserService AIDL support missing"
           assert "class RearShellUserService" in Path("app/src/main/java/com/hypercat/ai/rear/RearShellUserService.kt").read_text(encoding="utf-8"), "Shizuku shell service missing"
-          assert "versionName = \"0.9.38\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "versionName = \"0.9.39\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           assert "Theme.HyperCat.Starting" in Path("app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"), "launch splash theme missing"
           assert "core-splashscreen:1.2.0" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "SplashScreen compat dependency missing"
           assert "installSplashScreen()" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "SplashScreen must be installed before Compose content"
