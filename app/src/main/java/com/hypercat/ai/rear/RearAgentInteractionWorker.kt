@@ -21,8 +21,8 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
         val model = prefs.getString("model", "").orEmpty().trim()
         val apiKey = prefs.getString("api_key", "").orEmpty()
         if (endpoint.isBlank() || model.isBlank()) {
-            val current = PetStateStore.read(applicationContext)
-            PetStateStore.update(applicationContext, current.petName, current.petEmoji, "sad", "请先在主屏配置 Agent 模型，我就能回答你啦。")
+            val current = AvatarStateStore.read(applicationContext)
+            AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, "sad", "请先在主屏配置 Agent 模型，我就能回答你啦。")
             return@withContext Result.success()
         }
         try {
@@ -82,13 +82,13 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
                 listOf("惊讶", "哇", "竟然").any { reply.contains(it) } -> "surprised"
                 else -> "normal"
             }
-            val current = PetStateStore.read(applicationContext)
-            PetStateStore.update(applicationContext, current.petName, current.petEmoji, mood, reply, userText = if (action == "pet_voice") userText else eventPrompt)
+            val current = AvatarStateStore.read(applicationContext)
+            AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, mood, reply, userText = if (action == "pet_voice") userText else eventPrompt)
             Result.success()
         } catch (error: Exception) {
             if (runAttemptCount < 2) return@withContext Result.retry()
-            val current = PetStateStore.read(applicationContext)
-            PetStateStore.update(applicationContext, current.petName, current.petEmoji, "sad", "刚才没能连接到 Agent，请稍后再试。")
+            val current = AvatarStateStore.read(applicationContext)
+            AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, "sad", "刚才没能连接到 Agent，请稍后再试。")
             Result.success()
         }
     }
