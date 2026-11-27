@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Live2D</title>
+<style>
+  html, body { margin:0; padding:0; width:100%; height:100%; background:transparent; overflow:hidden;
+               -webkit-tap-highlight-color:transparent; }
+  #stage { position:fixed; left:0; top:0; width:100%; height:100%; }
+  canvas { display:block; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="pixi.min.js"></script>
+<script src="live2dcubismcore.min.js"></script>
+<script src="cubism4.min.js"></script>
+<script>
+/*
+ * Live2D 渲染宿主页。
+ *
+ * 与原生侧的契约（原生用 evaluateJavascript 调用，全部挂在 window.__l2d 上）：
+ *   __l2d.ready()                -> Boolean   模型是否已加载完成
+ *   __l2d.setMouth(v)            v: 0..1      口型开合，由原生按播放中 PCM 的 RMS 推
+ *   __l2d.setSpeaking(on)        Boolean      说话中（影响呼吸幅度与身体摆动）
+ *   __l2d.setEmotion(name)       String       内置表情名，见 EMOTIONS
+ *   __l2d.setGaze(x, y)          -1..1        眼球跟随
+ *   __l2d.poke(part)             String       'head' | 'body'，点击互动
+ *   __l2d.reset()                              重载模型
+ *   回调原生：window.NativeBridge.onReady() / onError(msg) / onPoke(part) / onFps(f)
+ *
+ * 模型目录通过 URL 参数 dir 传入，例如 render.html?dir=file:///data/user/0/<pkg>/files/models/xxx
+ * 该目录下必须存在 model.model3.json（或 name.model3.json）。
+ */
+(function () {
+  'use strict';
+
+  var params = new URLSearchParams(location.search);
+  var DIR = params.get('dir') || '';
+  if (DIR && DIR.charAt(DIR.length - 1) !== '/') DIR += '/';
+
+  // 初始构图由 URL 参数决定，原生侧后续可用 __l2d.setView() 动态切换。
+  var VIEW_HALF = params.get('half') === '1';
+  var VIEW_RATIO = parseFloat(params.get('ratio') || '0.48');
+
+  var NATIVE = window.NativeBridge || null;
+  function log() {
+    console.log.apply(console, arguments);
+  }
+  function fail(msg) {
+    console.error(msg);
+    if (NATIVE && NATIVE.onError) NATIVE.onError(String(msg));
+  }
+
+  // 由 PIXI 的 ticker 驱动，但所有可视状态都由原生侧写入，本页只做平滑。
+  var model = null;
+  var app = null;
+  var target = { mouth: 0, speaking: false, gazeX: 0, gazeY: 0 };
+  var smooth = { mouth: 0, gazeX: 0, gazeY: 0, angleX: 0, angleY: 0, bodyX: 0, pokeT: -10 };
+  var emotionTimer = 0;
+  var emotionOverride = null;
+  var startTs = 0;
+
+  // 构图模式。原生侧通过 __l2d.setView() 写入后立即 relayout。
+  var view = {
+    halfBody: VIEW_HALF,
+    halfBodyRatio: isFinite(VIEW_RATIO) ? Math.max(0.3, Math.min(0.8, VIEW_RATIO)) : 0.48
+  };
+
+  // 参数索引在加载后查一次，避免每帧按名字查表。
+  var P = {};
+
+  var EMOTIONS = {
+    happy:     { ParamEyeLSmile: 1, ParamEyeRSmile: 1, ParamMouthForm: 1, ParamBrowLY: 0.4, ParamBrowRY: 0.4 },
+    sad:       { ParamEyeLSmile: 0, ParamEyeRSmile: 0, ParamMouthForm: -0.8, ParamBrowLY: -0.6, ParamBrowRY: -0.6 },
+    angry:     { ParamEyeLSmile: 0, ParamEyeRSmile: 0, ParamMouthForm: -0.6, ParamBrowLY: -0.9, ParamBrowRY: -0.9, ParamAngleZ: -8 },
+    shy:       { ParamEyeLSmile: 0.6, ParamEyeRSmile: 0.6, ParamMouthForm: 0.4, ParamCheek: 1, ParamBrowLY: 0.2, ParamBrowRY: 0.2 },
+    curious:   { ParamEyeLSmile: 0.3, ParamEyeRSmile: 0.3, ParamMouthForm: 0.2, ParamBrowLY: 0.55, ParamBrowRY: 0.55, ParamAngleY: 4 },
+    thinking:  { ParamEyeLSmile: 0.1, ParamEyeRSmile: 0.1, ParamMouthForm: -0.1, ParamBrowLY: 0.25, ParamBrowRY: 0.25, ParamAngleY: 5 },
+    sleepy:    { ParamEyeLOpen: 0.25, ParamEyeROpen: 0.25, ParamMouthForm: 0.1 },
+    surprised: { ParamEyeLOpen: 1, ParamEyeROpen: 1, ParamMouthOpenY: 0.45, ParamBrowLY: 0.9, ParamBrowRY: 0.9 }
+  };
+
+  function pickSettingsFile(entries) {
+    // 优先 model.model3.json；否则取目录里唯一的 *.model3.json
+    return null;
+  }
+
+  function loadModel(dir, entry) {
+    var url = dir + (entry || 'model.model3.json');
+    log('L2D loading', url);
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'json';
+    xhr.onerror = function () { fail('xhr error ' + url); };
+    xhr.onload = function () {
+      if (xhr.status !== 200 && xhr.status !== 0) { fail('http ' + xhr.status + ' ' + url); return; }
+      var json = xhr.response;
+      if (!json) { fail('empty settings ' + url); return; }
+      try {
+        sanitizeSettings(json, dir, url);
+      } catch (e) {
+        fail('sanitize ' + e); return;
+      }
+      // 用改写后的 JSON 直接构造，避免再发一次请求（原包 Groups 里 EyeBlink/LipSync 是空数组，
+      // pixi-live2d-display 会因此完全不眨眼、不张嘴）。
+      var settings = new PIXI.live2d.Cubism4ModelSettings(json, dir);
+      PIXI.live2d.Live2DModel.from(settings, { autoInteract: false }).then(function (m) {
+        attach(m);
+      }).catch(function (e) {
+        fail('from ' + e);
+      });
+    };
+    xhr.send();
+  }
+
+  /**
+   * 修正模型设置：原导出包里 Groups.EyeBlink.Ids 与 Groups.LipSync.Ids 都是空数组，
+   * 且没有 Expressions 段。这里按 cdi3 里实际存在的参数名补齐，缺失的组直接删掉，
+   * 让 pixi-live2d-display 走自己的默认值。
+   */
+  function sanitizeSettings(json, dir, selfUrl) {
+    // Cubism4ModelSettings 的基类强制要求顶层存在字符串 url，否则直接抛
+    // TypeError: The `url` field in settings JSON must be defined as a string.
+    // 原导出包没有这个字段，必须自己补。
+    json.url = selfUrl;
+    if (!json.FileReferences) json.FileReferences = {};
+    var fr = json.FileReferences;
+
+    // 相对路径改成绝对，否则会相对 render.html 解析。
+    function abs(p) { return (p && p.indexOf('://') < 0 && p.charAt(0) !== '/') ? dir + p : p; }
+    if (fr.Moc) fr.Moc = abs(fr.Moc);
+    if (fr.Physics) fr.Physics = abs(fr.Physics);
+    if (fr.DisplayInfo) fr.DisplayInfo = abs(fr.DisplayInfo);
+    if (fr.Pose) fr.Pose = abs(fr.Pose);
+    if (fr.Textures) for (var i = 0; i < fr.Textures.length; i++) fr.Textures[i] = abs(fr.Textures[i]);
+    if (fr.Expressions) for (var j = 0; j < fr.Expressions.length; j++) {
+      if (fr.Expressions[j].File) fr.Expressions[j].File = abs(fr.Expressions[j].File);
+    }
+    if (fr.Motions) {
+      for (var g in fr.Motions) {
+        for (var k = 0; k < fr.Motions[g].length; k++) {
+          var mo = fr.Motions[g][k];
+          if (mo.File) mo.File = abs(mo.File);
+          if (mo.Sound) mo.Sound = abs(mo.Sound);
+        }
+      }
+    }
+
+    json.Groups = json.Groups || [];
+    var names = (json.Groups || []).map(function (g) { return g.Name; });
+    function has(n) { return names.indexOf(n) >= 0; }
+
+    if (!has('EyeBlink')) {
+      json.Groups.push({ Name: 'EyeBlink', Ids: ['ParamEyeLOpen', 'ParamEyeROpen'] });
+    } else {
+      json.Groups.forEach(function (g) {
+        if (g.Name === 'EyeBlink' && (!g.Ids || g.Ids.length === 0)) {
+          g.Ids = ['ParamEyeLOpen', 'ParamEyeROpen'];
+        }
+      });
+    }
+    if (!has('LipSync')) {
+      json.Groups.push({ Name: 'LipSync', Ids: ['ParamMouthOpenY'] });
+    } else {
+      json.Groups.forEach(function (g) {
+        if (g.Name === 'LipSync' && (!g.Ids || g.Ids.length === 0)) {
+          g.Ids = ['ParamMouthOpenY'];
+        }
+      });
+    }
+  }
+
+  function attach(m) {
+    model = m;
+    app.stage.addChild(model);
+
+    // 不能手动调 internalModel.update：库在 _render() 里已经用
+    //   internalModel.update(deltaTime, elapsedTime)
+    // 驱动它（第一个参数是「毫秒增量」，第二个是「毫秒累计」）。
+    // 之前手写成 update(nowMs, dtMs) 把两个参数传反，累计时间被当成每帧增量
+    // 喂给呼吸/摆动相位，于是动作飞快——这就是「抽搐/更快了」的真因。
+    // 保持 autoUpdate 默认 true，只把自己的写参数挂在 beforeModelUpdate 上，
+    // 它正好在 coreModel.update() 之前触发，时序最稳。
+    model.internalModel.on('beforeModelUpdate', onBeforeModelUpdate);
+
+    var core = model.internalModel.coreModel;
+    ['ParamAngleX', 'ParamAngleY', 'ParamAngleZ', 'ParamBodyAngleX', 'ParamBreath',
+     'ParamEyeLOpen', 'ParamEyeROpen', 'ParamMouthOpenY', 'ParamMouthForm',
+     'ParamEyeBallX', 'ParamEyeBallY', 'ParamBrowLY', 'ParamBrowRY', 'ParamCheek',
+     'ParamEyeLSmile', 'ParamEyeRSmile'].forEach(function (n) {
+      P[n] = core.getParameterIndex(n);
+    });
+    log('L2D params', JSON.stringify(P));
+
+    layout();
+    startTs = performance.now();
+    log('L2D_READY drawables=' + (model.internalModel.coreModel.getDrawableCount
+      ? model.internalModel.coreModel.getDrawableCount() : '?'));
+
+    if (NATIVE && NATIVE.onReady) NATIVE.onReady();
+  }
+
+  /**
+   * 按当前画布尺寸摆放模型。两种模式：
+   *
+   * - 全身（默认）：整体等比缩放到画面内，底部对齐。
+   * - 半身：只把「头顶 + 上半身」铺满画面，腿部自然裁到画外。小屏（480×640）
+   *   上全身立绘的脸只有 ~60dp 高，表情基本看不清；半身能给到 ~130dp。
+   *
+   * 必须幂等：`getBounds()` 返回的是**已乘过 scale 的世界坐标**，所以每次测量前
+   * 先把 scale 复位成 1、位置归零，否则第二次调用（旋转/切前后台触发 resize）
+   * 会把 0.1049 的 scale 当成原始尺寸又放大 ~9.3 倍，屏幕上只剩一坨巨物。
+   */
+  function layout() {
+    if (!model || !app) return;
+    var CW = app.renderer.width / app.renderer.resolution;
+    var CH = app.renderer.height / app.renderer.resolution;
+    if (CW <= 0 || CH <= 0) return;
+
+    model.scale.set(1);
+    model.position.set(0, 0);
+
+    var b = model.getBounds();
+    if (!(b.width > 0) || !(b.height > 0)) return;
+
+    var s, boxW, boxH;
+    if (view.halfBody) {
+      // 半身：只按高度定缩放，允许左右溢出到画外。
+      //
+      // 不能用 min(CW/w, CH/(h*ratio))：这个角色是细长的（3326×4992），
+      // 宽度约束永远比高度约束紧（400/3326=0.120 < 534/(4992*0.48)=0.223），
+      // 取 min 之后半身只剩 12% 的放大，等于没效果。要看清脸就必须牺牲两侧。
+      var ratio = Math.max(0.3, Math.min(0.8, view.halfBodyRatio));
+      s = CH / (b.height * ratio) * 0.98;
+      model.scale.set(s);
+      var bh = model.getBounds();
+      model.position.x += (CW - bh.width) / 2 - bh.x;
+      // 头顶对齐到画布上沿再往下留 3%，脸不会贴边。
+      model.position.y += CH * 0.03 - bh.y;
+      boxW = bh.width;
+      boxH = bh.height;
+    } else {
+      s = Math.min(CW / b.width, CH / b.height) * 0.98;
+      model.scale.set(s);
+      var bf = model.getBounds();
+      model.position.x += (CW - bf.width) / 2 - bf.x;
+      model.position.y += (CH - bf.height) - bf.y;
+      boxW = bf.width;
+      boxH = bf.height;
+    }
+    log('L2D layout canvas=' + CW.toFixed(1) + 'x' + CH.toFixed(1) +
+        ' half=' + view.halfBody + ' scale=' + s.toFixed(5) +
+        ' box=' + boxW.toFixed(1) + 'x' + boxH.toFixed(1));
+  }
+
+  function viewport() {
+    // WebView 里 window.innerWidth/innerHeight 是唯一可靠的尺寸来源；documentElement.clientWidth
+    // 在某些时序下会给出 0，必须兜底。
+    var W = window.innerWidth || document.documentElement.clientWidth || 640;
+    var H = window.innerHeight || document.documentElement.clientHeight || 480;
+    return { w: W > 0 ? W : 640, h: H > 0 ? H : 480 };
+  }
+
+  /**
+   * 把 canvas 显式钉成视口像素尺寸。
+   *
+   * 不能用 `style.width='100%'`：`#stage` 用 `position:absolute; inset:0` 时，在 WebView
+   * 里百分比高度会被解析成 0，canvas 于是变成 h=0 的不可见元素（GL 照常渲染、readPixels
+   * 有像素，但屏幕上一片空白）。改成 position:fixed + 显式 px 才稳定。
+   */
+  function applyCanvasSize(W, H) {
+    var v = app.view;
+    v.style.position = 'fixed';
+    v.style.left = '0';
+    v.style.top = '0';
+    v.style.width = W + 'px';
+    v.style.height = H + 'px';
+  }
+
+  function initPixi() {
+    var vp = viewport();
+    var W = vp.w, H = vp.h;
+    app = new PIXI.Application({
+      width: W, height: H,
+      backgroundAlpha: 0,
+      antialias: true,
+      autoDensity: true,
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      powerPreference: 'high-performance'
+    });
+    document.getElementById('stage').appendChild(app.view);
+    applyCanvasSize(W, H);
+
+    // 限制到 24fps。
+    //
+    // 这台机器（MT6761 + PowerVR GE8300）在 640×480 / 480×640 上跑满 60fps 会因为
+    // 贴图带宽吃紧而抖动，肉眼反而不如稳定 24。`PIXI.Ticker.shared` 同时驱动
+    // `_render()` 和 `autoUpdate`（→ internalModel.update），所以只调它的 maxFPS
+    // 就能让「渲染」和「模型动画」一起降速，不会出现画面 24fps 而动作 60fps 的撕裂。
+    var MAX_FPS = parseFloat(params.get('fps') || '24');
+    if (!isFinite(MAX_FPS) || MAX_FPS < 1) MAX_FPS = 24;
+    PIXI.Ticker.shared.maxFPS = MAX_FPS;
+    log('L2D fps cap=' + MAX_FPS);
+
+    // 只做 FPS 统计；参数写入全部交给 onBeforeModelUpdate。
+    var fpsAcc = 0, fpsLast = 0;
+    PIXI.Ticker.shared.add(function () {
+      if (!model) return;
+      fpsAcc++;
+      var now = performance.now();
+      if (now - fpsLast > 1000) {
+        if (fpsLast > 0) {
+          var fps = Math.round(fpsAcc * 1000 / (now - fpsLast));
+          if (NATIVE && NATIVE.onFps) NATIVE.onFps(fps);
+        }
+        fpsAcc = 0;
+        fpsLast = now;
+      }
+    });
+  }
+
+  /**
+   * 每帧写参数。由 internalModel 的 `beforeModelUpdate` 事件驱动，
+   * 时序是 motion/expression/eyeblink 之后、`coreModel.update()` 之前，
+   * 正是官方推荐的「外部覆盖参数」位置。
+   */
+  function onBeforeModelUpdate() {
+    if (!model) return;
+    var t = (performance.now() - startTs) / 1000;
+    var core = model.internalModel.coreModel;
+
+    // 平滑：口型快跟，视线慢跟，避免抖动。
+    var mouthTarget = target.speaking && target.mouth < 0.01 ? (0.10 + Math.max(0, Math.sin(t * 10.5)) * 0.42) : target.mouth;\n    smooth.mouth += (mouthTarget - smooth.mouth) * 0.45;
+    smooth.gazeX += (target.gazeX - smooth.gazeX) * 0.08;
+    smooth.gazeY += (target.gazeY - smooth.gazeY) * 0.08;
+
+    // 呼吸与轻微待机摆动由代码驱动（模型没有 motion3 文件）。
+    var breathAmp = target.speaking ? 0.9 : 0.55;
+    if (P.ParamBreath >= 0) core.setParameterValueByIndex(P.ParamBreath, 0.35 + Math.sin(t * 1.3) * 0.25 * breathAmp);
+    if (P.ParamBodyAngleX >= 0) core.setParameterValueByIndex(P.ParamBodyAngleX, Math.sin(t * 0.7) * 4 + smooth.mouth * 1.5);
+    if (P.ParamAngleZ >= 0) core.setParameterValueByIndex(P.ParamAngleZ, Math.sin(t * 0.5) * 3);
+    if (P.ParamAngleY >= 0) core.setParameterValueByIndex(P.ParamAngleY, Math.sin(t * 0.9) * 2.5);
+    if (P.ParamAngleX >= 0) core.setParameterValueByIndex(P.ParamAngleX, Math.sin(t * 0.35) * 3 + smooth.gazeX * 6);
+    if (P.ParamEyeBallX >= 0) core.setParameterValueByIndex(P.ParamEyeBallX, smooth.gazeX);
+    if (P.ParamEyeBallY >= 0) core.setParameterValueByIndex(P.ParamEyeBallY, smooth.gazeY);
+
+    if (P.ParamMouthOpenY >= 0) {
+      core.setParameterValueByIndex(P.ParamMouthOpenY, Math.max(0, Math.min(1, smooth.mouth)));
+    }
+    if (P.ParamMouthForm >= 0 && emotionOverride === null) {
+      core.setParameterValueByIndex(P.ParamMouthForm, target.speaking ? 0.15 : 0.3);
+    }
+
+    // 点击反馈：被戳后短时间内往前倾一下。
+    var sincePoke = t - smooth.pokeT;
+    if (sincePoke >= 0 && sincePoke < 0.45) {
+      var k = Math.sin((sincePoke / 0.45) * Math.PI);
+      if (P.ParamAngleZ >= 0) core.setParameterValueByIndex(P.ParamAngleZ, Math.sin(t * 0.5) * 3 + k * 9);
+      if (P.ParamAngleY >= 0) core.setParameterValueByIndex(P.ParamAngleY, k * -6);
+    }
+
+    // 表情覆盖：持续 1.6 秒后自动淡出。
+    if (emotionOverride) {
+      var age = t - emotionTimer;
+      if (age > 1.6) {
+        emotionOverride = null;
+      } else {
+        var fade = age > 1.1 ? (1.6 - age) / 0.5 : 1;
+        for (var name in emotionOverride) {
+          var idx = P[name];
+          if (idx !== undefined && idx >= 0) {
+            core.setParameterValueByIndex(idx, emotionOverride[name] * fade);
+          }
+        }
+      }
+    }
+  }
+
+  function onResize() {
+    if (!app) return;
+    var vp = viewport();
+    if (vp.w <= 0 || vp.h <= 0) return;
+    app.renderer.resize(vp.w, vp.h);
+    applyCanvasSize(vp.w, vp.h);
+    layout();
+  }
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', function () { setTimeout(onResize, 250); });
+
+  // 直接触摸角色：轻触、长按、拖动分别反馈给 Agent。
+  var pointerStart = null;
+  window.addEventListener('pointerdown', function (ev) {
+    pointerStart = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, at: performance.now(), moved: false };
+    try { ev.target.setPointerCapture(ev.pointerId); } catch (_) {}
+    target.gazeX = Math.max(-1, Math.min(1, (ev.clientX / Math.max(1, window.innerWidth) - .5) * 2));
+    target.gazeY = Math.max(-1, Math.min(1, (ev.clientY / Math.max(1, window.innerHeight) - .5) * 2));
+    smooth.pokeT = (performance.now() - startTs) / 1000;
+  }, { passive: true });
+  window.addEventListener('pointermove', function (ev) {
+    if (!pointerStart || pointerStart.id !== ev.pointerId) return;
+    var dx = ev.clientX - pointerStart.x, dy = ev.clientY - pointerStart.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 24) pointerStart.moved = true;
+    target.gazeX = Math.max(-1, Math.min(1, (ev.clientX / Math.max(1, window.innerWidth) - .5) * 2));
+    target.gazeY = Math.max(-1, Math.min(1, (ev.clientY / Math.max(1, window.innerHeight) - .5) * 2));
+  }, { passive: true });
+  function finishPointer(ev) {
+    if (!pointerStart || pointerStart.id !== ev.pointerId) return;
+    var elapsed = performance.now() - pointerStart.at;
+    var part = (pointerStart.y / Math.max(1, window.innerHeight)) < .48 ? 'head' : 'body';
+    var action = pointerStart.moved ? 'pet_drag' : (elapsed >= 520 ? 'pet_long_press' : 'pet_touch');
+    pointerStart = null;
+    if (NATIVE && NATIVE.onGesture) NATIVE.onGesture(action, part);
+    else if (NATIVE && NATIVE.onPoke) NATIVE.onPoke(part);
+  }
+  window.addEventListener('pointerup', finishPointer, { passive: true });
+  window.addEventListener('pointercancel', function () { pointerStart = null; }, { passive: true });
+
+  // ---- 原生接口 ----
+  window.__l2d = {
+    ready: function () { return !!model; },
+    setMouth: function (v) { target.mouth = Math.max(0, Math.min(1, v || 0)); },
+    setSpeaking: function (on) { target.speaking = !!on; },
+    setGaze: function (x, y) { target.gazeX = Math.max(-1, Math.min(1, x || 0)); target.gazeY = Math.max(-1, Math.min(1, y || 0)); },
+    /**
+     * 切换构图：半身（只留头与上半身）或全身。
+     * @param {boolean} halfBody
+     * @param {number} [ratio] 半身时占满画面的身高比例，0.3–0.8，默认 0.48
+     */
+    setView: function (halfBody, ratio) {
+      view.halfBody = !!halfBody;
+      if (typeof ratio === 'number' && isFinite(ratio)) {
+        view.halfBodyRatio = Math.max(0.3, Math.min(0.8, ratio));
+      }
+      layout();
+      return { halfBody: view.halfBody, ratio: view.halfBodyRatio };
+    },
+    setEmotion: function (name) {
+      var e = EMOTIONS[name];
+      if (!e) { emotionOverride = null; return; }
+      emotionOverride = e;
+      emotionTimer = (performance.now() - startTs) / 1000;
+    },
+    poke: function (part) {
+      smooth.pokeT = (performance.now() - startTs) / 1000;
+      if (NATIVE && NATIVE.onPoke) NATIVE.onPoke(part || 'body');
+      return true;
+    },
+    reset: function () { location.reload(); }
+  };
+
+  try {
+    initPixi();
+    loadModel(DIR, params.get('entry'));
+  } catch (e) {
+    fail('init ' + e);
+  }
+})();
+</script>
+</body>
+</html>
