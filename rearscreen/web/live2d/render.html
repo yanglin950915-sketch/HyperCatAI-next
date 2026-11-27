@@ -43,6 +43,8 @@
   // 初始构图由 URL 参数决定，原生侧后续可用 __l2d.setView() 动态切换。
   var VIEW_HALF = params.get('half') === '1';
   var VIEW_RATIO = parseFloat(params.get('ratio') || '0.48');
+  var VIEW_OFFSET_X = parseFloat(params.get('offsetX') || '0');
+  var PORTRAIT_CAPTURED = false;
 
   var NATIVE = window.NativeBridge || window.maml || null;
   function log() {
@@ -202,6 +204,7 @@
       ? model.internalModel.coreModel.getDrawableCount() : '?'));
 
     if (NATIVE && NATIVE.onReady) NATIVE.onReady();
+    capturePortraitWhenReady();
   }
 
   /**
@@ -241,6 +244,7 @@
       model.position.x += (CW - bh.width) / 2 - bh.x;
       // 头顶对齐到画布上沿再往下留 3%，脸不会贴边。
       model.position.y += CH * 0.03 - bh.y;
+      model.position.x += CW * VIEW_OFFSET_X;
       boxW = bh.width;
       boxH = bh.height;
     } else {
@@ -249,12 +253,34 @@
       var bf = model.getBounds();
       model.position.x += (CW - bf.width) / 2 - bf.x;
       model.position.y += (CH - bf.height) - bf.y;
+      model.position.x += CW * VIEW_OFFSET_X;
       boxW = bf.width;
       boxH = bf.height;
     }
     log('L2D layout canvas=' + CW.toFixed(1) + 'x' + CH.toFixed(1) +
         ' half=' + view.halfBody + ' scale=' + s.toFixed(5) +
         ' box=' + boxW.toFixed(1) + 'x' + boxH.toFixed(1));
+  }
+
+  function capturePortraitWhenReady() {
+    if (params.get('portrait') !== '1' || PORTRAIT_CAPTURED) return;
+    // Wait for at least one completed PIXI frame so the exported image contains the
+    // actual Live2D model texture and transparent background, not a placeholder.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        try {
+          var extract = app && app.renderer && app.renderer.plugins && app.renderer.plugins.extract;
+          if (!extract || !model || !NATIVE || !NATIVE.onPortrait) return;
+          var dataUrl = extract.base64(model);
+          if (dataUrl && dataUrl.indexOf('data:image/') === 0) {
+            PORTRAIT_CAPTURED = true;
+            NATIVE.onPortrait(dataUrl);
+          }
+        } catch (e) {
+          log('portrait capture failed', String(e));
+        }
+      });
+    });
   }
 
   function viewport() {
