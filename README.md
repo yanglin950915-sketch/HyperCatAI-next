@@ -1,6 +1,6 @@
 # HyperCat AI
 
-**HyperCat AI 是面向 Android 手机的 AI Agent 智能助手。** Agent 主应用可在其他 Android 设备上使用，不要求手机具备背屏；只有背屏虚拟形象投放与互动功能，目标机型包括 Xiaomi 17 Pro / 17 Pro Max、Xiaomi 18 Pro / 18 Pro Max；具体背屏能力仍需结合机型与系统版本进行实机验证。背屏不是独立宠物程序，而是 Agent 的第二交互界面：主屏与背屏共享角色资料、情绪和交互状态。
+**HyperCat AI 是面向 Android 手机的 AI Agent 智能助手。** Agent 主应用可在其他 Android 设备上使用，不要求手机具备背屏；只有背屏虚拟形象投放与互动功能，目标机型包括 Xiaomi 17 Pro / 17 Pro Max、Xiaomi 18 Pro / 18 Pro Max；具体背屏能力仍需结合机型与系统版本进行实机验证。背屏不是独立运行的宠物程序，而是 Agent 的第二交互界面：主屏与背屏共享角色资料、情绪和交互状态。
 
 - **当前版本：** 0.9.42（versionCode 61）
 - **平台：** Android
@@ -85,15 +85,15 @@
 
 ## Live2D 二次元虚拟形象（0.9.42 起）
 
-- 在「虚拟形象」设置中可导入用户自有的 Live2D Cubism ZIP 模型；当前渲染核心基于 Cubism 4.x，建议导入 Cubism 4 模型。压缩包需要包含 `.model3.json`、`.moc3` 和贴图目录。
+- 在「虚拟形象」设置中可导入用户自有的 Live2D Cubism ZIP 模型；当前渲染核心基于 Cubism 4.x，建议导入 Cubism 4 模型。ZIP 内需要包含 `*.model3.json`（也接受 `model3.json`）、对应 `.moc3` 和贴图文件；支持有限层级的嵌套 ZIP，不支持 RAR/7z。
 - 主屏资料卡、虚拟形象设置预览与独立背屏 Activity 共用同一模型与 Agent 情绪状态。
 - 支持眼球跟随、眨眼、呼吸/待机摆动、开心/难过/害羞/思考/好奇等表情，以及轻触、长按、拖动回传 Agent。
 - 云端 TTS 播放时，在麦克风权限已授予的情况下尝试读取播放波形驱动口型；系统 TTS 或无法读取波形时使用轻量说话口型动画。
-- 背屏资源包会将当前已导入模型一并打包，重新部署背屏卡片后即可尝试在 MAML WebView 中显示同一模型；不导入模型时仍使用原有轻量 Canvas 角色作为兼容回退。
-- 为控制发热和功耗，Live2D 默认限制主屏/背屏 WebGL 渲染帧率（背屏资源包默认 20 FPS，Android 宿主默认 24 FPS）。
+- 背屏渲染模板、PixiJS、Cubism 运行时和 MAML 清单已随 APK 内置；无需另行下载或手动导入背屏资源 ZIP。开启背屏投放时，应用会在本机自动组装所需卡片资源，并通过 Shizuku 部署到用户选择的主题卡片。
+- 为控制发热和功耗，Live2D 默认限制主屏/背屏 WebGL 渲染帧率（背屏 WebGL 默认 20 FPS，Android 宿主默认 24 FPS）。
 
 ### 模型与 SDK 授权
-本项目不内置第三方角色模型；用户需要导入本人制作或已获得再分发/使用许可的模型。PixiJS 与 pixi-live2d-display 按各自 MIT 许可保留声明。Live2D Cubism Core 是 Live2D 专有组件，不受本项目 MIT 许可覆盖，需遵守其原始许可与发行规则；公开发布前应核对当前 SDK 发行许可，尤其是允许终端用户导入模型的可扩展应用场景。详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+应用内置基础二次元虚拟形象回退表现与 Live2D 渲染运行时；第三方 Live2D 角色模型不随 APK 分发。用户可导入本人制作或已获得使用许可的模型。PixiJS 与 pixi-live2d-display 按各自 MIT 许可保留声明。Live2D Cubism Core 是 Live2D 专有组件，不受本项目 MIT 许可覆盖，需遵守其原始许可与发行规则；公开发布前应核对当前 SDK 发行许可，尤其是允许终端用户导入模型的可扩展应用场景。详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 权限与隐私
 - 麦克风、摄像头和位置权限按需申请。
@@ -107,7 +107,7 @@
 
 ## 0.9.42 更新
 - 引入 Live2D Cubism WebGL 渲染层和用户模型 ZIP 导入能力。
-- 主屏、独立背屏 Activity 与背屏 MAML 资源包共用 Live2D 模型；背屏部署包可携带当前模型。
+- 主屏、背屏 Activity 与 APK 内置的 MAML 模板共用 Live2D 模型；部署时由应用自动生成卡片文件，不再单独发布或要求手动导入资源 ZIP。
 - 增加 Agent 情绪表情、眼球跟随、待机动作、直接触摸/长按/拖动互动，以及 TTS 播放波形口型驱动（权限允许时）。
 - 保留无模型时的原有二次元 Canvas 回退显示。
 - 继续保留 0.9.41 的启动主题初始化和抽屉界面优化。
