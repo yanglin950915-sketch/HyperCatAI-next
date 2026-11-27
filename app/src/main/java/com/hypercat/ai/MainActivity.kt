@@ -2769,7 +2769,7 @@ private fun PetSettingsPage(
                 Box(
                     Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(20.dp))
                         .background(Brush.verticalGradient(listOf(Color(0xFFFFE6F0), Color(0xFFE9E8FF))))
-                        .pointerInput(selectedIndex) {
+                        .then(if (live2dModel == null) Modifier.pointerInput(selectedIndex) {
                             detectHorizontalDragGestures(
                                 onDragStart = { dragTotal = 0f },
                                 onHorizontalDrag = { change, amount -> change.consume(); dragTotal += amount },
@@ -2783,7 +2783,7 @@ private fun PetSettingsPage(
                                 onTap = { onPetInteraction("pet_touch") },
                                 onLongPress = { onPetInteraction("pet_long_press") }
                             )
-                        },
+                        } else Modifier),
                     contentAlignment = Alignment.Center
                 ) {
                     PetAvatarRenderer(selected.first, Modifier.fillMaxSize(), petMood, model = live2dModel) { action, _ -> onPetInteraction(action) }
