@@ -37,12 +37,16 @@ object RearAgentInteractionDispatcher {
             else -> "收到你的虚拟形象互动啦！"
         }
         AvatarStateStore.update(context, current.avatarName, current.avatarId, immediateMood, immediateReply, userText = userText)
+        val interactionId = System.currentTimeMillis()
+        context.getSharedPreferences("hypercat_avatar", Context.MODE_PRIVATE)
+            .edit().putLong("active_interaction_id", interactionId).commit()
         val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         val request = OneTimeWorkRequestBuilder<RearAgentInteractionWorker>()
             .setConstraints(constraints)
             .setInputData(workDataOf(
                 RearAgentInteractionWorker.KEY_ACTION to normalizedAction,
-                RearAgentInteractionWorker.KEY_USER_TEXT to userText.take(1000)
+                RearAgentInteractionWorker.KEY_USER_TEXT to userText.take(1000),
+                RearAgentInteractionWorker.KEY_INTERACTION_ID to interactionId
             )).build()
         WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
         return true
