@@ -33,6 +33,9 @@ fun Live2DView(
     speaking: Boolean = false,
     halfBody: Boolean = true,
     safeTopRatio: Float = 0f,
+    safeLeftRatio: Float = 0f,
+    safeRightRatio: Float = 0f,
+    safeBottomRatio: Float = 0f,
     rearDisplay: Boolean = false,
     showInterface: Boolean = false,
     onGesture: (String, String) -> Unit = { _, _ -> },
@@ -111,7 +114,7 @@ fun Live2DView(
             webView.destroy()
         }
     }
-    LaunchedEffect(model.directory, model.entry, halfBody, safeTopRatio, rearDisplay) {
+    LaunchedEffect(model.directory, model.entry, halfBody, safeTopRatio, safeLeftRatio, safeRightRatio, safeBottomRatio, rearDisplay) {
         state = Live2DRenderState()
         val dir = android.net.Uri.encode(model.directory, "/:")
         val entry = android.net.Uri.encode(model.entry, "/")
@@ -119,8 +122,11 @@ fun Live2DView(
         // composited frame visible during navigation caused motion trails on fast swaps.
         // Main-screen rendering remains centred in the full viewport. Only the
         // rear-display host receives the measured camera/cutout safe-area inset.
-        val rearSafeTop = if (rearDisplay) safeTopRatio.coerceIn(0f, 0.30f) else 0f
-        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&safeTop=$rearSafeTop&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=0"
+        val rearSafeTop = if (rearDisplay) safeTopRatio.coerceIn(0f, 0.95f) else 0f
+        val rearSafeLeft = if (rearDisplay) safeLeftRatio.coerceIn(0f, 0.95f) else 0f
+        val rearSafeRight = if (rearDisplay) safeRightRatio.coerceIn(0f, 0.95f) else 0f
+        val rearSafeBottom = if (rearDisplay) safeBottomRatio.coerceIn(0f, 0.95f) else 0f
+        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&safeTop=$rearSafeTop&safeLeft=$rearSafeLeft&safeRight=$rearSafeRight&safeBottom=$rearSafeBottom&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=0"
         webView.stopLoading()
         webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         webView.loadUrl("about:blank")
