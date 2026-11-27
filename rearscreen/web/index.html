@@ -57,10 +57,10 @@ var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:fal
 // If the deployed card contains a user-imported Cubism model, layer its Live2D renderer
 // over the existing lightweight canvas character. The canvas remains underneath as fallback.
 (function activateImportedLive2D(){
-  fetch("models/active/model-entry.json").then(function(response){
-    if(!response.ok)throw new Error("no imported Live2D model");
-    return response.json();
-  }).then(function(info){
+  var marker=document.createElement("script");
+  marker.src="models/active/model-entry.js";
+  marker.onload=function(){
+    var info=window.HyperCatLive2DModel;
     if(!info || !info.entry)return;
     var frame=document.createElement("iframe");
     frame.id="live2d-stage";
@@ -72,8 +72,10 @@ var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:fal
       if(frame.contentWindow&&frame.contentWindow.__l2d)frame.contentWindow.__l2d.setEmotion(names[mood]||"neutral");
     });
     document.body.appendChild(frame);
-  }).catch(function(){ /* No imported model: keep the built-in canvas renderer. */ });
-})();
+  };
+  marker.onerror=function(){ /* No imported model: keep the built-in canvas renderer. */ };
+  document.head.appendChild(marker);
+})();;
 var W=0,H=0,dpr=1,CAM=0,FIT=1,DX=0,DY=0;
 var rafPend=false,paused=false,lastDraw=-1e9,lastFrame=0,animTime=0,dead=false;
 var mood=0,localMoodUntil=0,blink=0,blinkAt=0,nextBlink=1900,gazeX=0,gazeY=0,petEmoji="sakura";
