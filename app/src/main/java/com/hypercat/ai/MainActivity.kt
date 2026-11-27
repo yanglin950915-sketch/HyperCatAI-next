@@ -790,6 +790,14 @@ private fun HyperCatApp() {
             chatPrefs.edit().putString("chat_session_$currentSessionTitle", serializeChatHistory(messages)).apply()
         }
     }
+
+    // Keep the active conversation visible to rear-screen Agent workers.
+    LaunchedEffect(currentSessionTitle) {
+        chatPrefs.edit().apply {
+            if (currentSessionTitle.isBlank()) remove("current_session_title")
+            else putString("current_session_title", currentSessionTitle)
+        }.apply()
+    }
     LaunchedEffect(recentPrompts) {
         if (messages.isEmpty() && currentSessionTitle.isBlank()) {
             val latest = recentPrompts.firstOrNull().orEmpty()
