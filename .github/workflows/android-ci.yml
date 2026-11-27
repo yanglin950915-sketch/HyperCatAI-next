@@ -1,7 +1,7 @@
 name: Android CI
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/direct-rear-projection-v0.9.24 ]
   pull_request:
     branches: [ main, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.24 ]
 permissions:

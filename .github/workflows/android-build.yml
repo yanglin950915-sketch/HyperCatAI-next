@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.24]
   push:
-    branches: [main, feat/multi-pet-engine]
+    branches: [main, feat/multi-pet-engine, feature/direct-rear-projection-v0.9.24]
   workflow_dispatch:
 
 permissions:
@@ -80,7 +80,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Publish GitHub Release for pushed versions
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
