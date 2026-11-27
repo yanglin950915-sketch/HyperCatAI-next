@@ -452,7 +452,7 @@ private fun exportRearWidgetPackage(context: Context) {
         val directory = File(context.cacheDir, "rear-widget").apply { mkdirs() }
         val archive = File(directory, "HyperCatAI-RearWidget.zip")
         ZipOutputStream(FileOutputStream(archive)).use { zip ->
-            listOf("manifest.xml", "web/index.html").forEach { assetPath ->
+            listOf("manifest.xml", "web/index.html", "REAREye_IMPORT_PROMPT.md").forEach { assetPath ->
                 zip.putNextEntry(ZipEntry(assetPath))
                 context.assets.open(assetPath).use { input -> input.copyTo(zip) }
                 zip.closeEntry()
