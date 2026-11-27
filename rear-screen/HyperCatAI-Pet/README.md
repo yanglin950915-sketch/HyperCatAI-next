@@ -22,7 +22,7 @@ Release 会额外提供 `HyperCatAI-rearscreen-v0.9.21.zip`，ZIP 根目录直�
 - 背屏触摸通过 WebView 内部 `Triggers` 发送显式包名广播，主应用统一写回萌宠状态。
 
 ## 外观与适配
-- 976×596 横向设计基准，左侧约三分之一留作摄像头避让区；背景铺满，文字和触摸目标仅放在可用区域。
+- 904×572 横向设计基准，左侧约三分之一留作摄像头避让区；背景铺满，文字和触摸目标仅放在可用区域。
 - Canvas 使用 CSS 视口与 DPR 分离的 backing store，自动适配实际背屏 WebView 视口。
 - 单文件离线 HTML；无在线脚本、图片、字体或 CDN。
 - 支持 init/resume/pause/enterAod/exitAod 生命周期，AOD 或暂停时停止动画循环。
