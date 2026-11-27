@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 
-/** Converts a verified rear-screen gesture into a durable Agent interaction. */
+/** Converts a verified native MAML rear-screen gesture into a durable Agent interaction. */
 class RearPetInteractionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_PET_INTERACTION) return
