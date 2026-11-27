@@ -145,7 +145,7 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         @JavascriptInterface
         fun doAction(action: String) {
             activity.runOnUiThread {
-                if (action in setOf("pet_touch", "pet_happy", "pet_long_press", "pet_thinking", "pet_rest")) {
+                if (action in setOf("pet_touch", "pet_happy", "pet_long_press", "pet_drag", "pet_thinking", "pet_rest")) {
                     RearAgentInteractionDispatcher.enqueue(activity, action)
                 }
             }
