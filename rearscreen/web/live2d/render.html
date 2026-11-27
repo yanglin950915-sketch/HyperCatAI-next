@@ -66,8 +66,10 @@
   if (params.get('safeLeft') === null && window.maml) {
     SAFE_LEFT_RATIO = 0.32;
   }
-  // Fine-tune the visual centre slightly left without shrinking the camera safe area.
-  var VIEW_OFFSET_X = -0.07;
+  // Keep the horizontal adjustment isolated to the rear display. The same renderer
+  // is also used by the main-screen avatar, which must remain centred.
+  var IS_REAR_DISPLAY = params.get('rear') === '1' || !!window.maml;
+  var VIEW_OFFSET_X = IS_REAR_DISPLAY ? -0.07 : 0;
   var PORTRAIT_CAPTURED = false;
   // Per-model horizontal correction. Default is zero; only Xiaomi Rice receives a tuned value.
   var MODEL_OFFSET_X = parseFloat(params.get('offsetX') || '0');
