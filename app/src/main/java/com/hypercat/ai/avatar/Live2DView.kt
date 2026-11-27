@@ -37,11 +37,11 @@ fun Live2DView(
     onPortrait: (String) -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var state by remember(model.directory, model.entry) { mutableStateOf(Live2DRenderState()) }
+    var state by remember { mutableStateOf(Live2DRenderState()) }
     val latestGesture by androidx.compose.runtime.rememberUpdatedState(onGesture)
     val latestState by androidx.compose.runtime.rememberUpdatedState(onState)
     val latestPortrait by androidx.compose.runtime.rememberUpdatedState(onPortrait)
-    val controller = remember(model.directory, model.entry) { Live2DController() }
+    val controller = remember { Live2DController() }
     val bridge = remember(controller) {
         object {
             @JavascriptInterface fun onReady() {
@@ -79,7 +79,7 @@ fun Live2DView(
                 @Suppress("DEPRECATION")
                 allowUniversalAccessFromFileURLs = true
                 mediaPlaybackRequiresUserGesture = false
-                cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
                 mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
             }
             addJavascriptInterface(bridge, "NativeBridge")
@@ -107,10 +107,13 @@ fun Live2DView(
         }
     }
     LaunchedEffect(model.directory, model.entry, halfBody) {
+        state = Live2DRenderState()
         val dir = android.net.Uri.encode(model.directory, "/:")
         val entry = android.net.Uri.encode(model.entry, "/")
-        // Center each character using its measured model bounds.
-        val offsetX = "0"
+        // Rice's artwork is optically left-heavy inside its mesh bounds; apply a small
+        // per-character optical correction after geometric centering.
+        val offsetX = if (model.id == "rice") "0.10" else "0"
+        webView.stopLoading()
         webView.loadUrl("file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=${if (halfBody) 1 else 0}&ratio=0.55&fps=60&offsetX=$offsetX&portrait=1")
     }
     LaunchedEffect(mood, state.ready) {
