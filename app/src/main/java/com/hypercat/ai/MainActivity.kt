@@ -174,9 +174,11 @@ private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
-        // Resolve saved appearance before the first Activity/Compose frame.
+        var splashThemeReady = false
+        splashScreen.setKeepOnScreenCondition { !splashThemeReady }
+        // Resolve the user's app appearance before allowing the system splash to exit.
         // Avoid the former one-frame black flash before Compose SideEffect updated it.
         val initialDark = resolveInitialDarkMode(this)
         appDarkState = initialDark
@@ -205,11 +207,18 @@ class MainActivity : ComponentActivity() {
             }
             window.decorView.systemUiVisibility = systemUi
         }
+        // Keep the platform splash visible until the saved app theme has been applied
+        // to both the Activity window behind it and the outgoing splash surface.
+        splashScreen.setOnExitAnimationListener { provider ->
+            provider.view.setBackgroundColor(initialWindowColor)
+            provider.remove()
+        }
         val updateCheck = PeriodicWorkRequestBuilder<ReleaseCheckWorker>(12, TimeUnit.HOURS).build()
         WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
             "hypercat-release-check", ExistingPeriodicWorkPolicy.KEEP, updateCheck
         )
         setContent { HyperCatApp() }
+        splashThemeReady = true
     }
 }
 
