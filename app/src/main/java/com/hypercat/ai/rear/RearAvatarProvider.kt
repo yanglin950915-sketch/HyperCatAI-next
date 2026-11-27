@@ -8,48 +8,45 @@ import android.net.Uri
 import android.os.Binder
 import org.json.JSONObject
 
-/**
- * Read-only state bridge for Xiaomi's native MAML host. Only the verified system
- * Theme Manager UID may query it; arbitrary third-party apps cannot read Agent reply text.
- */
+/** Read-only virtual-avatar state bridge for Xiaomi's native MAML host. */
 class RearAvatarProvider : ContentProvider() {
     override fun onCreate(): Boolean = true
 
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor {
         val appContext = requireNotNull(context)
         if (!RearCallerVerifier.isTrustedUid(appContext, Binder.getCallingUid())) {
-            throw SecurityException("Only Xiaomi Theme Manager may read HyperCat AI rear-pet state")
+            throw SecurityException("Only Xiaomi Theme Manager may read HyperCat AI avatar state")
         }
-        if (uri.authority != AUTHORITY || uri.path != "/pet-state") {
-            throw IllegalArgumentException("Unknown HyperCat rear-state URI")
+        if (uri.authority != AUTHORITY || uri.path !in setOf("/avatar-state", "/pet-state")) {
+            throw IllegalArgumentException("Unknown HyperCat avatar-state URI")
         }
-        return cursor(readPetJson())
+        return cursor(readAvatarJson())
     }
 
-    private fun readPetJson(): String {
-        val prefs = requireNotNull(context).getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+    private fun readAvatarJson(): String {
+        val state = AvatarStateStore.read(requireNotNull(context))
         return JSONObject()
-            .put("avatar_name", prefs.getString("pet_name", "小橘") ?: "小橘")
-            .put("pet_name", prefs.getString("pet_name", "小橘") ?: "小橘")
-            .put("avatar_id", prefs.getString("pet_emoji", "sakura") ?: "sakura")
-            .put("pet_emoji", prefs.getString("pet_emoji", "sakura") ?: "sakura")
-            .put("mood", prefs.getString("mood", "IDLE") ?: "IDLE")
-            .put("reply", prefs.getString("reply", "你好！我是你的虚拟形象。") ?: "")
-            .put("updated_at", prefs.getLong("updated_at", 0L).toString())
-            .put("enabled", prefs.getBoolean("rear_pet_enabled", false))
-            .put("user_text", prefs.getString("user_text", "") ?: "")
-            .put("background_color", prefs.getString("background_color", "#080B12") ?: "#080B12")
+            .put("avatar_name", state.avatarName)
+            .put("avatar_id", state.avatarId)
+            // Compatibility aliases for MAML cards deployed by older app versions.
+            .put("pet_name", state.avatarName)
+            .put("pet_emoji", state.avatarId)
+            .put("mood", state.mood)
+            .put("reply", state.reply)
+            .put("updated_at", state.updatedAt.toString())
+            .put("enabled", state.enabled)
+            .put("user_text", state.userText)
+            .put("background_color", state.backgroundColor)
             .toString()
     }
 
     private fun cursor(json: String): Cursor = MatrixCursor(arrayOf("result")).apply { addRow(arrayOf(json)) }
-    override fun getType(uri: Uri): String = "vnd.android.cursor.item/vnd.hypercat.pet-state"
+    override fun getType(uri: Uri): String = "vnd.android.cursor.item/vnd.hypercat.avatar-state"
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
 
     companion object {
         private const val AUTHORITY = "com.hypercat.ai.rear.provider"
-        private const val PREFS = "hypercat_rear_pet"
     }
 }
