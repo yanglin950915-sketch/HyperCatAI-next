@@ -76,13 +76,17 @@ jobs:
               assert (live2d / asset).is_file() and (live2d / asset).stat().st_size > 1000, f"Live2D renderer asset missing: {asset}"
           model_store = Path("app/src/main/java/com/hypercat/ai/avatar/Live2DModelStore.kt").read_text(encoding="utf-8")
           live2d_view = Path("app/src/main/java/com/hypercat/ai/avatar/Live2DView.kt").read_text(encoding="utf-8")
-          assert "importZip" in model_store and ".model3.json" in model_store and "160L * 1024L * 1024L" in model_store, "safe user model ZIP import missing"
+          assert "Haru.model3.json" in model_store and "file:///android_asset/avatar/default/" in model_store, "built-in Live2D model default missing"
+          assert "importZip" not in model_store and "modelPicker" not in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "user model import UI must be removed"
+          gradle = Path("app/build.gradle.kts").read_text(encoding="utf-8")
+          assert "downloadBuiltInAvatar" in gradle and "CubismWebSamples" in gradle and "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd" in gradle, "pinned official Live2D sample build task missing"
+          assert "addAssetTree" in package_builder, "rear package must include built-in Live2D model from APK assets"
           assert "Live2DView" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8") and "Live2DView" in rear_activity, "main/rear Live2D host integration missing"
           assert "model-entry.js" in package_builder and "Live2DModelStore.current" in package_builder, "rear package must bundle imported Live2D model"
           assert "onGesture" in (live2d / "render.html").read_text(encoding="utf-8"), "Live2D touch gesture bridge missing"
           assert "Visualizer" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "TTS waveform mouth driver missing"
           assert "Live2D Cubism Core" in Path("THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8"), "Live2D proprietary license notice missing"
-          assert "versionName = \"0.9.43\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "versionName = \"0.9.44\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           assert "Theme.HyperCat.Starting" in Path("app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"), "launch splash theme missing"
           styles = Path("app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           assert 'windowSplashScreenBackground">#F7F7F8' in styles and 'android:windowBackground">#F7F7F8' in styles, "light splash and Activity backgrounds must match"
