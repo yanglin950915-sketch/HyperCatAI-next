@@ -8,23 +8,19 @@
 
 - Android 主屏使用 Jetpack Compose 承载虚拟形象界面。
 - Live2D 由 `Live2DView` 在 WebView 中加载 APK 内置的 PixiJS、Cubism 4 渲染脚本和用户模型。
-- 用户模型保存在应用私有目录；导入成功后主屏和背屏读取同一份模型状态。
-- 未导入 Live2D 模型时，主屏与背屏仍使用 APK 内置的轻量二次元形象作为回退显示。
+- 默认 Live2D 模型资源随 APK 内置；主屏和背屏读取同一份内置模型状态。
+- 默认直接显示完整 Live2D 二次元角色，不再以简笔画或轻量 Canvas 形象作为默认回退。
 - 背屏 MAML 模板位于仓库 `rearscreen/`，由 Gradle 作为 Android assets 打入 APK。
 
-## 模型导入约定
+## 内置模型资源约定
 
-一个模型 ZIP 应包含一个 Cubism 3/4 模型入口、其 MOC3 文件和入口 JSON 引用的贴图。入口可命名为 `<角色名>.model3.json`，也兼容 `model3.json`。
+- 默认角色采用 Live2D 官方原创角色 Haru 样例。
+- 构建任务从固定 commit 的 `Live2D/CubismWebSamples` 获取 `Samples/Resources/Haru`，包括模型入口、MOC3、高清纹理、物理、表情、动作和音频资源。
+- 构建产物将模型写入 APK assets 的 `avatar/default/`；首次安装无需网络下载或导入模型 ZIP。
+- `Live2DModelStore` 始终返回 APK 内置模型；主屏 WebGL Host 和背屏 MAML 部署共用该入口。
+- 背屏部署器从 APK assets 读取模型目录并打入本机生成的 MAML 部署包。
+- 模型素材使用必须遵守 Live2D Free Material License Agreement 与 Cubism Sample Data Terms of Use，并保留版权声明。素材来源和许可说明见 `THIRD_PARTY_NOTICES.md` 与 `LICENSES/live2d-haru-sample-NOTICE.txt`。
 
-导入器负责：
-
-1. 递归扫描模型目录，支持有限层级的 ZIP 嵌套。
-2. 检查模型入口、`FileReferences.Moc`、`FileReferences.Textures` 及资源相对路径。
-3. 限制解压总量、文件条目数量和嵌套层级。
-4. 阻止 Zip Slip、绝对路径和越界资源引用。
-5. 一个 ZIP 发现多个模型入口时要求用户拆分模型包，避免静默选择错误角色。
-
-当前只支持 ZIP；RAR/7z、Cubism 2 的 `.model.json` 不属于支持范围。模型必须由用户合法取得，仓库不收录未经授权的第三方模型。
 
 ## Agent 与形象的交互协议
 
@@ -41,7 +37,7 @@ Agent 不直接操作 WebGL、模型骨骼或贴图。Android 层把业务状态
 ## 背屏资源打包
 
 - `app/build.gradle.kts` 将 `../rearscreen` 加入 APK assets；用户无需另行下载或手动导入背屏资源 ZIP。
-- 用户开启背屏投放并选择目标卡片后，`RearCardPackageBuilder` 从 APK assets 组装 MAML 部署文件，并将当前已导入的 Live2D 模型一并打包。
+- 用户开启背屏投放并选择目标卡片后，`RearCardPackageBuilder` 从 APK assets 组装 MAML 部署文件，并将 APK 内置的 Live2D Haru 模型一并打包。
 - `RearProjectionController` 通过 Shizuku 将生成的卡片部署到用户明确选择的主题卡片目录。
 - 运行时生成的 MAML ZIP 是系统主题卡片格式，不是应用安装依赖；构建流水线只发布 APK。
 
@@ -56,7 +52,7 @@ Agent 不直接操作 WebGL、模型骨骼或贴图。Android 层把业务状态
 ## 验收标准
 
 - 无模型时首次安装即可显示内置虚拟形象，不出现空白黑屏或要求导入背屏 ZIP。
-- 导入合法 Cubism 4 ZIP 后，主屏预览和背屏使用同一角色。
+- 主屏预览和背屏默认使用同一内置 Live2D 角色。
 - 轻触、长按、拖动均能回传 Agent，并显示对应反馈。
 - Agent 思考、回复、朗读和错误状态能同步到形象。
 - 资源部署失败时明确报告失败，不将“ZIP 已生成”误报为“背屏显示成功”。
