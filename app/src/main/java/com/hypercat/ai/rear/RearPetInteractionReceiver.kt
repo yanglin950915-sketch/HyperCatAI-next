@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.work.ExistingWorkPolicy
+import androidx.work.Constraints
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
@@ -39,7 +41,11 @@ class RearPetInteractionReceiver : BroadcastReceiver() {
 
         // WorkManager survives the UI being backgrounded or recreated. APPEND
         // preserves rapid successive touches instead of silently replacing them.
+        val networkConstraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
         val request = OneTimeWorkRequestBuilder<RearAgentInteractionWorker>()
+            .setConstraints(networkConstraints)
             .setInputData(workDataOf(RearAgentInteractionWorker.KEY_ACTION to action))
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
