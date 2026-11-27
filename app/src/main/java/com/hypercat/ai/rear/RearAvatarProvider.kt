@@ -29,7 +29,9 @@ class RearAvatarProvider : ContentProvider() {
     private fun readPetJson(): String {
         val prefs = requireNotNull(context).getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
         return JSONObject()
+            .put("avatar_name", prefs.getString("pet_name", "小橘") ?: "小橘")
             .put("pet_name", prefs.getString("pet_name", "小橘") ?: "小橘")
+            .put("avatar_id", prefs.getString("pet_emoji", "sakura") ?: "sakura")
             .put("pet_emoji", prefs.getString("pet_emoji", "sakura") ?: "sakura")
             .put("mood", prefs.getString("mood", "IDLE") ?: "IDLE")
             .put("reply", prefs.getString("reply", "你好！我是你的虚拟形象。") ?: "")
