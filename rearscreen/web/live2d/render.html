@@ -40,15 +40,15 @@
   'use strict';
 
   var params = new URLSearchParams(location.search);
-  var SHOW_INTERFACE = params.get('ui') === '1';
+  var SHOW_INTERFACE = params.get('ui') !== '0';
   // Resolve model assets against this document, not the MAML host's working directory.
   // The rear card hosts this renderer directly, without a nested file:// iframe.
   var DIR = new URL(params.get('dir') || '../models/active/', document.baseURI).href;
   if (DIR.charAt(DIR.length - 1) !== '/') DIR += '/';
 
   // 初始构图由 URL 参数决定，原生侧后续可用 __l2d.setView() 动态切换。
-  var VIEW_HALF = params.get('half') === '1';
-  var VIEW_RATIO = parseFloat(params.get('ratio') || '0.48');
+  var VIEW_HALF = params.get('half') !== '0';
+  var VIEW_RATIO = parseFloat(params.get('ratio') || '0.78');
   var VIEW_OFFSET_X = 0;
   var PORTRAIT_CAPTURED = false;
   // Per-model horizontal correction. Default is zero; only Xiaomi Rice receives a tuned value.
@@ -164,16 +164,23 @@
     json.url = new URL(selfUrl, document.baseURI).href;
     if (!json.FileReferences) json.FileReferences = {};
     var fr = json.FileReferences;
+    var modelDirectoryUrl = new URL('.', json.url).href;
 
-    // Validate and normalize model-relative paths without changing their base.
+    // Resolve every model-relative asset to a complete file URL before handing
+    // settings to Cubism. This avoids differences between MAML WebView and the
+    // app WebView URL resolvers, and prevents accidental directory duplication.
     function abs(p) {
       if (!p) return p;
       var normalized = String(p).split(String.fromCharCode(92)).join('/');
       if (normalized.indexOf('://') >= 0 || normalized.charAt(0) === '/' ||
           normalized.split('/').indexOf('..') >= 0) {
-        throw new Error('model asset path escapes its imported directory');
+        throw new Error('model asset path escapes its imported directory: ' + normalized);
       }
-      return normalized;
+      var resolved = new URL(normalized, json.url).href;
+      if (resolved.indexOf(modelDirectoryUrl) !== 0) {
+        throw new Error('model asset resolved outside its package: ' + resolved);
+      }
+      return resolved;
     }
     if (fr.Moc) fr.Moc = abs(fr.Moc);
     if (fr.Physics) fr.Physics = abs(fr.Physics);
