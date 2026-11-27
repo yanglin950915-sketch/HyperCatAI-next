@@ -28,6 +28,8 @@ jobs:
           assert webview is not None, "REAREye WebView element missing"
           assert webview.attrib.get("local") == "true", "WebView must load local assets"
           assert webview.attrib.get("cachePage") == "false", "rear WebView must not retain stale avatar page cache"
+          assert "__setAgentJson" in Path("rearscreen/web/index.html").read_text(encoding="utf-8"), "MAML JSON state bridge missing"
+          assert "background_color" in Path("app/src/main/java/com/hypercat/ai/rear/RearPetProvider.kt").read_text(encoding="utf-8"), "rear background state missing"
           assert webview.attrib.get("uri") == "web/index.html", "WebView entry point mismatch"
           assert root.attrib.get("screenWidth") == "976", "target rear width mismatch"
           assert root.find("VariableBinders") is not None, "Agent data binder missing"
