@@ -183,115 +183,7 @@ function roundedRect(x,y,w,h,r){
   ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
   ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
 }
-function drawEye(x,y,w,h,blinkAmount,pupilScale){
-  var eh=Math.max(2,h*(1-blinkAmount*.94));
-  ctx.save();ctx.fillStyle="#7de5ff";
-  ctx.beginPath();ctx.ellipse(x,y,w/2,eh/2,0,0,Math.PI*2);ctx.fill();
-  if(pupilScale>.05&&blinkAmount<.72){
-    var pr=Math.min(w,eh)*.30*pupilScale,px=x+gazeX*w*.12,py=y+gazeY*h*.08;
-    ctx.fillStyle="#06182b";ctx.beginPath();ctx.ellipse(px,py,pr*.82,pr,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(px-pr*.25,py-pr*.34,Math.max(2,pr*.2),0,Math.PI*2);ctx.fill();
-  }
-  ctx.restore();
-}
-var avatarImages = {};
-var avatarPalette = {
-  sakura:{hair:"#d978a0",light:"#ffc2d9",dark:"#783a60",eye:"#c85d86",dress:"#f5a7c2",ribbon:"#ffe08a"},
-  aoi:{hair:"#4f8bd7",light:"#a9e5ff",dark:"#233c78",eye:"#3e9bd3",dress:"#83d5ef",ribbon:"#fff5fb"},
-  luna:{hair:"#9c91d9",light:"#e8e4ff",dark:"#4b466f",eye:"#8875d7",dress:"#b8aaf0",ribbon:"#ffe9a8"},
-  yuna:{hair:"#bd638f",light:"#ffd0e4",dark:"#6d355d",eye:"#aa62b5",dress:"#ee9fc4",ribbon:"#fff1f7"}
-};
-function avatarSvg(id){
-  var c=avatarPalette[id]||avatarPalette.sakura;
-  var tails=id==="yuna"
-    ? '<path d="M190 150 C65 125 45 300 125 415 Q185 430 205 300Z" fill="url(#hair)"/><path d="M450 150 C575 125 595 300 515 415 Q455 430 435 300Z" fill="url(#hair)"/><path d="M125 170 Q55 120 100 95 Q175 85 205 155Z" fill="'+c.light+'"/><path d="M515 170 Q585 120 540 95 Q465 85 435 155Z" fill="'+c.light+'"/>'
-    : id==="luna"
-      ? '<path d="M175 155 Q65 265 125 485 L205 440Z M465 155 Q575 265 515 485 L435 440Z" fill="url(#hair)"/>'
-      : id==="aoi" ? '<path d="M430 145 Q560 130 540 300 Q510 355 465 315Z" fill="url(#hair)"/>'
-      : '<path d="M170 170 Q90 285 150 455 L215 405Z M470 170 Q550 285 490 455 L425 405Z" fill="url(#hair)"/>';
-  var accessory=id==="luna"
-    ? '<path d="M470 85 L486 120 L522 125 L495 148 L501 184 L470 164 L439 184 L445 148 L418 125 L454 120Z" fill="#fff0ae" stroke="#d6b96c" stroke-width="5"/>'
-    : id==="aoi"
-      ? '<circle cx="476" cy="128" r="28" fill="#f8fdff" stroke="#62c5ed" stroke-width="9"/><path d="M476 98V158 M446 128H506" stroke="#62c5ed" stroke-width="7"/>'
-      : id==="yuna"
-        ? '<path d="M145 135 Q85 80 70 150 Q110 190 155 170Z" fill="#fff1f7" stroke="'+c.hair+'" stroke-width="7"/><path d="M495 135 Q555 80 570 150 Q530 190 485 170Z" fill="#fff1f7" stroke="'+c.hair+'" stroke-width="7"/>'
-        : '<path d="M460 105 Q490 60 530 100 Q520 150 470 150Z" fill="#fff0a8" stroke="#d4a84b" stroke-width="6"/>';
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="520" viewBox="0 0 640 520"><defs><linearGradient id="hair" x1="0" y1="0" x2="0" y2="1"><stop stop-color="'+c.light+'"/><stop offset=".48" stop-color="'+c.hair+'"/><stop offset="1" stop-color="'+c.dark+'"/></linearGradient><linearGradient id="skin" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff3e9"/><stop offset="1" stop-color="#ffd2c9"/></linearGradient><linearGradient id="cloth" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fffaff"/><stop offset="1" stop-color="'+c.dress+'"/></linearGradient><radialGradient id="eye"><stop stop-color="#e9fbff"/><stop offset=".28" stop-color="'+c.eye+'"/><stop offset="1" stop-color="'+c.dark+'"/></radialGradient></defs>'
-  +'<ellipse cx="320" cy="505" rx="235" ry="175" fill="url(#cloth)"/><path d="M175 385 Q230 340 275 355 L320 420 L365 355 Q420 340 465 385 L540 520 H100Z" fill="url(#cloth)" stroke="#fff" stroke-width="8"/>'
-  +'<path d="M270 335 L370 335 L385 405 L320 450 L255 405Z" fill="url(#skin)"/>'
-  +'<path d="M165 185 Q120 50 320 45 Q520 50 475 185 L505 420 Q445 470 430 345 L210 345 Q195 470 135 420Z" fill="url(#hair)"/>'
-  +tails
-  +'<ellipse cx="320" cy="222" rx="143" ry="166" fill="url(#skin)"/><ellipse cx="176" cy="245" rx="23" ry="43" fill="#ffd9d1"/><ellipse cx="464" cy="245" rx="23" ry="43" fill="#ffd9d1"/>'
-  +'<path d="M175 205 Q145 38 320 55 Q500 45 465 210 Q435 150 400 164 Q360 185 328 150 Q290 190 250 165 Q210 150 175 205Z" fill="url(#hair)"/>'
-  +'<path d="M230 255 Q265 230 292 255 Q270 285 240 274Z M348 255 Q375 230 410 255 Q395 285 360 274Z" fill="#fff"/><ellipse cx="266" cy="260" rx="21" ry="31" fill="url(#eye)"/><ellipse cx="374" cy="260" rx="21" ry="31" fill="url(#eye)"/><ellipse cx="266" cy="264" rx="10" ry="19" fill="#15213b"/><ellipse cx="374" cy="264" rx="10" ry="19" fill="#15213b"/><circle cx="257" cy="247" r="9" fill="#fff"/><circle cx="365" cy="247" r="9" fill="#fff"/><circle cx="277" cy="275" r="5" fill="#fff" opacity=".85"/><circle cx="385" cy="275" r="5" fill="#fff" opacity=".85"/>'
-  +'<path d="M229 231 Q262 205 295 232 M345 232 Q378 205 411 231" fill="none" stroke="'+c.dark+'" stroke-width="10" stroke-linecap="round"/>'
-  +'<ellipse cx="218" cy="316" rx="34" ry="13" fill="#f59eb0" opacity=".35"/><ellipse cx="422" cy="316" rx="34" ry="13" fill="#f59eb0" opacity=".35"/><path d="M305 330 Q320 344 335 330" fill="none" stroke="#bd6a7b" stroke-width="7" stroke-linecap="round"/>'
-  +'<path d="M265 372 L320 425 L375 372 L350 365 L320 390 L290 365Z" fill="#fff" stroke="'+c.hair+'" stroke-width="6"/><path d="M320 397 Q275 360 275 405 Q300 435 320 414 Q340 435 365 405 Q365 360 320 397Z" fill="'+c.ribbon+'" stroke="'+c.hair+'" stroke-width="6"/><circle cx="320" cy="405" r="12" fill="#fff"/>'
-  +accessory
-  +'<path d="M185 220 Q195 130 250 115 M455 220 Q445 130 390 115" fill="none" stroke="#fff" stroke-width="10" opacity=".35" stroke-linecap="round"/><path d="M205 420 Q320 455 435 420" fill="none" stroke="#fff" stroke-width="7" opacity=".7"/><circle cx="130" cy="300" r="7" fill="#fff" opacity=".8"/><circle cx="510" cy="285" r="9" fill="#fff" opacity=".8"/></svg>';
-}
-["sakura","aoi","luna","yuna"].forEach(function(id){
-  var img=new Image();
-  img.onload=function(){kick();};
-  img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(avatarSvg(id));
-  avatarImages[id]=img;
-});
-function drawFace(t){
-  var f=LAYOUT.FACE;
-  var img=avatarImages[avatarId]||avatarImages.sakura;
-  var bob=window.__DIAL_NO_ANIM?0:Math.sin(t/550)*f.h*.008;
-  ctx.save();
-  var x=f.x,y=f.y+f.h*.02+bob,w=f.w,h=f.h*.96;
-  if(img && img.complete && img.naturalWidth>0){
-    var scale=Math.max(w/img.width,h/img.height);
-    var dw=img.width*scale,dh=img.height*scale;
-    ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
-  } else {
-    var g=ctx.createLinearGradient(0,y,0,y+h);
-    g.addColorStop(0,"#ffd8e9");g.addColorStop(1,"#a8a9ee");
-    ctx.fillStyle=g;ctx.fillRect(x,y,w,h);
-  }
-  ctx.restore();
-
-  // Draw expression overlays in the same coordinate space as the embedded anime portrait.
-  // This keeps the rear-display character in sync with the richer main-screen avatar.
-  var faceScale=Math.max(w/640,h/520),faceW=640*faceScale,faceH=520*faceScale;
-  ctx.save();
-  ctx.translate(x+(w-faceW)/2,y+(h-faceH)/2);
-  ctx.scale(faceScale,faceScale);
-  var skin="#ffe5dd",line="#783c61";
-  function coverEye(cx){ctx.fillStyle=skin;ctx.beginPath();ctx.ellipse(cx,260,39,38,0,0,Math.PI*2);ctx.fill();}
-  function eyeArc(cx,up){ctx.beginPath();ctx.moveTo(cx-34,260);ctx.quadraticCurveTo(cx,up?225:290,cx+34,260);ctx.stroke();}
-  if(mood===1 || mood===3 || (mood===0 && blink>.05)){
-    coverEye(266);coverEye(374);
-    ctx.strokeStyle=line;ctx.lineWidth=9;ctx.lineCap="round";
-    eyeArc(266,mood===1);eyeArc(374,mood===1);
-  } else if(mood===2){
-    ctx.strokeStyle=line;ctx.lineWidth=8;ctx.lineCap="round";
-    ctx.beginPath();ctx.moveTo(230,224);ctx.quadraticCurveTo(266,205,298,225);
-    ctx.moveTo(345,218);ctx.quadraticCurveTo(378,199,410,221);ctx.stroke();
-  } else if(mood===4){
-    ctx.strokeStyle=line;ctx.lineWidth=8;ctx.lineCap="round";
-    ctx.beginPath();ctx.moveTo(230,220);ctx.quadraticCurveTo(266,240,298,220);
-    ctx.moveTo(345,220);ctx.quadraticCurveTo(378,240,410,220);ctx.stroke();
-  }
-  if(mood===1 || mood===2 || mood===3 || mood===4 || mood===5){
-    ctx.fillStyle=skin;ctx.beginPath();ctx.ellipse(320,330,30,18,0,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle="#bd6a7b";ctx.lineWidth=7;ctx.lineCap="round";ctx.beginPath();
-    if(mood===1){ctx.moveTo(294,327);ctx.quadraticCurveTo(320,365,346,327);}
-    else if(mood===2){ctx.moveTo(310,338);ctx.quadraticCurveTo(320,318,330,338);}
-    else if(mood===3){ctx.moveTo(306,337);ctx.lineTo(334,337);}
-    else {ctx.moveTo(294,345);ctx.quadraticCurveTo(320,315,346,345);}
-    ctx.stroke();
-  } else if(mood===4){
-    ctx.fillStyle="rgba(115,210,255,.8)";ctx.beginPath();ctx.ellipse(405,300,5,12,.2,0,Math.PI*2);ctx.fill();
-  }
-  ctx.restore();
-  if(mood===1){
-    ctx.save();ctx.globalAlpha=.22;ctx.fillStyle="#fff2a8";
-    ctx.beginPath();ctx.arc(x+w*.82,y+h*.15,Math.max(5,w*.035),0,Math.PI*2);ctx.fill();ctx.restore();
-  }
-}
+// The old hand-drawn SVG/Canvas avatar renderer has been removed.
 
 function draw(t){
   ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -304,7 +196,7 @@ function draw(t){
   ctx.fillText(avatarName,LAYOUT.HEADER.x,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
   ctx.fillStyle="#73dfff";ctx.font=getFont("normal",14);ctx.textAlign="right";
   ctx.fillText((moods[mood]||moods[0]).name,LAYOUT.HEADER.x+LAYOUT.HEADER.w,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
-  if(!rearLive2DReady)drawFace(t);
+  // Character pixels are rendered exclusively by the shared Live2D iframe.
 
   ctx.fillStyle="#31566b";ctx.fillRect(LAYOUT.REPLY.x,LAYOUT.REPLY.y,LAYOUT.REPLY.w,LAYOUT.REPLY_RULE_HEIGHT);
   ctx.fillStyle="#a8d7e8";ctx.font=getFont("normal",14);ctx.textAlign="left";ctx.textBaseline="top";
