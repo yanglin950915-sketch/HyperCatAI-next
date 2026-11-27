@@ -112,8 +112,9 @@ jobs:
           styles = Path("app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           assert 'windowSplashScreenBackground">#F7F7F8' in styles and 'android:windowBackground">#F7F7F8' in styles, "light splash and Activity backgrounds must match"
           night_styles = Path("app/src/main/res/values-night/styles.xml").read_text(encoding="utf-8")
-          assert 'windowSplashScreenBackground">#F7F7F8' in night_styles and 'android:windowBackground">#000000' in night_styles, "starting splash must stay light while post-splash app window retains system-night styling"
+          assert 'windowSplashScreenBackground">#000000' in night_styles and 'android:windowBackground">#000000' in night_styles, "dark splash and Activity backgrounds must match"
           assert "resolveInitialDarkMode(this)" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "theme must be resolved before first Activity frame"
+        assert "setApplicationNightMode" in main_activity and "applyPlatformNightMode(this, savedMode)" in main_activity, "app theme preference must control Android starting splash mode"
           assert "attachBaseContext(newBase: Context)" not in main_activity, "startup must not depend on a late Activity base-context theme override"
           renderer_source = Path("rearscreen/web/live2d/render.html").read_text(encoding="utf-8")
           assert "new URL(selfUrl, document.baseURI).href" in renderer_source and "new URL(params.get('dir') || '../models/active/', document.baseURI).href" in renderer_source and "new URL(normalized, json.url).href" in renderer_source, "Live2D model assets must be resolved to absolute URLs"
