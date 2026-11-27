@@ -877,7 +877,7 @@ private fun HyperCatApp() {
                             val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") })
                             messages.add(userLine)
                             if (value.isNotBlank()) {
-                                if (currentSessionTitle == value.trim().take(42)) recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(12)
+                                if (currentSessionTitle == value.trim().take(42)) recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
                                 chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
                                 val explicitMemory = Regex("^(?:请)?记住[：:，, ]*(.+)$", RegexOption.DOT_MATCHES_ALL).find(value.trim())?.groupValues?.getOrNull(1)?.trim()
                                 if (!explicitMemory.isNullOrBlank()) {
@@ -1317,6 +1317,20 @@ private fun ChatPage(
     settingsContent: @Composable (Modifier) -> Unit
 ) {
     val context: Context = LocalContext.current
+    val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var userMovedChat by remember(currentSessionTitle) { mutableStateOf(false) }
+    LaunchedEffect(chatListState) {
+        chatListState.interactionSource.interactions.collect { interaction ->
+            if (interaction is androidx.compose.foundation.interaction.DragInteraction.Start) userMovedChat = true
+        }
+    }
+    LaunchedEffect(currentSessionTitle) {
+        userMovedChat = false
+        if (messages.isNotEmpty()) chatListState.scrollToItem(messages.lastIndex)
+    }
+    LaunchedEffect(messages.size) {
+        if (!userMovedChat && messages.isNotEmpty()) chatListState.animateScrollToItem(messages.lastIndex)
+    }
     var drawerSection by remember { mutableStateOf("pet") }
     var showPetNameDialog by remember { mutableStateOf(false) }
     var petNameDraft by remember(petName) { mutableStateOf(petName) }
@@ -1803,7 +1817,7 @@ private fun ChatPage(
                 TextButton(onClick = { selectedMessageIndices = emptySet() }) { Text("取消") }
             }
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
+        LazyColumn(state = chatListState, modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("开始与 Agent 对话", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
