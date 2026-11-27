@@ -69,7 +69,8 @@ var moods=[
   {name:T.happy,eye:.64,pupil:1,mouth:1},
   {name:T.thinking,eye:.9,pupil:.82,mouth:2},
   {name:T.sleepy,eye:.22,pupil:.35,mouth:3},
-  {name:T.sad,eye:.78,pupil:.9,mouth:4}
+  {name:T.sad,eye:.78,pupil:.9,mouth:4},
+  {name:"惊讶",eye:1.15,pupil:1.2,mouth:5}
 ];
 
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
@@ -88,7 +89,7 @@ function applyAgentState(name,avatar,moodValue,reply,bgColor){
   if(reply&&reply!=="undefined")agentReply=String(reply).slice(0,100);
   if(bgColor&&/^#[0-9a-fA-F]{6}$/.test(String(bgColor)))backgroundColor=String(bgColor);
   if(moodValue&&moodValue!=="undefined"&&now()>=localMoodUntil){
-    var key=String(moodValue).toLowerCase(),map={normal:0,idle:0,happy:1,thinking:2,sleepy:3,sad:4,surprised:1};
+    var key=String(moodValue).toLowerCase(),map={normal:0,idle:0,happy:1,thinking:2,sleepy:3,sad:4,surprised:5};
     if(Object.prototype.hasOwnProperty.call(map,key))mood=map[key];
   }
   kick();
@@ -250,7 +251,7 @@ function drawFace(t){
     ctx.beginPath();ctx.moveTo(230,220);ctx.quadraticCurveTo(266,240,298,220);
     ctx.moveTo(345,220);ctx.quadraticCurveTo(378,240,410,220);ctx.stroke();
   }
-  if(mood===1 || mood===2 || mood===3 || mood===4){
+  if(mood===1 || mood===2 || mood===3 || mood===4 || mood===5){
     ctx.fillStyle=skin;ctx.beginPath();ctx.ellipse(320,330,30,18,0,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle="#bd6a7b";ctx.lineWidth=7;ctx.lineCap="round";ctx.beginPath();
     if(mood===1){ctx.moveTo(294,327);ctx.quadraticCurveTo(320,365,346,327);}
