@@ -15,6 +15,10 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val action = inputData.getString(KEY_ACTION).orEmpty()
         val userText = inputData.getString(KEY_USER_TEXT).orEmpty().trim()
+        val interactionId = inputData.getLong(KEY_INTERACTION_ID, 0L)
+        fun isLatestInteraction(): Boolean =
+            applicationContext.getSharedPreferences("hypercat_avatar", Context.MODE_PRIVATE)
+                .getLong("active_interaction_id", 0L) == interactionId
         val eventPrompt = eventPrompt(action, userText) ?: return@withContext Result.failure()
         val prefs = applicationContext.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
         val endpoint = prefs.getString("endpoint", "").orEmpty().trim()
@@ -82,13 +86,15 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
                 listOf("惊讶", "哇", "竟然").any { reply.contains(it) } -> "surprised"
                 else -> "normal"
             }
+            if (!isLatestInteraction()) return@withContext Result.success()
             val current = AvatarStateStore.read(applicationContext)
             AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, mood, reply, userText = if (action == "avatar_voice") userText else eventPrompt)
             Result.success()
         } catch (error: Exception) {
             if (runAttemptCount < 2) return@withContext Result.retry()
+            if (!isLatestInteraction()) return@withContext Result.success()
             val current = AvatarStateStore.read(applicationContext)
-            AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, "sad", "刚才没能连接到 Agent，请稍后再试。")
+            AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, "sad", "刚才没能连接到 Agent，请稍后再试。", userText = eventPrompt)
             Result.success()
         }
     }
@@ -106,5 +112,6 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
     companion object {
         const val KEY_ACTION = "rear_interaction_action"
         const val KEY_USER_TEXT = "rear_interaction_user_text"
+        const val KEY_INTERACTION_ID = "rear_interaction_id"
     }
 }
