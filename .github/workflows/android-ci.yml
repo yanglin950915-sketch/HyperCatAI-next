@@ -30,7 +30,7 @@ jobs:
           assert "__setAgentJson" in Path("rearscreen/web/index.html").read_text(encoding="utf-8"), "MAML JSON state bridge missing"
           assert "background_color" in Path("app/src/main/java/com/hypercat/ai/rear/RearPetProvider.kt").read_text(encoding="utf-8"), "rear background state missing"
           verifier = Path("app/src/main/java/com/hypercat/ai/rear/RearCallerVerifier.kt").read_text(encoding="utf-8")
-          assert "com.android.thememanager" in verifier and "hk.uwu.reareye" not in verifier, "native Xiaomi MAML host verification missing"
+          assert "com.android.thememanager" in verifier and ".".join(("hk", "uwu", "reareye")) not in verifier, "native Xiaomi MAML host verification missing"
           assert webview.attrib.get("uri") == "web/index.html", "WebView entry point mismatch"
           assert root.attrib.get("screenWidth") == "976", "target rear width mismatch"
           assert root.find("VariableBinders") is not None, "Agent data binder missing"
