@@ -26,8 +26,9 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
             return@withContext Result.success()
         }
         try {
+            val activeSession = prefs.getString("current_session_title", "").orEmpty().trim().takeIf { it.isNotBlank() }
             val recent = prefs.getString("recent_chat_titles", "").orEmpty().split("||").firstOrNull { it.isNotBlank() }
-            val title = recent ?: "背屏互动"
+            val title = activeSession ?: recent ?: "背屏互动"
             val sessionKey = "chat_session_$title"
             val history = runCatching { JSONArray(prefs.getString(sessionKey, "[]") ?: "[]") }.getOrElse { JSONArray() }
             val messages = JSONArray()
