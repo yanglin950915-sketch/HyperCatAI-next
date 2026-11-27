@@ -1041,8 +1041,8 @@ private fun HyperCatApp() {
                     onMood = { mood -> petMood = mood },
                     showSettingsOnEnter = openSettingsDrawer,
                     onSettingsDrawerShown = { openSettingsDrawer = false },
-                    petSettingsContent = { drawerModifier ->
-                        PetSettingsPage(
+                    avatarSettingsContent = { drawerModifier ->
+                        AvatarSettingsPage(
                             modifier = drawerModifier,
                             petName = petName,
                             petEmoji = petEmoji,
@@ -1312,148 +1312,6 @@ private fun HyperCatApp() {
 }
 
 @Composable
-private fun CatFace(modifier: Modifier = Modifier, mood: String = "normal") {
-    var gazeX by remember { mutableStateOf(0f) }
-    var gazeY by remember { mutableStateOf(0f) }
-    var blinking by remember { mutableStateOf(false) }
-    var touchBlinkTrigger by remember { mutableIntStateOf(0) }
-    var lastTouchAt by remember { mutableStateOf(0L) }
-    val pupilX by animateFloatAsState(gazeX, animationSpec = tween(260), label = "pupilX")
-    val pupilY by animateFloatAsState(gazeY, animationSpec = tween(260), label = "pupilY")
-    val eyelid by animateFloatAsState(if (blinking) 0.06f else 1f, animationSpec = tween(70), label = "eyelid")
-    val idle = rememberInfiniteTransition(label = "petIdle")
-    val breathe by idle.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1900), RepeatMode.Reverse), label = "breathe"
-    )
-    val floatY by idle.animateFloat(
-        initialValue = -3.5f, targetValue = 3.5f,
-        animationSpec = infiniteRepeatable(tween(2400), RepeatMode.Reverse), label = "floatY"
-    )
-    val eyeSparkle by idle.animateFloat(
-        initialValue = 0.72f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1300), RepeatMode.Reverse), label = "eyeSparkle"
-    )
-
-    LaunchedEffect(touchBlinkTrigger) {
-        if (touchBlinkTrigger > 0) {
-            blinking = true
-            delay(85L)
-            blinking = false
-        }
-    }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(Random.nextLong(2300L, 4301L))
-            if (System.currentTimeMillis() - lastTouchAt > 3200L) {
-                gazeX = Random.nextFloat() * 0.7f - 0.35f
-                gazeY = Random.nextFloat() * 0.36f - 0.18f
-            }
-            delay(100L)
-            blinking = true
-            delay(85L)
-            blinking = false
-            if (Random.nextInt(5) == 0) {
-                delay(120L)
-                blinking = true
-                delay(75L)
-                blinking = false
-            }
-        }
-    }
-
-    Canvas(modifier
-        .graphicsLayer {
-            translationY = floatY.dp.toPx()
-            scaleX = 1f + breathe * 0.008f
-            scaleY = 1f - breathe * 0.006f
-        }
-        .pointerInput(Unit) {
-            detectTapGestures { point ->
-                lastTouchAt = System.currentTimeMillis()
-                val w = size.width.toFloat().coerceAtLeast(1f)
-                val h = size.height.toFloat().coerceAtLeast(1f)
-                gazeX = (((point.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
-                gazeY = (((point.y / h) - 0.47f) * 2.8f).coerceIn(-1f, 1f)
-                touchBlinkTrigger++
-            }
-        }
-        .pointerInput(Unit) {
-            detectDragGestures(
-                onDragStart = { point ->
-                    lastTouchAt = System.currentTimeMillis()
-                    val w = size.width.toFloat().coerceAtLeast(1f)
-                    val h = size.height.toFloat().coerceAtLeast(1f)
-                    gazeX = (((point.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
-                    gazeY = (((point.y / h) - 0.47f) * 2.8f).coerceIn(-1f, 1f)
-                },
-                onDrag = { change, _ ->
-                    lastTouchAt = System.currentTimeMillis()
-                    val w = size.width.toFloat().coerceAtLeast(1f)
-                    val h = size.height.toFloat().coerceAtLeast(1f)
-                    gazeX = (((change.position.x / w) - 0.5f) * 2.4f).coerceIn(-1f, 1f)
-                    gazeY = (((change.position.y / h) - 0.47f) * 2.8f).coerceIn(-1f, 1f)
-                    change.consume()
-                }
-            )
-        }
-    ) {
-        val cx = size.width / 2f
-        val cy = size.height * .47f
-        val eyeW = size.width * .205f
-        val eyeH = size.height * .31f
-        val gap = size.width * .17f
-        val eyeWhite = Color(0xFFF4F1EA)
-        listOf(cx - gap, cx + gap).forEachIndexed { index, x ->
-            val wink = if (mood == "happy") 0.82f else 1f
-            val currentEyeH = eyeH * eyelid * wink * (0.985f + breathe * 0.015f)
-            val eyeTop = cy - currentEyeH / 2
-            drawOval(brush = Brush.verticalGradient(colors = listOf(Color(0xFFFFFFFF), eyeWhite, Color(0xFFE5E1DA)), startY = eyeTop, endY = eyeTop + currentEyeH), topLeft = Offset(x - eyeW / 2, eyeTop), size = Size(eyeW, currentEyeH))
-            if (eyelid > .22f) {
-                val px = (pupilX * eyeW * .30f).coerceIn(-eyeW * .30f, eyeW * .30f)
-                val py = (pupilY * eyeH * .22f).coerceIn(-eyeH * .22f, eyeH * .22f)
-                val irisCenter = Offset(x + px, cy + py)
-                drawCircle(Color(0xFF9B7960), radius = eyeW * .305f, center = irisCenter)
-                drawCircle(Color(0xFF382B25), radius = eyeW * .255f, center = irisCenter)
-                drawCircle(Color(0xFF101010), radius = eyeW * .19f, center = irisCenter)
-                drawCircle(Color.White.copy(alpha = eyeSparkle), radius = eyeW * .085f, center = Offset(x + px - eyeW * .095f, cy - eyeH * .105f + py))
-                drawCircle(Color.White.copy(alpha = .55f), radius = eyeW * .038f, center = Offset(x + px + eyeW * .105f, cy + eyeH * .075f + py))
-            }
-            val lash = Path().apply {
-                moveTo(x - eyeW * .49f, cy - currentEyeH * .12f)
-                quadraticTo(x, eyeTop - 2.dp.toPx(), x + eyeW * .49f, cy - currentEyeH * .12f)
-            }
-            drawPath(lash, Color(0xFF403631).copy(alpha = .72f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.7.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
-        }
-        val noseY = cy + eyeH * .72f + breathe * 1.2f.dp.toPx()
-        val nose = Path().apply {
-            moveTo(cx - 7.dp.toPx(), noseY)
-            quadraticTo(cx, noseY - 8.dp.toPx(), cx + 7.dp.toPx(), noseY)
-            quadraticTo(cx, noseY + 9.dp.toPx(), cx - 7.dp.toPx(), noseY)
-            close()
-        }
-        drawPath(nose, Color(0xFFB9A5A0))
-        val mouthY = noseY + 12.dp.toPx()
-        val mouth = Path().apply {
-            when (mood) {
-                "happy" -> { moveTo(cx - 17.dp.toPx(), mouthY); quadraticTo(cx, mouthY + 24.dp.toPx(), cx + 17.dp.toPx(), mouthY) }
-                "sad" -> { moveTo(cx - 15.dp.toPx(), mouthY + 9.dp.toPx()); quadraticTo(cx, mouthY - 7.dp.toPx(), cx + 15.dp.toPx(), mouthY + 9.dp.toPx()) }
-                "surprised" -> addOval(androidx.compose.ui.geometry.Rect(cx - 6.dp.toPx(), mouthY, cx + 6.dp.toPx(), mouthY + 15.dp.toPx()))
-                "thinking" -> { moveTo(cx - 10.dp.toPx(), mouthY + 4.dp.toPx()); lineTo(cx + 10.dp.toPx(), mouthY + 4.dp.toPx()) }
-                else -> {
-                    moveTo(cx, mouthY)
-                    cubicTo(cx - 2.dp.toPx(), mouthY + 10.dp.toPx(), cx - 13.dp.toPx(), mouthY + 11.dp.toPx(), cx - 16.dp.toPx(), mouthY + 5.dp.toPx())
-                    moveTo(cx, mouthY)
-                    cubicTo(cx + 2.dp.toPx(), mouthY + 10.dp.toPx(), cx + 13.dp.toPx(), mouthY + 11.dp.toPx(), cx + 16.dp.toPx(), mouthY + 5.dp.toPx())
-                }
-            }
-        }
-        drawPath(mouth, Color(0xFFB9A5A0), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
-    }
-}
-
-
-@Composable
 private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: androidx.compose.ui.platform.ClipboardManager) {
     val fence = "```"
     val codePattern = Regex("(?s)" + fence + "([^\\n]*)\\n(.*?)" + fence)
@@ -1499,7 +1357,7 @@ private fun ChatPage(
     showSettingsOnEnter: Boolean,
     onSettingsDrawerShown: () -> Unit,
     settingsContent: @Composable (Modifier) -> Unit,
-    petSettingsContent: @Composable (Modifier) -> Unit
+    avatarSettingsContent: @Composable (Modifier) -> Unit
 ) {
     val context: Context = LocalContext.current
     val live2dModel by Live2DModelStore.state.collectAsState()
@@ -2197,7 +2055,7 @@ private fun ChatPage(
                             TextButton(onClick = { drawerSection = "pet" }) { Text("‹ 返回个人页", color = MainText) }
                             Spacer(Modifier.weight(1f)); Text("虚拟形象设置", color = MainText, fontWeight = FontWeight.Bold)
                         }
-                        petSettingsContent(Modifier.weight(1f).fillMaxWidth())
+                        avatarSettingsContent(Modifier.weight(1f).fillMaxWidth())
                     }
                 } else if (drawerSection == "settings") {
                     Column(Modifier.fillMaxSize()) {
@@ -2215,7 +2073,7 @@ private fun ChatPage(
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().clickable { drawerSection = "pet_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(104.dp).clickable { drawerSection = "pet_settings" }, contentAlignment = Alignment.Center) {
-                                    PetAvatarRenderer(petEmoji, Modifier.fillMaxSize(), petMood, isSpeaking, live2dModel) { action, _ -> onPetInteraction(action) }
+                                    AvatarRenderer(petEmoji, Modifier.fillMaxSize(), petMood, isSpeaking, live2dModel) { action, _ -> onPetInteraction(action) }
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
@@ -2466,7 +2324,7 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 }
 
 @Composable
-private fun PetAvatarRenderer(
+private fun AvatarRenderer(
     character: String,
     modifier: Modifier = Modifier,
     mood: String = "normal",
@@ -2717,7 +2575,7 @@ private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier, mo
 }
 
 @Composable
-private fun PetSettingsPage(
+private fun AvatarSettingsPage(
     modifier: Modifier,
     petName: String,
     petEmoji: String,
@@ -2782,7 +2640,7 @@ private fun PetSettingsPage(
                         } else Modifier),
                     contentAlignment = Alignment.Center
                 ) {
-                    PetAvatarRenderer(selected.first, Modifier.fillMaxSize(), petMood, model = live2dModel) { action, _ -> onPetInteraction(action) }
+                    AvatarRenderer(selected.first, Modifier.fillMaxSize(), petMood, model = live2dModel) { action, _ -> onPetInteraction(action) }
                     Text(if (live2dModel != null) "Live2D · 直接触摸互动" else "点击角色互动", color = Color(0xFF754A67), fontSize = 11.sp,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
                 }
