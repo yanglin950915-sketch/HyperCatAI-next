@@ -76,17 +76,32 @@ function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function now(){return Date.now();}
 function getFont(weight,size){var n=Math.max(12,Math.floor(size)),key=weight+":"+n;return fontCache[key]||(fontCache[key]=weight+" "+n+"px system-ui,sans-serif");}
 function fitFont(value,maxWidth,baseSize,weight){var size=Math.floor(baseSize);while(size>12){ctx.font=getFont(weight,size);if(ctx.measureText(String(value)).width<=maxWidth)break;size--;}return getFont(weight,Math.max(12,size));}
+function normalizeAvatarId(value){
+  var id=String(value||"sakura").trim().toLowerCase();
+  var aliases={"🌸":"sakura","樱花":"sakura","蓝色":"aoi","月亮":"luna","星月":"luna","优奈":"yuna"};
+  id=aliases[id]||id;
+  return Object.prototype.hasOwnProperty.call(avatarPalette,id)?id:"sakura";
+}
+function applyAgentState(name,avatar,moodValue,reply){
+  if(name&&name!=="undefined")petName=String(name).slice(0,16);
+  if(avatar&&avatar!=="undefined")petEmoji=normalizeAvatarId(avatar);
+  if(reply&&reply!=="undefined")agentReply=String(reply).slice(0,100);
+  if(moodValue&&moodValue!=="undefined"&&now()>=localMoodUntil){
+    var key=String(moodValue).toLowerCase(),map={normal:0,idle:0,happy:1,thinking:2,sleepy:3,sad:4,surprised:1};
+    if(Object.prototype.hasOwnProperty.call(map,key))mood=map[key];
+  }
+  kick();
+}
 function syncMamlState(){
   try{
-    var bridge=window.maml;if(!bridge||typeof bridge.getStringByName!=="function")return;
-    var n=bridge.getStringByName("petName");if(n&&n!=="undefined")petName=String(n).slice(0,16);
-    var em=bridge.getStringByName("petEmoji");if(em&&em!=="undefined")petEmoji=String(em).slice(0,8);
-    var r=bridge.getStringByName("reply");if(r&&r!=="undefined")agentReply=String(r).slice(0,100);
-    // Never hide the renderer when the optional provider bridge is unavailable.
-    var raw=bridge.getStringByName("mood");if(raw&&raw!=="undefined"&&now()>=localMoodUntil){
-      var key=String(raw).toLowerCase(),map={normal:0,idle:0,happy:1,thinking:2,sleepy:3,sad:4,surprised:1};
-      if(Object.prototype.hasOwnProperty.call(map,key))mood=map[key];
-    }
+    var bridge=window.maml;
+    if(!bridge||typeof bridge.getStringByName!=="function")return;
+    applyAgentState(
+      bridge.getStringByName("petName"),
+      bridge.getStringByName("petEmoji"),
+      bridge.getStringByName("mood"),
+      bridge.getStringByName("reply")
+    );
   }catch(_){}
 }
 function dispatchRearAction(action,nextMood){
@@ -317,6 +332,7 @@ window.__setAod=__setAod;
 window.__debugSize=__debugSize;
 window.__setMoodIndex=__setMoodIndex;
 window.__setPetState=function(nextMood){__setMoodIndex(nextMood);};
+window.__setAgentState=applyAgentState;
 window.__DIAL_NO_ANIM=!!window.__DIAL_NO_ANIM;
 if(window.__DIAL_NO_ANIM){__fit();}
 else{__fit();lastFrame=now();kick();}
