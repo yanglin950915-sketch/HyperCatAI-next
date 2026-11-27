@@ -72,7 +72,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; skipping duplicate publication."
           else
-            gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk \
+            gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk HyperCatAI-rearscreen.zip \
               --title "HyperCat AI $VERSION_NAME" \
               --notes "HyperCat AI $VERSION_NAME stable-signed automatic build. Keep this signing identity for all future updates." \
               --target "$GITHUB_SHA"
