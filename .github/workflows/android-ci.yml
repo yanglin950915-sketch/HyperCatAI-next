@@ -114,6 +114,11 @@ jobs:
           night_styles = Path("app/src/main/res/values-night/styles.xml").read_text(encoding="utf-8")
           assert 'windowSplashScreenBackground">#000000' in night_styles and 'android:windowBackground">#000000' in night_styles, "dark splash and Activity backgrounds must match"
           assert "resolveInitialDarkMode(this)" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "theme must be resolved before first Activity frame"
+          assert "attachBaseContext(newBase: Context)" in main_activity and "createConfigurationContext(configuration)" in main_activity, "saved appearance must select splash resources before Activity creation"
+          assert "new URL(selfUrl, document.baseURI).href" in render_html, "Live2D settings URL must be normalized against the renderer document"
+          assert "return normalized;" in render_html and "return dir + normalized" not in render_html, "Live2D model-relative files must not be double-prefixed"
+          assert "expectedMarker" in package_builder and '"DisplayInfo"' in package_builder and 'motion.optString("Sound")' in package_builder, "rear package verifier must validate model marker and auxiliary files"
+          assert "</div></div>\n<!-- SAFE_ZONE:" not in html, "rear error panel markup has an unmatched closing tag"
           assert "window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(initialWindowColor))" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "Activity window must match resolved theme before Compose"
           assert "Mood-specific facial expressions" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "main avatar mood expressions missing"
           assert "__onRearLive2DReady" in html and "__onRearLive2DError" in html, "rear Live2D readiness bridge missing"
