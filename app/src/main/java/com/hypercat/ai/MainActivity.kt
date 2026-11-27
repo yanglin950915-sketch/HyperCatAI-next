@@ -1184,7 +1184,7 @@ private fun HyperCatApp() {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                 Text(if (rearPickerMode == "deploy") "已扫描 .ai_wallpaper/maml/ 和旧版 .ai_app。请选择一张 AI 壁纸，程序只替换其中的 rearscreen 文件，不会覆盖整个壁纸目录。" else "选择此前备份过原始资源的背屏卡片。恢复只影响所选卡片。", color = Muted, fontSize = 11.sp)
                 Spacer(Modifier.height(10.dp))
-                rearPickerCards.forEach { card ->
+                rearPickerCards.sortedByDescending { it.modifiedAt }.forEach { card ->
                     Surface(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(enabled = !rearPickerBusy) {
                         rearPickerBusy = true
                         scope.launch {
@@ -1199,7 +1199,8 @@ private fun HyperCatApp() {
                     }, color = Panel2, shape = RoundedCornerShape(12.dp)) {
                         Column(Modifier.padding(12.dp)) {
                             Text(card.name, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Text(card.root + "/" + card.path, color = Muted, fontSize = 9.sp, maxLines = 3)
+                            Text(if (card.modifiedAt > 0L) "资源时间：" + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(card.modifiedAt)) else "资源时间：系统未提供", color = Muted, fontSize = 10.sp)
+                            Text("大小：" + android.text.format.Formatter.formatShortFileSize(context, card.sizeBytes) + " · " + card.root + "/" + card.path, color = Muted, fontSize = 9.sp, maxLines = 3)
                             Text(if (rearPickerMode == "deploy") "点击后备份原资源并替换此卡片" else "点击后恢复此卡片的原始资源", color = Cyan, fontSize = 10.sp)
                         }
                     }
@@ -2118,7 +2119,7 @@ private fun ChatPage(
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
-                                    CatFace(Modifier.fillMaxSize().pointerInput(petMood) { detectTapGestures(onTap = { drawerSection = "pet_settings" }, onLongPress = { onPetInteraction("pet_long_press") }) }, petMood)
+                                    CatFace(Modifier.fillMaxSize(), petMood)
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
