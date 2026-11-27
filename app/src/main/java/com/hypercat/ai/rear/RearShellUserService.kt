@@ -96,7 +96,7 @@ class RearShellUserService : IRearShellService.Stub() {
         "app" to File("/storage/emulated/0/Android/data/com.android.thememanager/files/MIUI/.ai_app"),
         "app" to File("/sdcard/Android/data/com.android.thememanager/files/MIUI/.ai_app"),
         "app" to File("/mnt/user/0/primary/Android/data/com.android.thememanager/files/MIUI/.ai_app")
-    ).distinctBy { it.second.absolutePath }
+    ).distinctBy { runCatching { it.second.canonicalPath }.getOrDefault(it.second.absolutePath) }
 
     /** Search only rearscreen carrier files; never replace an entire wallpaper directory. */
     private fun findRearFiles(dir: File, depth: Int): List<File> {
