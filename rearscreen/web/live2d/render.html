@@ -8,11 +8,14 @@
   html, body { margin:0; padding:0; width:100%; height:100%; background:#05070d; overflow:hidden;
                -webkit-tap-highlight-color:transparent; }
   #stage { position:fixed; left:0; top:0; width:100%; height:100%; }
-  canvas { display:block; }
+  canvas { display:block; background:#05070d; }
+  #render-error { display:none; position:fixed; inset:0; z-index:99; box-sizing:border-box; padding:24px; color:#eaf4ff; background:#080d18; font:14px/1.6 system-ui,sans-serif; align-items:center; justify-content:center; text-align:center; overflow-wrap:anywhere; }
+  #render-error strong { display:block; margin-bottom:10px; color:#ffb8c2; font-size:17px; }
 </style>
 </head>
 <body>
 <div id="stage"></div>
+<div id="render-error" role="alert"><div><strong>虚拟形象加载失败</strong><span id="render-error-detail">正在检查渲染资源…</span></div></div>
 <script src="pixi.min.js"></script>
 <script src="live2dcubismcore.min.js"></script>
 <script src="cubism4.min.js"></script>
@@ -55,9 +58,14 @@
     console.log.apply(console, arguments);
   }
   function fail(msg) {
-    console.error(msg);
-    if (NATIVE && NATIVE.onError) NATIVE.onError(String(msg));
-    try { if (window.parent && window.parent !== window && window.parent.__onRearLive2DError) window.parent.__onRearLive2DError(String(msg)); } catch (_) {}
+    var detail = String(msg || 'unknown error');
+    console.error('HyperCat Live2D render failed:', detail);
+    var panel = document.getElementById('render-error');
+    var label = document.getElementById('render-error-detail');
+    if (label) label.textContent = detail.slice(0, 240);
+    if (panel) panel.style.display = 'flex';
+    if (NATIVE && NATIVE.onError) NATIVE.onError(detail);
+    try { if (window.parent && window.parent !== window && window.parent.__onRearLive2DError) window.parent.__onRearLive2DError(detail); } catch (_) {}
   }
 
   // 由 PIXI 的 ticker 驱动，但所有可视状态都由原生侧写入，本页只做平滑。
@@ -351,6 +359,9 @@
   }
 
   function initPixi() {
+    if (!window.PIXI) throw new Error('PIXI.js 未加载：请检查 web/live2d/pixi.min.js');
+    if (!PIXI.live2d || !PIXI.live2d.Live2DModel) throw new Error('Live2D Cubism 插件未加载：请检查 cubism4.min.js');
+    if (!document.getElementById('stage')) throw new Error('缺少渲染容器 #stage');
     var vp = viewport();
     var W = vp.w, H = vp.h;
     app = new PIXI.Application({
