@@ -11,35 +11,37 @@ import androidx.work.workDataOf
 /** Shared entry point for touch and voice interactions from the rear display. */
 object RearAgentInteractionDispatcher {
     private const val UNIQUE_WORK_NAME = "hypercat-rear-agent-interactions"
-    private val supportedActions = setOf("pet_touch", "pet_happy", "pet_long_press", "pet_drag", "pet_thinking", "pet_rest", "pet_voice")
+    private val supportedActions = setOf("avatar_touch", "avatar_happy", "avatar_long_press", "avatar_drag", "avatar_thinking", "avatar_rest", "avatar_voice")
 
     fun enqueue(context: Context, action: String): Boolean = enqueue(context, action, "")
 
     fun enqueue(context: Context, action: String, userText: String): Boolean {
-        if (action !in supportedActions) return false
-        if (action == "pet_voice" && userText.isBlank()) return false
+        // Normalize historical MAML action names so already-deployed cards keep working.
+        val normalizedAction = if (action.startsWith("pet_")) "avatar_" + action.removePrefix("pet_") else action
+        if (normalizedAction !in supportedActions) return false
+        if (normalizedAction == "avatar_voice" && userText.isBlank()) return false
         val current = AvatarStateStore.read(context)
-        val immediateMood = when (action) {
-            "pet_thinking" -> "thinking"
-            "pet_rest" -> "sleepy"
-            "pet_voice" -> "thinking"
-            "pet_drag" -> "curious"
+        val immediateMood = when (normalizedAction) {
+            "avatar_thinking" -> "thinking"
+            "avatar_rest" -> "sleepy"
+            "avatar_voice" -> "thinking"
+            "avatar_drag" -> "curious"
             else -> "happy"
         }
-        val immediateReply = when (action) {
-            "pet_thinking" -> "让我想一想……"
-            "pet_rest" -> "我准备休息啦。"
-            "pet_long_press" -> "我在听，你想和我聊什么？"
-            "pet_voice" -> "我听到啦，正在回答你……"
-            "pet_drag" -> "咦？你在带我移动吗？"
-            else -> "嘿嘿，你摸到我啦！"
+        val immediateReply = when (normalizedAction) {
+            "avatar_thinking" -> "让我想一想……"
+            "avatar_rest" -> "我准备休息啦。"
+            "avatar_long_press" -> "我在听，你想和我聊什么？"
+            "avatar_voice" -> "我听到啦，正在回答你……"
+            "avatar_drag" -> "咦？你在带动虚拟形象吗？"
+            else -> "收到你的虚拟形象互动啦！"
         }
         AvatarStateStore.update(context, current.avatarName, current.avatarId, immediateMood, immediateReply, userText = userText)
         val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         val request = OneTimeWorkRequestBuilder<RearAgentInteractionWorker>()
             .setConstraints(constraints)
             .setInputData(workDataOf(
-                RearAgentInteractionWorker.KEY_ACTION to action,
+                RearAgentInteractionWorker.KEY_ACTION to normalizedAction,
                 RearAgentInteractionWorker.KEY_USER_TEXT to userText.take(1000)
             )).build()
         WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
