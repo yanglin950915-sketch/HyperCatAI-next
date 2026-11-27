@@ -53,7 +53,7 @@ var LAYOUT=Object.freeze({
   REPLY_LINE_SPACING:18,
   CHILD:{x:Math.round(AVAIL.x+AVAIL.w*.04),y:Math.round(AVAIL.y+AVAIL.h*.04),w:Math.round(AVAIL.w*.92),h:Math.round(AVAIL.h*.934)}
 });
-var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:false});
+var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:false});\nvar rearLive2DReady=false,rearLive2DFrame=null;\nwindow.__onRearLive2DReady=function(){rearLive2DReady=true;kick();};\nwindow.__onRearLive2DError=function(message){rearLive2DReady=false;console.error("Rear Live2D failed:",String(message||"unknown"));kick();};
 // If the deployed card contains a user-imported Cubism model, layer its Live2D renderer
 // over the existing lightweight canvas character. The canvas remains underneath as fallback.
 (function activateImportedLive2D(){
@@ -73,7 +73,7 @@ var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:fal
     });
     document.body.appendChild(frame);
   };
-  marker.onerror=function(){ /* No imported model: keep the built-in canvas renderer. */ };
+  marker.onerror=function(){ console.error("Rear Live2D model package is missing: models/active/model-entry.js"); };
   document.head.appendChild(marker);
 })();;
 var W=0,H=0,dpr=1,CAM=0,FIT=1,DX=0,DY=0;
@@ -304,7 +304,7 @@ function draw(t){
   ctx.fillText(avatarName,LAYOUT.HEADER.x,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
   ctx.fillStyle="#73dfff";ctx.font=getFont("normal",14);ctx.textAlign="right";
   ctx.fillText((moods[mood]||moods[0]).name,LAYOUT.HEADER.x+LAYOUT.HEADER.w,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
-  drawFace(t);
+  if(!rearLive2DReady)drawFace(t);
 
   ctx.fillStyle="#31566b";ctx.fillRect(LAYOUT.REPLY.x,LAYOUT.REPLY.y,LAYOUT.REPLY.w,LAYOUT.REPLY_RULE_HEIGHT);
   ctx.fillStyle="#a8d7e8";ctx.font=getFont("normal",14);ctx.textAlign="left";ctx.textBaseline="top";
