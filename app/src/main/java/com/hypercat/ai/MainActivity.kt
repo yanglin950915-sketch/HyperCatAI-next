@@ -1042,6 +1042,11 @@ private fun HyperCatApp() {
                     petMood = petMood,
                     rearPetEnabled = rearPetEnabled,
                     onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
+                    onRearPetRestore = {
+                        scope.launch {
+                            rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.restore(context) }
+                        }
+                    },
                     onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
                     rearProjectionStatus = rearProjectionStatus,
                     onPetNameChange = { value ->

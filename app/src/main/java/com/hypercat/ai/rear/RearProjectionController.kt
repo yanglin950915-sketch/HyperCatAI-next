@@ -80,7 +80,10 @@ object RearProjectionController {
             val backup = backups.single()
             val cardId = backup.name.removeSuffix("-original.zip")
             val response = JSONObject(withContext(Dispatchers.IO) { service.restoreCarrier(cardId, backup.absolutePath) })
-            if (response.optBoolean("success")) response.optString("message") else "恢复失败：${response.optString("message")}"
+            if (response.optBoolean("success")) {
+                PetStateStore.setEnabled(context, false)
+                response.optString("message")
+            } else "恢复失败：${response.optString("message")}"
         }.getOrElse { "恢复失败：${it.message ?: it.javaClass.simpleName}" }
     }
 
