@@ -2055,6 +2055,7 @@ private fun ChatPage(
                 }
             }
         }
+    }
     if (ttsDiagnostic != null) AlertDialog(
         onDismissRequest = { ttsDiagnostic = null },
         title = { Text("云端 TTS 完整诊断") },
