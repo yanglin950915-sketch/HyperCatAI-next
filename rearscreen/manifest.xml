@@ -46,6 +46,11 @@
                     <Extra name="action" type="string" expression="'pet_long_press'"/>
                 </IntentCommand>
             </Trigger>
+            <Trigger action="pet_drag">
+                <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'pet_drag'"/>
+                </IntentCommand>
+            </Trigger>
             <Trigger action="pet_happy">
                 <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
                     <Extra name="action" type="string" expression="'pet_happy'"/>
