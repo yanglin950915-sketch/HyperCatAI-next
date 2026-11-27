@@ -12,9 +12,37 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent
 </style>
 </head>
 <body>
+<!-- SAFE_ZONE: BASE_CAM=301 | OUTER.x=321 OK | HEADER.x=344 OK | FACE.x=377 OK | REPLY.x=344 OK | BUTTONS.x=364/538/713 OK | CHILD.x=344 OK | max_x=862 <= 884 OK -->
+<!-- AVAIL: 563x532 ratio=1.06 | OUTER 563x532 fill=100% | CHILD 518x497 fillW=92.01% fillH=93.42% ratio=1.04 deviation=1.5% OK -->
+<!-- TOUCH: FACE 450x261 OK | PET 130x60 OK | THINK 130x60 OK | REST 130x60 OK | gaps=44/45px, hitPad=12px, effectiveGap>=20px OK -->
 <script>
 (function(){
 "use strict";
+var BASE_W=976,BASE_H=596;
+var live2dFrame=null;
+var rearState={name:"小橘",avatar:"",mood:"idle",reply:"你好！我是你的 AI 虚拟形象。",backgroundColor:"#101522"};
+function applyAgentState(name,avatar,mood,reply,bgColor){
+  if(name&&name!=="undefined")rearState.name=String(name);
+  if(avatar&&avatar!=="undefined")rearState.avatar=String(avatar);
+  if(mood&&mood!=="undefined")rearState.mood=String(mood);
+  if(reply&&reply!=="undefined")rearState.reply=String(reply);
+  if(bgColor&&/^#[0-9a-fA-F]{6}$/.test(String(bgColor)))rearState.backgroundColor=String(bgColor);
+  if(live2dFrame&&live2dFrame.contentWindow)live2dFrame.contentWindow.postMessage({type:"hypercat-agent-state",state:rearState},"*");
+}
+function applyAgentJson(json){try{var d=typeof json==="string"?JSON.parse(json):json;if(d)applyAgentState(d.avatar_name,d.avatar_id,d.mood,d.reply,d.background_color);}catch(e){}}
+function syncMamlState(){
+  try{var bridge=window.maml;if(!bridge||typeof bridge.getStringByName!=="function")return;
+    applyAgentState(bridge.getStringByName("avatarName"),bridge.getStringByName("avatarId"),bridge.getStringByName("mood"),bridge.getStringByName("reply"),bridge.getStringByName("backgroundColor"));
+  }catch(e){}
+}
+window.__onRearLive2DReady=function(){console.log("Rear Live2D ready");};
+window.__onRearLive2DError=function(message){console.error("Rear Live2D failed:",String(message||"unknown"));};
+window.__setAgentState=applyAgentState;
+window.__setAgentJson=applyAgentJson;
+window.__fit=function(){if(live2dFrame)live2dFrame.style.cssText="position:fixed;inset:0;width:100%;height:100%;border:0;background:transparent;";};
+window.__setAod=function(value){if(live2dFrame&&live2dFrame.contentWindow)live2dFrame.contentWindow.postMessage({type:"hypercat-aod",value:value},"*");};
+window.__debugSize=function(){return [window.innerWidth,window.innerHeight,window.devicePixelRatio||1].join(" ");};
+window.__setMoodIndex=function(value){applyAgentState(null,null,["idle","happy","thinking","sleepy","sad","surprised"][Math.max(0,Math.min(5,Number(value)||0))]);};
 var marker=document.createElement("script");
 marker.src="models/active/model-entry.js";
 marker.onload=function(){
@@ -25,10 +53,15 @@ marker.onload=function(){
   frame.title="HyperCat AI Live2D";
   frame.setAttribute("aria-label","Live2D 虚拟形象与交互界面");
   frame.src="live2d/render.html?dir=../models/active/&entry="+encodeURIComponent(info.entry)+"&half=1&ratio=0.78&fps=30&ui=1";
+  live2dFrame=frame;
   document.body.appendChild(frame);
+  syncMamlState();
 };
 marker.onerror=function(){console.error("Rear Live2D model package is missing: models/active/model-entry.js");};
 document.head.appendChild(marker);
+setInterval(syncMamlState,500);
+window.addEventListener("resize",window.__fit);
+try{if(window.maml&&typeof window.maml.doAction==="function")window.maml.doAction("avatar_touch");}catch(e){}
 }());
 </script>
 </body>
