@@ -754,6 +754,14 @@ private fun HyperCatApp() {
         if (rearPetState.updatedAt > 0L) {
             petName = rearPetState.petName
             petMood = rearPetState.mood
+            val transientRearFeedback = setOf("让我想一想……", "我准备休息啦。", "我在听，你想和我聊什么？", "嘿嘿，你摸到我啦！")
+            if (rearPetState.reply.isNotBlank() &&
+                rearPetState.reply != petReply &&
+                rearPetState.reply !in transientRearFeedback
+            ) {
+                messages.add(ChatLine("（背屏互动）用户通过背屏和萌宠进行了互动。", true))
+                messages.add(ChatLine(rearPetState.reply, false))
+            }
             petReply = rearPetState.reply
         }
     }
