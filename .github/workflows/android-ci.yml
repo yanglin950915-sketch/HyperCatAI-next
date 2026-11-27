@@ -130,7 +130,8 @@ jobs:
           for name in ("__fit", "__setAod", "__debugSize", "__setMoodIndex"):
               assert f"window.{name}" in renderer_source, f"{name} lifecycle API missing from direct MAML renderer"
           assert "window.__setAgentJson" in renderer_source and "window.__setAgentState" in renderer_source, "direct MAML Agent state bridge missing"
-          assert "var SHOW_INTERFACE = params.get('ui') === '1'" in renderer_source and "var VIEW_HALF = params.get('half') === '1'" in renderer_source, "rear renderer must default to clean full-body character without legacy overlays"
+          assert "HYPERCAT AI" not in renderer_source and "轻触互动 · 长按聊天 · 拖动跟随" not in renderer_source and "createLive2DInterface" not in renderer_source, "legacy rear avatar title and prompt overlay must be deleted"
+          assert "var VIEW_HALF = params.get('half') === '1'" in renderer_source, "rear renderer must default to a centred full-body character"
           assert "SAFE_TOP_RATIO" in renderer_source and "safeTop + (usableH - bounds.height) / 2" in renderer_source, "rear avatar must be centred inside the camera-safe viewport"
           assert "model-entry.js" in renderer_source and "marker.onerror" in renderer_source, "direct renderer must load and diagnose model-entry.js"
           scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
