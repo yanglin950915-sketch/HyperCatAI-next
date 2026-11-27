@@ -142,6 +142,7 @@ import android.webkit.URLUtil
 import com.hypercat.ai.rear.PetStateStore
 import com.hypercat.ai.rear.RearAgentInteractionDispatcher
 import com.hypercat.ai.rear.RearProjectionController
+import com.hypercat.ai.rear.RearCardPackageBuilder
 import com.hypercat.ai.rear.RearCard
 import com.hypercat.ai.pet.Live2DModel
 import com.hypercat.ai.pet.Live2DModelStore
@@ -519,25 +520,20 @@ private fun inferMood(reply: String): String = when {
 }
 private fun exportRearWidgetPackage(context: Context) {
     runCatching {
+        val built = RearCardPackageBuilder.build(context)
         val directory = File(context.cacheDir, "rear-widget").apply { mkdirs() }
-        val archive = File(directory, "HyperCatAI-RearWidget.zip")
-        ZipOutputStream(FileOutputStream(archive)).use { zip ->
-            listOf("manifest.xml", "web/index.html", "REAREye_IMPORT_PROMPT.md").forEach { assetPath ->
-                zip.putNextEntry(ZipEntry(assetPath))
-                context.assets.open(assetPath).use { input -> input.copyTo(zip) }
-                zip.closeEntry()
-            }
-        }
+        val archive = File(directory, "HyperCatAI-rearscreen.zip")
+        built.copyTo(archive, overwrite = true)
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context, "${context.packageName}.fileprovider", archive
         )
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "application/zip"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "HyperCat AI 背屏虚拟形象组件")
+            putExtra(Intent.EXTRA_SUBJECT, "HyperCat AI 背屏虚拟形象资源包")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(send, "将背屏组件包分享给 REAREye"))
+        context.startActivity(Intent.createChooser(send, "分享 HyperCat AI 背屏资源包"))
     }.onFailure {
         android.widget.Toast.makeText(context, "组件包导出失败：${it.message ?: "未知错误"}", android.widget.Toast.LENGTH_LONG).show()
     }
