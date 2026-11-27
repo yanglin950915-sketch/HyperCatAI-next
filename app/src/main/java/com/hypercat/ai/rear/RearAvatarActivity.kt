@@ -40,6 +40,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import java.util.Locale
 import android.speech.tts.UtteranceProgressListener
+import com.hypercat.ai.avatar.AvatarDeviceStateStore
+import com.hypercat.ai.avatar.AvatarStatusBadges
 import com.hypercat.ai.avatar.Live2DModelStore
 import com.hypercat.ai.avatar.Live2DView
 import com.hypercat.ai.avatar.Live2DControllerHub
@@ -63,6 +65,8 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AvatarStateStore.read(applicationContext)
+        AvatarDeviceStateStore.start(applicationContext)
+        AvatarDeviceStateStore.resume(applicationContext)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         fun updateRearSafeArea() {
             val rearDisplay = window.decorView.display
@@ -153,15 +157,15 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         activeActivity = this
         tts = TextToSpeech(this, this)
         setContent {
-            val avatar by AvatarStateStore.state.collectAsState()
+            val avatar by AvatarStateStore.state.collectAsState()\n            val deviceState by AvatarDeviceStateStore.state.collectAsState()
             val live2dModel = androidx.compose.runtime.remember { Live2DModelStore.currentRear(this@RearAvatarActivity) }
-            Box(Modifier.fillMaxSize().background(Color(0xFF05070D))) {
+            Box(Modifier.fillMaxSize().background(Color(0xFF05070D))) {\n                AvatarStatusBadges(Modifier.align(Alignment.TopStart).padding(10.dp))
                 if (live2dModel != null) {
                     Live2DView(
                         model = live2dModel,
                         modifier = Modifier.fillMaxSize(),
                         mood = avatar.mood,
-                        speaking = live2dSpeaking,
+                        speaking = live2dSpeaking || deviceState.musicPlaying,
                         halfBody = false,
                         safeTopRatio = rearSafeTopRatio,
                         safeLeftRatio = rearSafeLeftRatio,
@@ -354,7 +358,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         tts?.stop()
         tts?.shutdown()
         tts = null
-        super.onDestroy()
+        AvatarDeviceStateStore.pause()\n        super.onDestroy()
     }
 
     companion object {
