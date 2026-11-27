@@ -705,32 +705,21 @@ private fun HyperCatApp() {
             rearPetEnabled = false
             PetStateStore.setEnabled(context, false)
             rearProjectionStatus = "正在关闭背屏萌宠…"
-            scope.launch {
-                rearProjectionStatus = withContext(Dispatchers.IO) {
-                    RearProjectionController.hide(context)
-                }
-            }
+            scope.launch { rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.hide(context) } }
             return
         }
         val host = context as? ComponentActivity
-        if (host == null) {
-            rearProjectionStatus = "无法获取应用界面上下文，请返回设置页重试"
-            return
-        }
+        if (host == null) { rearProjectionStatus = "无法获取应用界面上下文，请返回设置页重试"; return }
         RearProjectionController.requestPermission(host) { granted, message ->
-            if (!granted) {
-                rearProjectionStatus = message
-                return@requestPermission
-            }
+            if (!granted) { rearProjectionStatus = message; return@requestPermission }
             scope.launch {
-                rearProjectionStatus = "正在检测背屏并启动萌宠…"
-                val result = withContext(Dispatchers.IO) {
-                    RearProjectionController.connect(context)
-                }
-                rearProjectionStatus = result
-                val connected = result.startsWith("已部署背屏卡片")
-                rearPetEnabled = connected
-                PetStateStore.setEnabled(context, connected)
+                rearProjectionStatus = "正在扫描小米 AI 背屏资源…"
+                try {
+                    rearPickerCards = RearProjectionController.scan(context)
+                    rearPickerMode = "deploy"
+                    showRearPicker = true
+                    rearProjectionStatus = "发现 " + rearPickerCards.size + " 个可替换背屏资源，请选择目标"
+                } catch (error: Exception) { rearProjectionStatus = error.message ?: "扫描背屏资源失败"; rearPetEnabled = false }
             }
         }
     }
