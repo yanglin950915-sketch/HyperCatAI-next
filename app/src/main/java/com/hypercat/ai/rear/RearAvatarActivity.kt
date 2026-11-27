@@ -64,7 +64,8 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         modifier = Modifier.fillMaxSize(),
                         mood = avatar.mood,
                         speaking = live2dSpeaking,
-                        halfBody = true,
+                        halfBody = false,
+                        safeTopRatio = 0.20f,
                         showInterface = false,
                         onGesture = { action, _ -> RearAgentInteractionDispatcher.enqueue(this@RearAvatarActivity, action) }
                     )
