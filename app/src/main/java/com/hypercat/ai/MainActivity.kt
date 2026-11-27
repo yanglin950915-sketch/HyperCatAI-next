@@ -2363,7 +2363,7 @@ private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
             key(model.id) {
                 Live2DView(
                     model = model,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.size(128.dp).align(Alignment.Center).graphicsLayer { alpha = 0.01f },
                     halfBody = true,
                     onPortrait = { dataUrl ->
                         runCatching {
@@ -2652,7 +2652,6 @@ private fun AvatarSettingsPage(
     var nameDraft by remember(avatarName) { mutableStateOf(avatarName) }
     var dragTotal by remember { mutableFloatStateOf(0f) }
     val selected = characters[selectedIndex]
-    LaunchedEffect(selected.first) { Live2DModelStore.select(context, selected.first) }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
         Text("虚拟形象", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
@@ -2722,8 +2721,14 @@ private fun AvatarSettingsPage(
                 )
                 OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) },
                     label = { Text("自定义名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Button(onClick = { onAvatarIdChange(selected.first); onAvatarNameChange(nameDraft.trim().ifBlank { selected.second }) },
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("保存虚拟形象") }
+                Button(onClick = {
+                    // Preview selection is a draft only. Persist only after an explicit save tap.
+                    Live2DModelStore.select(context, selected.first)
+                    onAvatarIdChange(selected.first)
+                    onAvatarNameChange(nameDraft.trim().ifBlank { selected.second })
+                }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    Text("保存虚拟形象")
+                }
             }
         }
         Text("背屏投放", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 22.dp, bottom = 8.dp))
