@@ -18,7 +18,7 @@ import kotlin.coroutines.resumeWithException
 
 data class RearCard(val cardId: String, val name: String, val source: String, val path: String, val root: String, val modifiedAt: Long = 0L, val sizeBytes: Long = 0L)
 
-/** Shizuku-backed, user-selected deployment of a bundled MAML pet card. */
+/** Shizuku-backed, user-selected deployment of a bundled MAML avatar card. */
 object RearProjectionController {
     private const val PERMISSION_REQUEST_CODE = 24025
     @Volatile private var remoteService: IRearShellService? = null
@@ -88,8 +88,8 @@ object RearProjectionController {
 
     suspend fun hide(context: Context): String = runCatching {
         PetStateStore.setEnabled(context, false)
-        "已关闭背屏萌宠状态同步；卡片仍保留在系统中，可再次开启或恢复原始卡片"
-    }.getOrElse { "关闭背屏萌宠失败：${it.message ?: it.javaClass.simpleName}" }
+        "已关闭背屏虚拟形象状态同步；卡片仍保留在系统中，可再次开启或恢复原始卡片"
+    }.getOrElse { "关闭背屏虚拟形象失败：${it.message ?: it.javaClass.simpleName}" }
 
     private suspend fun requireService(context: Context): IRearShellService {
         if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) error("Shizuku 服务未运行，请先启动 Shizuku")
