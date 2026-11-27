@@ -33,12 +33,14 @@ fun Live2DView(
     speaking: Boolean = false,
     halfBody: Boolean = true,
     onGesture: (String, String) -> Unit = { _, _ -> },
-    onState: (Live2DRenderState) -> Unit = {}
+    onState: (Live2DRenderState) -> Unit = {},
+    onPortrait: (String) -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var state by remember(model.directory, model.entry) { mutableStateOf(Live2DRenderState()) }
     val latestGesture by androidx.compose.runtime.rememberUpdatedState(onGesture)
     val latestState by androidx.compose.runtime.rememberUpdatedState(onState)
+    val latestPortrait by androidx.compose.runtime.rememberUpdatedState(onPortrait)
     val controller = remember(model.directory, model.entry) { Live2DController() }
     val bridge = remember(controller) {
         object {
@@ -57,6 +59,9 @@ fun Live2DView(
             }
             @JavascriptInterface fun onFps(fps: Int) {
                 Handler(Looper.getMainLooper()).post { state = state.copy(fps = fps); latestState(state) }
+            }
+            @JavascriptInterface fun onPortrait(dataUrl: String) {
+                Handler(Looper.getMainLooper()).post { latestPortrait(dataUrl) }
             }
             @JavascriptInterface fun onPoke(part: String) { latestGesture("avatar_touch", part) }
         }
@@ -104,7 +109,8 @@ fun Live2DView(
     LaunchedEffect(model.directory, model.entry, halfBody) {
         val dir = android.net.Uri.encode(model.directory, "/:")
         val entry = android.net.Uri.encode(model.entry, "/")
-        webView.loadUrl("file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=${if (halfBody) 1 else 0}&ratio=0.55&fps=45")
+        val offsetX = if (model.id == "rice") "-0.12" else "0"
+        webView.loadUrl("file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=${if (halfBody) 1 else 0}&ratio=0.55&fps=45&offsetX=$offsetX&portrait=1")
     }
     LaunchedEffect(mood, state.ready) {
         if (state.ready) controller.setEmotion(
