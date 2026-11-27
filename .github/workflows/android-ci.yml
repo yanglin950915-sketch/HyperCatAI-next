@@ -29,7 +29,7 @@ jobs:
           assert webview.attrib.get("local") == "true", "WebView must load local assets"
           assert webview.attrib.get("cachePage") == "true", "WebView cache contract missing"
           assert webview.attrib.get("uri") == "web/index.html", "WebView entry point mismatch"
-          assert root.attrib.get("screenWidth") == "904", "target rear width mismatch"
+          assert root.attrib.get("screenWidth") == "976", "target rear width mismatch"
           assert root.find("VariableBinders") is not None, "Agent data binder missing"
           assert "com.hypercat.ai.rear.provider/pet-state" in manifest.read_text(encoding="utf-8"), "Agent provider URI missing"
           assert "PET_INTERACTION" in manifest.read_text(encoding="utf-8"), "rear touch receiver actions missing"
@@ -41,18 +41,20 @@ jobs:
           dispatcher = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionDispatcher.kt").read_text(encoding="utf-8")
           assert "enqueueUniqueWork" in dispatcher and "RearAgentInteractionWorker" in dispatcher, "rear event must be queued durably"
           assert "rear_pet_enabled" in Path("app/src/main/java/com/hypercat/ai/rear/PetStateStore.kt").read_text(encoding="utf-8"), "rear projection preference missing"
-          assert "projectionEnabled" in html and 'getStringByName("enabled")' in html, "rear projection toggle bridge missing"
+          assert "canvas.style.visibility=projectionEnabled" not in html, "rear canvas must not be hidden by optional provider state"
+          assert "data:image/svg+xml;charset=utf-8" in html and "avatarSvg(id)" in html, "rear character art must be embedded inline"
           assert 'assets.srcDir("../rearscreen")' in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "rear widget assets must be bundled in APK"
           assert "RearAgentInteractionDispatcher.enqueue(context, action)" in receiver, "rear receiver must use shared dispatcher"
           assert '<meta name="viewport"' in html, "viewport meta missing"
           assert "SAFE_ZONE:" in html and "AVAIL:" in html and "TOUCH:" in html, "layout audit comments missing"
-          assert "BASE_W=904,BASE_H=572" in html, "target design space mismatch"
+          assert "BASE_W=976,BASE_H=596" in html, "target design space mismatch"
           projection = Path("app/src/main/java/com/hypercat/ai/rear/RearProjectionController.kt").read_text(encoding="utf-8")
           rear_activity = Path("app/src/main/java/com/hypercat/ai/rear/RearPetActivity.kt").read_text(encoding="utf-8")
           assert "bindUserService" in projection and "scanCarriers" in projection and "deployCarrier" in projection, "Shizuku card deployment path missing"
           assert "RearCardPackageBuilder.build(context)" in projection, "MAML package builder must be invoked"
           package_builder = Path("app/src/main/java/com/hypercat/ai/rear/RearCardPackageBuilder.kt").read_text(encoding="utf-8")
-          assert "manifest.xml" in package_builder and "web" in package_builder, "MAML package must be generated from bundled APK assets"
+          assert 'addAsset(context, zip, "manifest.xml", "manifest.xml")' in package_builder, "MAML manifest must be loaded from APK assets root"
+          assert 'addTree(context, zip, "web", "web")' in package_builder, "MAML web tree must be loaded from APK assets root"
           shell_service = Path("app/src/main/java/com/hypercat/ai/rear/RearShellUserService.kt").read_text(encoding="utf-8")
           assert "scanCarriers" in shell_service and "deployCarrier" in shell_service and "restoreCarrier" in shell_service, "Shizuku carrier scan/deploy/restore operations missing"
           assert "copyAtomically(target, backup)" in shell_service and "isMamlPackage(source, requireWeb = true)" in shell_service, "carrier must be backed up and package-validated before write"
@@ -60,7 +62,7 @@ jobs:
           assert "RearAgentInteractionDispatcher.enqueue" in rear_activity, "rear activity must share Agent interaction pipeline"
           assert "aidl = true" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "Shizuku UserService AIDL support missing"
           assert "class RearShellUserService" in Path("app/src/main/java/com/hypercat/ai/rear/RearShellUserService.kt").read_text(encoding="utf-8"), "Shizuku shell service missing"
-          assert "versionName = \"0.9.31\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "versionName = \"0.9.34\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           assert "bridge.getStringByName" in html and "window.maml.doAction" in html, "MAML bridge integration missing"
           for name in ("__fit", "__setAod", "__debugSize", "__setMoodIndex"):
               assert f"window.{name}" in html, f"{name} lifecycle API missing"

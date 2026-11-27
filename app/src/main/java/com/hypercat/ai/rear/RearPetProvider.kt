@@ -32,7 +32,7 @@ class RearPetProvider : ContentProvider() {
             .put("pet_name", prefs.getString("pet_name", "小橘") ?: "小橘")
             .put("pet_emoji", prefs.getString("pet_emoji", "sakura") ?: "sakura")
             .put("mood", prefs.getString("mood", "IDLE") ?: "IDLE")
-            .put("reply", prefs.getString("reply", "你好！我是你的机器人萌宠。") ?: "")
+            .put("reply", prefs.getString("reply", "你好！我是你的虚拟形象。") ?: "")
             .put("updated_at", prefs.getLong("updated_at", 0L).toString())
             .put("enabled", prefs.getBoolean("rear_pet_enabled", false))
             .toString()
