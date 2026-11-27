@@ -13,7 +13,8 @@ data class RearPetState(
     val reply: String,
     val updatedAt: Long,
     val enabled: Boolean = true,
-    val userText: String = ""
+    val userText: String = "",
+    val backgroundColor: String = "#080B12"
 )
 
 /** Shared state bridge for the exported rear-screen provider and the foreground Agent UI. */
@@ -26,6 +27,7 @@ object PetStateStore {
     private const val KEY_UPDATED = "updated_at"
     private const val KEY_ENABLED = "rear_pet_enabled"
     private const val KEY_USER_TEXT = "user_text"
+    private const val KEY_BACKGROUND = "background_color"
     val PET_URI: Uri = Uri.parse("content://com.hypercat.ai.rear.provider/pet-state")
 
     private val mutableState = MutableStateFlow(
@@ -33,7 +35,7 @@ object PetStateStore {
     )
     val state: StateFlow<RearPetState> = mutableState.asStateFlow()
 
-    fun update(context: Context, name: String, emoji: String, mood: String, reply: String, enabled: Boolean? = null, userText: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_USER_TEXT, "").orEmpty()) {
+    fun update(context: Context, name: String, emoji: String, mood: String, reply: String, enabled: Boolean? = null, userText: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_USER_TEXT, "").orEmpty(), backgroundColor: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_BACKGROUND, "#080B12").orEmpty()) {
         val next = RearPetState(
             petName = name.ifBlank { "小橘" }.take(16),
             petEmoji = emoji.ifBlank { "🤖" }.take(8),
@@ -41,7 +43,8 @@ object PetStateStore {
             reply = reply.take(100),
             updatedAt = System.currentTimeMillis(),
             enabled = enabled ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false),
-            userText = userText.take(1000)
+            userText = userText.take(1000),
+            backgroundColor = if (backgroundColor.matches(Regex("^#[0-9A-Fa-f]{6}$"))) backgroundColor else "#080B12"
         )
         val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_NAME, next.petName)
@@ -51,10 +54,16 @@ object PetStateStore {
             .putLong(KEY_UPDATED, next.updatedAt)
             .putBoolean(KEY_ENABLED, next.enabled)
             .putString(KEY_USER_TEXT, next.userText)
+            .putString(KEY_BACKGROUND, next.backgroundColor)
             .commit()
         check(saved) { "无法保存背屏虚拟形象状态" }
         mutableState.value = next
         context.contentResolver.notifyChange(PET_URI, null)
+    }
+
+    fun setBackgroundColor(context: Context, color: String) {
+        val current = read(context)
+        update(context, current.petName, current.petEmoji, current.mood, current.reply, current.enabled, current.userText, color)
     }
 
     fun setEnabled(context: Context, enabled: Boolean) {
@@ -71,7 +80,8 @@ object PetStateStore {
             reply = prefs.getString(KEY_REPLY, "你好！我是你的 AI 虚拟形象。") ?: "",
             updatedAt = prefs.getLong(KEY_UPDATED, 0L),
             enabled = prefs.getBoolean(KEY_ENABLED, false),
-            userText = prefs.getString(KEY_USER_TEXT, "") ?: ""
+            userText = prefs.getString(KEY_USER_TEXT, "") ?: "",
+            backgroundColor = prefs.getString(KEY_BACKGROUND, "#080B12") ?: "#080B12"
         )
         mutableState.value = result
         return result
