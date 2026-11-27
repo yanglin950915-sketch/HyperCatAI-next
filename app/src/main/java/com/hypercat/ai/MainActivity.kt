@@ -14,6 +14,7 @@ import android.graphics.Matrix
 import android.os.Handler
 import android.os.Looper
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import java.io.ByteArrayOutputStream
 import java.util.Base64
 import android.os.Bundle
@@ -98,6 +99,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
@@ -466,7 +468,7 @@ private fun exportRearWidgetPackage(context: Context) {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "application/zip"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "HyperCat AI 背屏萌宠组件")
+            putExtra(Intent.EXTRA_SUBJECT, "HyperCat AI 背屏虚拟形象组件")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(Intent.createChooser(send, "将背屏组件包分享给 REAREye"))
@@ -705,7 +707,7 @@ private fun HyperCatApp() {
         if (!enabled) {
             rearPetEnabled = false
             PetStateStore.setEnabled(context, false)
-            rearProjectionStatus = "正在关闭背屏萌宠…"
+            rearProjectionStatus = "正在关闭背屏虚拟形象…"
             scope.launch { rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.hide(context) } }
             return
         }
@@ -823,7 +825,7 @@ private fun HyperCatApp() {
                 rearPetState.reply != petReply &&
                 rearPetState.reply !in transientRearFeedback
             ) {
-                messages.add(ChatLine("（背屏互动）用户通过背屏和萌宠进行了互动。", true))
+                messages.add(ChatLine("（背屏互动）用户通过背屏和虚拟形象进行了互动。", true))
                 messages.add(ChatLine(rearPetState.reply, false))
             }
             petReply = rearPetState.reply
@@ -2114,8 +2116,8 @@ private fun ChatPage(
                     Column(Modifier.fillMaxSize()) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { drawerSection = "pet" }) { Text("‹ 返回个人页", color = MainText) }
-                            Spacer(Modifier.weight(1f)); Text("萌宠设置", color = MainText, fontWeight = FontWeight.Bold)
-                            IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭萌宠设置", tint = Muted) }
+                            Spacer(Modifier.weight(1f)); Text("虚拟形象设置", color = MainText, fontWeight = FontWeight.Bold)
+                            IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭虚拟形象设置", tint = Muted) }
                         }
                         petSettingsContent(Modifier.weight(1f).fillMaxWidth())
                     }
@@ -2131,19 +2133,19 @@ private fun ChatPage(
                 } else {
                     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) { Text("我的萌宠", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
+                            Column(Modifier.weight(1f)) { Text("我的虚拟形象", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
                             IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭侧栏", tint = Muted) }
                         }
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().clickable { drawerSection = "pet_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(104.dp).clickable { drawerSection = "pet_settings" }, contentAlignment = Alignment.Center) {
-                                    AnimeGirlAvatar(petEmoji, Modifier.fillMaxSize())
+                                    AnimeGirlAvatar(petEmoji, Modifier.fillMaxSize(), petMood)
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(petName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                     Text(when (petMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
-                                    Text("点击头像管理萌宠与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                                    Text("点击头像管理虚拟形象与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                                 }
                             }
                         }
@@ -2199,8 +2201,8 @@ private fun ChatPage(
     if (previewPhoto != null) AlertDialog(onDismissRequest = { previewPhoto = null }, title = { Text("照片预览") }, text = { Image(bitmap = previewPhoto!!.asImageBitmap(), contentDescription = "照片预览", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) }, confirmButton = { TextButton(onClick = { previewPhoto = null }) { Text("完成") } })
     if (showPetNameDialog) AlertDialog(
         onDismissRequest = { showPetNameDialog = false },
-        title = { Text("编辑萌宠资料") },
-        text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("萌宠名称") }) },
+        title = { Text("编辑虚拟形象资料") },
+        text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("虚拟形象名称") }) },
         confirmButton = { TextButton(onClick = { onPetNameChange(petNameDraft); showPetNameDialog = false }) { Text("保存") } },
         dismissButton = { TextButton(onClick = { showPetNameDialog = false }) { Text("取消") } }
     )
@@ -2388,55 +2390,177 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 }
 
 @Composable
-private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier) {
-    val palette = when (character) {
-        "aoi" -> listOf(Color(0xFF73D8F7), Color(0xFF2868B8), Color(0xFFBDEFFF))
-        "luna" -> listOf(Color(0xFFD9D9F5), Color(0xFF777BAF), Color(0xFFE8D9FF))
-        "yuna" -> listOf(Color(0xFFFF9EC5), Color(0xFFB93D82), Color(0xFFFFD4E5))
-        else -> listOf(Color(0xFFFFA4B9), Color(0xFFB94D75), Color(0xFFFFE0E8))
+private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier, mood: String = "normal") {
+    val idleMotion = rememberInfiniteTransition(label = "avatarIdleMotion")
+    val bob by idleMotion.animateFloat(
+        initialValue = -2.5f, targetValue = 2.5f,
+        animationSpec = infiniteRepeatable(tween(if (mood == "thinking") 2800 else 2100), RepeatMode.Reverse),
+        label = "avatarBob"
+    )
+    val sway by idleMotion.animateFloat(
+        initialValue = -0.7f, targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(tween(3400), RepeatMode.Reverse),
+        label = "avatarSway"
+    )
+    val reactionScale by animateFloatAsState(
+        targetValue = when (mood) { "happy" -> 1.025f; "thinking" -> .99f; "sleepy" -> .985f; else -> 1f },
+        animationSpec = tween(320), label = "avatarReactionScale"
+    )
+    val animatedModifier = modifier.graphicsLayer {
+        translationY = bob.dp.toPx()
+        rotationZ = sway
+        scaleX = reactionScale
+        scaleY = reactionScale
     }
-    Canvas(modifier) {
+    val palette = when (character) {
+        "aoi" -> listOf(Color(0xFFBDEBFF), Color(0xFF4C80D8), Color(0xFF2CADD9), Color(0xFF193A78))
+        "luna" -> listOf(Color(0xFFEDEBFF), Color(0xFF8582C8), Color(0xFFB6A7F4), Color(0xFF49446F))
+        "yuna" -> listOf(Color(0xFFFFD9EC), Color(0xFFB94F86), Color(0xFFEE91B7), Color(0xFF71365C))
+        else -> listOf(Color(0xFFFFE0EC), Color(0xFFBE638B), Color(0xFFEE9AB4), Color(0xFF783C61))
+    }
+    val hairLight = palette[0]
+    val hair = palette[1]
+    val hairBright = palette[2]
+    val hairDark = palette[3]
+    val iris = when (character) {
+        "aoi" -> Color(0xFF258BCB)
+        "luna" -> Color(0xFF7666C8)
+        "yuna" -> Color(0xFF9B4F9C)
+        else -> Color(0xFFB84F79)
+    }
+    Canvas(animatedModifier) {
         val w = size.width
         val h = size.height
-        val cx = w * .5f
-        val hair = Brush.verticalGradient(listOf(palette[0], palette[1]), 0f, h)
-        val skin = Brush.verticalGradient(listOf(Color(0xFFFFE6D8), Color(0xFFFFCDBD)), h * .18f, h * .72f)
-        drawCircle(Color(0xFF132B42).copy(alpha = .18f), radius = w * .49f, center = Offset(cx, h * .52f))
-        drawRoundRect(Brush.verticalGradient(listOf(Color(0xFFFAFCFF), Color(0xFF8BAFCB))), Offset(w * .24f, h * .70f), Size(w * .52f, h * .34f), androidx.compose.ui.geometry.CornerRadius(w * .18f))
-        drawOval(hair, Offset(w * .17f, h * .08f), Size(w * .66f, h * .72f))
-        drawOval(skin, Offset(w * .27f, h * .22f), Size(w * .46f, h * .48f))
-        drawOval(hair, Offset(w * .12f, h * .24f), Size(w * .22f, h * .52f))
-        drawOval(hair, Offset(w * .66f, h * .24f), Size(w * .22f, h * .52f))
-        val fringe = Path().apply {
-            moveTo(w * .22f, h * .39f)
-            quadraticTo(w * .25f, h * .06f, w * .50f, h * .17f)
-            quadraticTo(w * .75f, h * .05f, w * .79f, h * .39f)
-            quadraticTo(w * .66f, h * .30f, w * .58f, h * .39f)
-            quadraticTo(w * .50f, h * .30f, w * .42f, h * .40f)
-            quadraticTo(w * .32f, h * .30f, w * .22f, h * .39f)
+        fun p(x: Float, y: Float) = Offset(w * x, h * y)
+        fun oval(color: Color, x: Float, y: Float, rw: Float, rh: Float) {
+            drawOval(color, Offset(w * x, h * y), Size(w * rw, h * rh))
+        }
+        fun oval(brush: Brush, x: Float, y: Float, rw: Float, rh: Float) {
+            drawOval(brush, Offset(w * x, h * y), Size(w * rw, h * rh))
+        }
+        fun strokePath(color: Color, width: Float, block: Path.() -> Unit) {
+            val path = Path().apply(block)
+            drawPath(path, color, style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * width, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        }
+
+        drawRect(Brush.verticalGradient(listOf(hairLight.copy(alpha = .95f), Color(0xFFFFF7FB), Color(0xFFECEBFF))))
+        drawCircle(Color.White.copy(alpha = .42f), w * .15f, p(.12f, .17f))
+        drawCircle(Color.White.copy(alpha = .34f), w * .08f, p(.88f, .31f))
+        drawCircle(hairBright.copy(alpha = .16f), w * .22f, p(.82f, .82f))
+
+        if (character == "yuna") {
+            oval(Brush.verticalGradient(listOf(hairBright, hairDark)), .04f, .25f, .24f, .58f)
+            oval(Brush.verticalGradient(listOf(hairBright, hairDark)), .72f, .23f, .24f, .60f)
+            oval(hairDark, .04f, .22f, .20f, .17f)
+            oval(hairDark, .76f, .20f, .20f, .17f)
+        } else if (character == "aoi") {
+            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .70f, .18f, .23f, .45f)
+        } else if (character == "luna") {
+            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .12f, .23f, .20f, .65f)
+            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .68f, .23f, .20f, .65f)
+        }
+        oval(Brush.verticalGradient(listOf(hair, hairDark)), .16f, .12f, .68f, .70f)
+
+        val body = Path().apply {
+            moveTo(w * .17f, h * 1.02f)
+            cubicTo(w * .19f, h * .80f, w * .28f, h * .70f, w * .43f, h * .68f)
+            lineTo(w * .57f, h * .68f)
+            cubicTo(w * .75f, h * .70f, w * .83f, h * .82f, w * .85f, h * 1.02f)
             close()
         }
-        drawPath(fringe, hair)
-        drawOval(Color(0xFF563B58), Offset(w * .34f, h * .43f), Size(w * .10f, h * .10f))
-        drawOval(Color(0xFF563B58), Offset(w * .56f, h * .43f), Size(w * .10f, h * .10f))
-        drawCircle(Color.White, w * .018f, Offset(w * .375f, h * .455f))
-        drawCircle(Color.White, w * .018f, Offset(w * .595f, h * .455f))
-        drawOval(Color(0xFFFF9EAA).copy(alpha = .65f), Offset(w * .28f, h * .54f), Size(w * .10f, h * .045f))
-        drawOval(Color(0xFFFF9EAA).copy(alpha = .65f), Offset(w * .62f, h * .54f), Size(w * .10f, h * .045f))
-        drawLine(Color(0xFFB96C78), Offset(w * .46f, h * .59f), Offset(w * .54f, h * .59f), strokeWidth = w * .012f)
-        if (character == "aoi") {
-            drawCircle(Color(0xFFB9F4FF), w * .075f, Offset(w * .18f, h * .24f))
-            drawCircle(Color(0xFFB9F4FF), w * .075f, Offset(w * .82f, h * .24f))
-        } else if (character == "luna") {
-            val star = Path().apply { moveTo(w*.5f,h*.02f); lineTo(w*.54f,h*.10f); lineTo(w*.62f,h*.12f); lineTo(w*.54f,h*.16f); lineTo(w*.5f,h*.24f); lineTo(w*.46f,h*.16f); lineTo(w*.38f,h*.12f); lineTo(w*.46f,h*.10f); close() }
-            drawPath(star, Brush.verticalGradient(listOf(Color(0xFFFFE8A3), Color(0xFFFFC95E))))
-        } else if (character == "yuna") {
-            drawCircle(Color(0xFFFFE2A8), w * .065f, Offset(w * .18f, h * .22f))
-            drawCircle(Color(0xFFFFE2A8), w * .065f, Offset(w * .82f, h * .22f))
-        } else {
-            drawCircle(Color(0xFFFFE0A8), w * .055f, Offset(w * .20f, h * .19f))
-            drawCircle(Color(0xFFFFE0A8), w * .055f, Offset(w * .80f, h * .19f))
+        drawPath(body, Brush.verticalGradient(listOf(Color(0xFFFFFBFF), hairBright, hair)))
+        oval(Brush.verticalGradient(listOf(Color(0xFFFFF7FB), hairBright)), .12f, .78f, .25f, .25f)
+        oval(Brush.verticalGradient(listOf(Color(0xFFFFF7FB), hairBright)), .63f, .78f, .25f, .25f)
+
+        drawRoundRect(Brush.verticalGradient(listOf(Color(0xFFFFE2D7), Color(0xFFFFC8C1))), Offset(w * .43f, h * .57f), Size(w * .14f, h * .19f), androidx.compose.ui.geometry.CornerRadius(w * .05f))
+        oval(Brush.verticalGradient(listOf(Color(0xFFFFF4EC), Color(0xFFFFD9D1))), .25f, .22f, .50f, .48f)
+        oval(Color(0xFFFFE5DD), .225f, .43f, .07f, .13f)
+        oval(Color(0xFFFFE5DD), .705f, .43f, .07f, .13f)
+
+        oval(Brush.verticalGradient(listOf(hairBright, hair)), .17f, .31f, .18f, .48f)
+        oval(Brush.verticalGradient(listOf(hairBright, hair)), .65f, .31f, .18f, .48f)
+        val fringe = Path().apply {
+            moveTo(w * .24f, h * .39f)
+            cubicTo(w * .19f, h * .12f, w * .34f, h * .09f, w * .50f, h * .12f)
+            cubicTo(w * .69f, h * .08f, w * .80f, h * .20f, w * .76f, h * .41f)
+            cubicTo(w * .68f, h * .34f, w * .63f, h * .31f, w * .57f, h * .43f)
+            cubicTo(w * .52f, h * .34f, w * .48f, h * .34f, w * .43f, h * .45f)
+            cubicTo(w * .38f, h * .34f, w * .31f, h * .35f, w * .24f, h * .44f)
+            close()
         }
+        drawPath(fringe, Brush.verticalGradient(listOf(hairLight, hairBright, hairDark)))
+        strokePath(hairLight.copy(alpha = .72f), .009f) {
+            moveTo(w * .31f, h * .18f); cubicTo(w * .34f, h * .29f, w * .34f, h * .34f, w * .37f, h * .39f)
+            moveTo(w * .48f, h * .14f); cubicTo(w * .49f, h * .27f, w * .47f, h * .33f, w * .45f, h * .40f)
+            moveTo(w * .65f, h * .17f); cubicTo(w * .63f, h * .28f, w * .62f, h * .33f, w * .59f, h * .39f)
+        }
+
+        listOf(.395f, .605f).forEach { x ->
+            oval(Color(0xFF6B3D55), x - .064f, .405f, .128f, .105f)
+            oval(Color.White, x - .057f, .412f, .114f, .094f)
+            oval(Brush.verticalGradient(listOf(Color(0xFFB6F1FF), iris, hairDark)), x - .043f, .414f, .086f, .090f)
+            oval(Color(0xFF18233D), x - .025f, .427f, .050f, .071f)
+            oval(Color.White, x - .025f, .425f, .030f, .030f)
+            oval(Color.White.copy(alpha = .78f), x + .014f, .461f, .014f, .014f)
+            strokePath(hairDark, .010f) {
+                moveTo(w * (x - .060f), h * .425f)
+                cubicTo(w * (x - .025f), h * .385f, w * (x + .025f), h * .385f, w * (x + .060f), h * .425f)
+            }
+        }
+        strokePath(hairDark.copy(alpha = .8f), .008f) {
+            moveTo(w * .34f, h * .375f); quadraticTo(w * .395f, h * .35f, w * .445f, h * .375f)
+            moveTo(w * .555f, h * .375f); quadraticTo(w * .605f, h * .35f, w * .66f, h * .375f)
+        }
+        oval(Color(0xFFFFA9B7).copy(alpha = .35f), .295f, .545f, .11f, .035f)
+        oval(Color(0xFFFFA9B7).copy(alpha = .35f), .595f, .545f, .11f, .035f)
+        oval(Color(0xFFEBA99D), .493f, .535f, .014f, .012f)
+        strokePath(Color(0xFFB85B78), .008f) {
+            moveTo(w * .465f, h * .585f)
+            quadraticTo(w * .50f, h * .615f, w * .535f, h * .585f)
+        }
+
+        val collar = Path().apply {
+            moveTo(w * .39f, h * .69f); lineTo(w * .50f, h * .79f); lineTo(w * .61f, h * .69f)
+            lineTo(w * .56f, h * .67f); lineTo(w * .50f, h * .72f); lineTo(w * .44f, h * .67f); close()
+        }
+        drawPath(collar, Brush.verticalGradient(listOf(Color.White, hairLight)))
+        oval(hairBright, .465f, .75f, .07f, .07f)
+        val bowLeft = Path().apply { moveTo(w*.49f,h*.77f); cubicTo(w*.39f,h*.72f,w*.37f,h*.84f,w*.48f,h*.83f); close() }
+        val bowRight = Path().apply { moveTo(w*.51f,h*.77f); cubicTo(w*.61f,h*.72f,w*.63f,h*.84f,w*.52f,h*.83f); close() }
+        drawPath(bowLeft, Brush.verticalGradient(listOf(hairLight, hair)))
+        drawPath(bowRight, Brush.verticalGradient(listOf(hairBright, hairDark)))
+        oval(Color(0xFFFFF2F7), .485f, .765f, .03f, .04f)
+        strokePath(Color.White.copy(alpha = .72f), .006f) {
+            moveTo(w*.25f,h*.88f); quadraticTo(w*.50f,h*.93f,w*.75f,h*.88f)
+        }
+
+        when (character) {
+            "aoi" -> {
+                oval(Color(0xFFFFF7FB), .73f, .22f, .12f, .10f)
+                oval(Color(0xFF4CC8F0), .755f, .24f, .07f, .06f)
+                strokePath(Color.White, .008f) { moveTo(w*.77f,h*.22f); lineTo(w*.80f,h*.15f) }
+            }
+            "luna" -> {
+                oval(Color(0xFFFFE89B), .68f, .18f, .11f, .10f)
+                oval(Color(0xFFFFF9D8), .705f, .195f, .06f, .055f)
+            }
+            "yuna" -> {
+                oval(Color(0xFFFFF5FA), .10f, .25f, .12f, .11f)
+                oval(Color(0xFFFFC4D9), .13f, .27f, .06f, .06f)
+                oval(Color(0xFFFFF5FA), .78f, .24f, .12f, .11f)
+                oval(Color(0xFFFFC4D9), .81f, .26f, .06f, .06f)
+            }
+            else -> {
+                oval(Color(0xFFFFF7FB), .72f, .22f, .12f, .11f)
+                oval(Color(0xFFFFD36D), .75f, .245f, .06f, .055f)
+            }
+        }
+        strokePath(Color.White.copy(alpha = .62f), .007f) {
+            moveTo(w*.27f,h*.29f); quadraticTo(w*.31f,h*.18f,w*.43f,h*.16f)
+            moveTo(w*.67f,h*.30f); quadraticTo(w*.70f,h*.22f,w*.72f,h*.33f)
+        }
+        drawCircle(Color.White.copy(alpha = .9f), w * .012f, p(.19f, .16f))
+        drawCircle(Color.White.copy(alpha = .8f), w * .009f, p(.83f, .47f))
     }
 }
 
@@ -2454,43 +2578,84 @@ private fun PetSettingsPage(
     onPetInteraction: (String) -> Unit,
     onPetNameChange: (String) -> Unit
 ) {
+    val characters = listOf(
+        Triple("sakura", "樱花", "温柔、黏人又有一点小傲娇。喜欢樱花、甜点和被认真倾听；遇到你时总会先露出笑容。"),
+        Triple("aoi", "葵", "活泼开朗的蓝发歌姬。热爱音乐与新鲜事物，擅长用元气和鼓励陪你度过忙碌的一天。"),
+        Triple("luna", "露娜", "安静细腻的银发魔法师。好奇心强，喜欢探索知识；说话温柔，关键时刻十分可靠。"),
+        Triple("yuna", "优奈", "俏皮可爱的双马尾少女。喜欢恶作剧和分享日常，情绪表达直接，是个热情的小伙伴。")
+    )
+    var selectedIndex by remember(petEmoji) { mutableIntStateOf(characters.indexOfFirst { it.first == petEmoji }.coerceAtLeast(0)) }
     var nameDraft by remember(petName) { mutableStateOf(petName) }
+    var dragTotal by remember { mutableFloatStateOf(0f) }
+    val selected = characters[selectedIndex]
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
-        Text("萌宠设置", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Text("管理伙伴资料、互动与背屏投放", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
-        Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(112.dp).clip(CircleShape).background(Panel2).clickable { onPetInteraction("pet_touch") }, contentAlignment = Alignment.Center) {
-                        AnimeGirlAvatar(petEmoji, Modifier.fillMaxSize())
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(petName, color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                        Text(when (petMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
-                    }
-                }
-                Spacer(Modifier.height(14.dp))
-                Text("选择二次元角色", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
-                    listOf("sakura" to "樱花 · 樱发少女", "aoi" to "葵 · 蓝发歌姬", "luna" to "露娜 · 银发魔法师", "yuna" to "优奈 · 粉发双马尾").chunked(2).forEach { row ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            row.forEach { (id, label) ->
-                                Surface(onClick = { onPetEmojiChange(id) }, color = if (petEmoji == id) Cyan.copy(alpha = .18f) else Panel2, shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(if (petEmoji == id) 1.5.dp else 0.dp, if (petEmoji == id) Cyan else Color.Transparent), modifier = Modifier.weight(1f)) {
-                                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        AnimeGirlAvatar(id, Modifier.size(58.dp))
-                                        Spacer(Modifier.width(7.dp))
-                                        Text(label, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                    }
+        Text("虚拟形象", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text("左右滑动选择伙伴，确认后再保存", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(20.dp))
+                        .background(Brush.verticalGradient(listOf(Color(0xFFFFE6F0), Color(0xFFE9E8FF))))
+                        .pointerInput(selectedIndex) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { dragTotal = 0f },
+                                onHorizontalDrag = { change, amount -> change.consume(); dragTotal += amount },
+                                onDragEnd = {
+                                    if (dragTotal < -36f) selectedIndex = (selectedIndex + 1).mod(characters.size)
+                                    else if (dragTotal > 36f) selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size)
                                 }
-                            }
-                        }
-                    }
+                            )
+                        }.pointerInput(selectedIndex) {
+                            detectTapGestures(
+                                onTap = { onPetInteraction("pet_touch") },
+                                onLongPress = { onPetInteraction("pet_long_press") }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    AnimeGirlAvatar(selected.first, Modifier.fillMaxSize(), petMood)
+                    Text("点击角色互动", color = Color(0xFF754A67), fontSize = 11.sp,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
                 }
-                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) }, label = { Text("萌宠名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Button(onClick = { onPetNameChange(nameDraft) }, modifier = Modifier.fillMaxWidth()) { Text("保存萌宠资料") }
-                OutlinedButton(onClick = { onPetInteraction("pet_touch") }, modifier = Modifier.fillMaxWidth()) { Text("和萌宠互动") }
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = { selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size) }) { Text("‹ 上一个") }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(selected.second, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("${selectedIndex + 1} / ${characters.size}", color = Muted, fontSize = 11.sp)
+                    }
+                    TextButton(onClick = { selectedIndex = (selectedIndex + 1).mod(characters.size) }) { Text("下一个 ›") }
+                }
+                Text("性格介绍", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                Text(selected.third, color = Muted, fontSize = 12.sp, lineHeight = 19.sp,
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 14.dp))
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(onClick = { onPetInteraction("pet_touch") }) { Text("摸摸") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_happy") }) { Text("打招呼") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_long_press") }) { Text("聊一聊") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_thinking") }) { Text("思考") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_rest") }) { Text("休息") }
+                }
+                Text(
+                    when (petMood) {
+                        "happy" -> "正在回应你的互动"
+                        "thinking" -> "正在思考你的请求"
+                        "sleepy" -> "正在休息，随时可以叫醒"
+                        "sad" -> "连接似乎遇到问题，稍后再试试"
+                        else -> "点击角色可互动，长按可主动开启对话"
+                    },
+                    color = Muted, fontSize = 11.sp,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)
+                )
+                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) },
+                    label = { Text("自定义名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Button(onClick = { onPetEmojiChange(selected.first); onPetNameChange(nameDraft.trim().ifBlank { selected.second }) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("保存虚拟形象") }
             }
         }
         Text("背屏投放", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 22.dp, bottom = 8.dp))
@@ -2498,8 +2663,8 @@ private fun PetSettingsPage(
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("萌宠投放到背屏", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text(if (rearPetEnabled) "已开启" else "关闭状态 · 不影响主屏萌宠", color = Muted, fontSize = 11.sp)
+                        Text("虚拟形象投放到背屏", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (rearPetEnabled) "已开启" else "关闭状态 · 不影响主屏虚拟形象", color = Muted, fontSize = 11.sp)
                     }
                     Switch(checked = rearPetEnabled, onCheckedChange = onRearPetEnabledChange)
                 }
@@ -2511,7 +2676,6 @@ private fun PetSettingsPage(
         Spacer(Modifier.height(24.dp))
     }
 }
-
 @Composable
 private fun SettingsPage(
     modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, rearProjectionStatus: String, onRearPetEnabledChange: (Boolean) -> Unit, onRearPetRestore: () -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
@@ -2853,8 +3017,8 @@ private fun SettingsPage(
     }
     if (showPetNameDialog) AlertDialog(
         onDismissRequest = { showPetNameDialog = false },
-        title = { Text("给萌宠取个名字") },
-        text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("萌宠名称") }) },
+        title = { Text("给虚拟形象取个名字") },
+        text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("虚拟形象名称") }) },
         confirmButton = { TextButton(onClick = { onPetNameChange(petNameDraft); showPetNameDialog = false }) { Text("保存") } },
         dismissButton = { TextButton(onClick = { showPetNameDialog = false }) { Text("取消") } }
     )

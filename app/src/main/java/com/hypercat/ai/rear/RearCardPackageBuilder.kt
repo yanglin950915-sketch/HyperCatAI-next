@@ -14,8 +14,8 @@ object RearCardPackageBuilder {
         val partial = File(outputDir, ".HyperCatAI-rearscreen.partial")
         try {
             ZipOutputStream(partial.outputStream().buffered()).use { zip ->
-                addAsset(context, zip, "rearscreen/manifest.xml", "manifest.xml")
-                addTree(context, zip, "rearscreen/web", "web")
+                addAsset(context, zip, "manifest.xml", "manifest.xml")
+                addTree(context, zip, "web", "web")
             }
             if (output.exists() && !output.delete()) error("无法替换旧的背屏资源包")
             check(partial.renameTo(output)) { "无法生成背屏资源包" }

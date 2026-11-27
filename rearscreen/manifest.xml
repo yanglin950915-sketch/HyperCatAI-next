@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Widget version="2" screenWidth="904" frameRate="30" scaleByDensity="false" transparentSurface="false" useVariableUpdater="DateTime.Second">
+<Widget version="2" screenWidth="976" frameRate="30" scaleByDensity="false" transparentSurface="true" useVariableUpdater="DateTime.Second">
     <Var name="petUri" type="string" expression="'content://com.hypercat.ai.rear.provider/pet-state'" const="true"/>
     <Var name="resultJson" type="string" expression="'{}'"/>
     <Var name="petName" type="string" expression="'小橘'"/>
     <Var name="petEmoji" type="string" expression="'🐱'"/>
     <Var name="mood" type="string" expression="'normal'"/>
-    <Var name="reply" type="string" expression="'你好！我是你的 AI 萌宠。'"/>
+    <Var name="reply" type="string" expression="'你好！我是你的 AI 虚拟形象。'"/>
     <Var name="updatedAt" type="string" expression="'0'"/>
     <Var name="enabled" type="string" expression="'false'"/>
     <Var name="refreshTick" expression="#second">

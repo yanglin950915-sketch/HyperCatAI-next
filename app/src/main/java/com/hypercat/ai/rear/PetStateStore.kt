@@ -27,7 +27,7 @@ object PetStateStore {
     val PET_URI: Uri = Uri.parse("content://com.hypercat.ai.rear.provider/pet-state")
 
     private val mutableState = MutableStateFlow(
-        RearPetState("小橘", "🤖", "normal", "你好！我是你的 AI 萌宠。", 0L, false)
+        RearPetState("小橘", "🤖", "normal", "你好！我是你的 AI 虚拟形象。", 0L, false)
     )
     val state: StateFlow<RearPetState> = mutableState.asStateFlow()
 
@@ -48,7 +48,7 @@ object PetStateStore {
             .putLong(KEY_UPDATED, next.updatedAt)
             .putBoolean(KEY_ENABLED, next.enabled)
             .commit()
-        check(saved) { "无法保存背屏萌宠状态" }
+        check(saved) { "无法保存背屏虚拟形象状态" }
         mutableState.value = next
         context.contentResolver.notifyChange(PET_URI, null)
     }
@@ -64,7 +64,7 @@ object PetStateStore {
             petName = prefs.getString(KEY_NAME, "小橘") ?: "小橘",
             petEmoji = prefs.getString(KEY_EMOJI, "🤖") ?: "🤖",
             mood = prefs.getString(KEY_MOOD, "normal") ?: "normal",
-            reply = prefs.getString(KEY_REPLY, "你好！我是你的 AI 萌宠。") ?: "",
+            reply = prefs.getString(KEY_REPLY, "你好！我是你的 AI 虚拟形象。") ?: "",
             updatedAt = prefs.getLong(KEY_UPDATED, 0L),
             enabled = prefs.getBoolean(KEY_ENABLED, false)
         )
