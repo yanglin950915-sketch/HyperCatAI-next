@@ -27,7 +27,7 @@ jobs:
           webview = root.find("WebView")
           assert webview is not None, "REAREye WebView element missing"
           assert webview.attrib.get("local") == "true", "WebView must load local assets"
-          assert webview.attrib.get("cachePage") == "true", "WebView cache contract missing"
+          assert webview.attrib.get("cachePage") == "false", "rear WebView must not retain stale avatar page cache"
           assert webview.attrib.get("uri") == "web/index.html", "WebView entry point mismatch"
           assert root.attrib.get("screenWidth") == "976", "target rear width mismatch"
           assert root.find("VariableBinders") is not None, "Agent data binder missing"
@@ -45,6 +45,11 @@ jobs:
           assert "data:image/svg+xml;charset=utf-8" in html and "avatarSvg(id)" in html, "rear character art must be embedded inline"
           assert 'assets.srcDir("../rearscreen")' in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "rear widget assets must be bundled in APK"
           assert "RearAgentInteractionDispatcher.enqueue(context, action)" in receiver, "rear receiver must use shared dispatcher"
+          pet_store = Path("app/src/main/java/com/hypercat/ai/rear/PetStateStore.kt").read_text(encoding="utf-8")
+          rear_worker = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionWorker.kt").read_text(encoding="utf-8")
+          assert "user_text" in Path("app/src/main/java/com/hypercat/ai/rear/RearPetProvider.kt").read_text(encoding="utf-8"), "rear interaction text must be exposed to the app state bridge"
+          assert "userText = if (action == \"pet_voice\") userText else eventPrompt" in rear_worker, "rear Agent turn must retain original user text"
+          assert "applyAgentState" in html and "__setAgentState=applyAgentState" in html, "rear avatar must apply synchronized Agent state"
           assert '<meta name="viewport"' in html, "viewport meta missing"
           assert "SAFE_ZONE:" in html and "AVAIL:" in html and "TOUCH:" in html, "layout audit comments missing"
           assert "BASE_W=976,BASE_H=596" in html, "target design space mismatch"
