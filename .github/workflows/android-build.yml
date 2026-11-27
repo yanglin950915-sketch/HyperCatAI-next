@@ -1,7 +1,7 @@
 name: Android build
 on:
   pull_request:
-    branches: [main, feat/live2d-avatar-agent-integration, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29]
+    branches: [main, feat/live2d-avatar-agent-integration, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29, fix/live2d-model-zip-import]
   push:
     branches: [fix/v0.9.40-splash-rearscreen-anime, feat/rear-voice-v0.9.36, main, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29]
   workflow_dispatch:
