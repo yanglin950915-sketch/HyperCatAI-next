@@ -5,6 +5,7 @@ import android.app.DownloadManager
 import android.media.MediaPlayer
 import android.media.AudioManager
 import android.media.AudioAttributes
+import android.media.audiofx.Visualizer
 import android.widget.Toast
 import android.Manifest
 import android.content.pm.PackageManager
@@ -145,6 +146,7 @@ import com.hypercat.ai.rear.RearCard
 import com.hypercat.ai.pet.Live2DModel
 import com.hypercat.ai.pet.Live2DModelStore
 import com.hypercat.ai.pet.Live2DView
+import com.hypercat.ai.pet.Live2DControllerHub
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
@@ -398,10 +400,44 @@ private suspend fun playSpeechAudio(context: Context, bytes: ByteArray, usage: I
                     .build()
             )
             player.setVolume(1.0f, 1.0f)
-            fun release() { runCatching { player.reset() }; runCatching { player.release() } }
-            player.setOnPreparedListener { media -> runCatching { media.start() }.onFailure {
-                release(); if (continuation.isActive) continuation.resumeWithException(it)
-            } }
+            var visualizer: Visualizer? = null
+            fun release() {
+                Live2DControllerHub.setMouth(0f)
+                Live2DControllerHub.setSpeaking(false)
+                runCatching { visualizer?.enabled = false }
+                runCatching { visualizer?.release() }
+                visualizer = null
+                runCatching { player.reset() }
+                runCatching { player.release() }
+            }
+            player.setOnPreparedListener { media ->
+                Live2DControllerHub.setSpeaking(true)
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    runCatching {
+                        Visualizer(media.audioSessionId).apply {
+                            captureSize = Visualizer.getCaptureSizeRange()[1]
+                            setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                                override fun onWaveFormDataCapture(v: Visualizer, waveform: ByteArray, samplingRate: Int) {
+                                    if (waveform.isEmpty()) return
+                                    var energy = 0.0
+                                    waveform.forEach { sample ->
+                                        val centered = (sample.toInt() and 0xFF) - 128
+                                        val normalized = centered / 128.0
+                                        energy += normalized * normalized
+                                    }
+                                    val rms = kotlin.math.sqrt(energy / waveform.size)
+                                    Live2DControllerHub.setMouth((rms * 2.8).coerceIn(0.0, 1.0).toFloat())
+                                }
+                                override fun onFftDataCapture(v: Visualizer, fft: ByteArray, samplingRate: Int) = Unit
+                            }, Visualizer.getMaxCaptureRate(), true, false)
+                            enabled = true
+                        }
+                    }.onSuccess { visualizer = it }
+                }
+                runCatching { media.start() }.onFailure {
+                    release(); if (continuation.isActive) continuation.resumeWithException(it)
+                }
+            }
             player.setOnCompletionListener {
                 release(); if (continuation.isActive) continuation.resume(Unit)
             }
