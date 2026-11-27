@@ -1,4 +1,4 @@
-# HyperCat AI 多萌宠引擎规范（v1）
+# HyperCat AI 多虚拟形象引擎规范（v1）
 
 ## 目标
 
@@ -31,7 +31,7 @@ rearscreen/web/model/<petId>/
 {
   "schemaVersion": 1,
   "petId": "sample_pet",
-  "displayName": "示例萌宠",
+  "displayName": "示例虚拟形象",
   "model": "character.glb",
   "rig": {
     "head": ["Head", "head"],
@@ -87,16 +87,16 @@ Agent 不发送骨骼名或欧拉角，只发送语义命令：
 初始 mood：`idle`、`happy`、`sad`、`angry`、`sleepy`、`thinking`、`excited`。
 初始 action：`wave`、`nod`、`dance`、`stretch`、`stumble`、`petReaction`。
 
-每只萌宠由自己的动作映射表把语义指令转成可用动画/程序化动作；不支持的动作安全降级到 idle 或可用表情。
+每只虚拟形象由自己的动作映射表把语义指令转成可用动画/程序化动作；不支持的动作安全降级到 idle 或可用表情。
 
 ## 首批迁移约束
 
 - 保留旧版已验证的 GLTFLoader、toon 材质、outline、拖拽弹簧、物理链和主循环算法。
 - 把原先写死的 `POSE_BONE_NAMES` 改为 rig adapter 返回的骨骼列表。
 - `updatePose` 不得无条件访问 `pose['Upperarm L']` 等键；所有动作必须按能力检测执行。
-- `setupEarTwitch`、`setupChains` 在每次换模型前清理旧状态，避免跨宠物残留引用。
+- `setupEarTwitch`、`setupChains` 在每次换模型前清理旧状态，避免跨角色残留引用。
 - 表情图集与动画名必须逐模型声明，不允许对未知模型套用旧图集索引。
-- 先加载并校验新模型，成功后再切换当前 petId；失败时保留上一只已显示的萌宠。
+- 先加载并校验新模型，成功后再切换当前 petId；失败时保留上一只已显示的虚拟形象。
 
 ## 当前实现状态
 

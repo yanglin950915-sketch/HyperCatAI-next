@@ -20,8 +20,8 @@ android {
         applicationId = "com.hypercat.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
-        versionName = "0.9.20"
+        versionCode = 60
+        versionName = "0.9.41"
     }
     signingConfigs {
         create("stable") {
@@ -41,13 +41,18 @@ android {
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true; aidl = false }
+    sourceSets.getByName("main").assets.srcDir("../rearscreen")
+    buildFeatures { compose = true; aidl = true }
 }
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
     implementation("androidx.activity:activity-compose:1.10.0")
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-splashscreen:1.2.0")
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")

@@ -14,22 +14,29 @@ import android.graphics.Matrix
 import android.os.Handler
 import android.os.Looper
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import java.io.ByteArrayOutputStream
 import java.util.Base64
 import android.os.Bundle
 import android.os.Environment
 import android.content.Intent
 import android.net.Uri
+import java.io.File
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.RecognitionListener
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -58,11 +65,11 @@ import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.VolumeUp
@@ -93,6 +100,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
@@ -122,7 +130,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import java.io.File
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.Dispatchers
@@ -132,20 +139,49 @@ import java.net.HttpURLConnection
 import java.net.URL
 import android.webkit.URLUtil
 import com.hypercat.ai.rear.PetStateStore
+import com.hypercat.ai.rear.RearAgentInteractionDispatcher
+import com.hypercat.ai.rear.RearProjectionController
+import com.hypercat.ai.rear.RearCard
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
-private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF1F5FA)
-private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFFFFFFF)
-private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFE4EDF6)
-private val Cyan get() = if (appDarkState) Color(0xFFE6E6E6) else Color(0xFF168DA6)
-private val Muted get() = if (appDarkState) Color(0xFFA0A0A0) else Color(0xFF65758A)
-private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f) else Color(0xFF8AA4BA).copy(alpha = .35f)
-private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF142235)
+
+private fun resolveInitialDarkMode(context: Context): Boolean {
+    val mode = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+        .getString("theme_mode", "system") ?: "system"
+    return when (mode) {
+        "dark" -> true
+        "light" -> false
+        "time" -> java.time.LocalTime.now().hour < 7 || java.time.LocalTime.now().hour >= 19
+        else -> (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+    }
+}
+
+private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF7F7F8)
+private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFF0F1F2)
+private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFE8EAED)
+private val Cyan get() = if (appDarkState) Color(0xFFE6E6E6) else Color(0xFF2563EB)
+private val Muted get() = if (appDarkState) Color(0xFFA0A0A0) else Color(0xFF77766F)
+private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f) else Color(0xFFE5E2DA)
+private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF262521)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
+        // Resolve saved appearance before the first Activity/Compose frame.
+        // Avoid the former one-frame black flash before Compose SideEffect updated it.
+        val initialDark = resolveInitialDarkMode(this)
+        appDarkState = initialDark
+        val initialWindowColor = if (initialDark) android.graphics.Color.BLACK else android.graphics.Color.rgb(247, 247, 248)
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(initialWindowColor))
+        window.decorView.setBackgroundColor(initialWindowColor)
+        window.statusBarColor = initialWindowColor
+        window.navigationBarColor = initialWindowColor
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
         val updateCheck = PeriodicWorkRequestBuilder<ReleaseCheckWorker>(12, TimeUnit.HOURS).build()
         WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
             "hypercat-release-check", ExistingPeriodicWorkPolicy.KEEP, updateCheck
@@ -442,6 +478,32 @@ private fun inferMood(reply: String): String = when {
     listOf("思考", "考虑", "分析", "让我想想").any { reply.contains(it) } -> "thinking"
     else -> "normal"
 }
+private fun exportRearWidgetPackage(context: Context) {
+    runCatching {
+        val directory = File(context.cacheDir, "rear-widget").apply { mkdirs() }
+        val archive = File(directory, "HyperCatAI-RearWidget.zip")
+        ZipOutputStream(FileOutputStream(archive)).use { zip ->
+            listOf("manifest.xml", "web/index.html", "REAREye_IMPORT_PROMPT.md").forEach { assetPath ->
+                zip.putNextEntry(ZipEntry(assetPath))
+                context.assets.open(assetPath).use { input -> input.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context, "${context.packageName}.fileprovider", archive
+        )
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "HyperCat AI 背屏虚拟形象组件")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(send, "将背屏组件包分享给 REAREye"))
+    }.onFailure {
+        android.widget.Toast.makeText(context, "组件包导出失败：${it.message ?: "未知错误"}", android.widget.Toast.LENGTH_LONG).show()
+    }
+}
+
 private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "")
 
 private fun serializeChatHistory(messages: List<ChatLine>): String = org.json.JSONArray().apply {
@@ -612,6 +674,8 @@ private fun HyperCatApp() {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
+    val initialRearState = remember { PetStateStore.read(context) }
+    val rearPetState by PetStateStore.state.collectAsState()
     var page by remember { mutableStateOf(Page.CHAT) }
     var openSettingsDrawer by remember { mutableStateOf(false) }
     var chatDrawerExpanded by remember { mutableStateOf(false) }
@@ -630,8 +694,17 @@ private fun HyperCatApp() {
     var ttsVoice by remember { mutableStateOf("alloy") }
     var saved by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
-    var petName by remember { mutableStateOf("小橘") }
-    var petMood by remember { mutableStateOf("normal") }
+    var petName by remember { mutableStateOf(initialRearState.petName) }
+    var petEmoji by remember { mutableStateOf(initialRearState.petEmoji.takeIf { it in setOf("sakura", "aoi", "luna", "yuna") } ?: "sakura") }
+    var petMood by remember { mutableStateOf(initialRearState.mood) }
+    var petReply by remember { mutableStateOf(initialRearState.reply) }
+    var rearPetEnabled by remember { mutableStateOf(initialRearState.enabled) }
+    var rearBackgroundColor by remember { mutableStateOf(initialRearState.backgroundColor) }
+    var rearProjectionStatus by remember { mutableStateOf("尚未连接背屏") }
+    var rearPickerCards by remember { mutableStateOf<List<RearCard>>(emptyList()) }
+    var rearPickerMode by remember { mutableStateOf("deploy") }
+    var showRearPicker by remember { mutableStateOf(false) }
+    var rearPickerBusy by remember { mutableStateOf(false) }
     var themeMode by remember { mutableStateOf("system") }
     var timeRefresh by remember { mutableIntStateOf(0) }
     var updateStatus by remember { mutableStateOf("尚未检查") }
@@ -658,6 +731,29 @@ private fun HyperCatApp() {
         else -> systemDark
     }
     SideEffect { appDarkState = darkNow }
+    fun setRearProjectionEnabled(enabled: Boolean) {
+        if (!enabled) {
+            rearPetEnabled = false
+            PetStateStore.setEnabled(context, false)
+            rearProjectionStatus = "正在关闭背屏虚拟形象…"
+            scope.launch { rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.hide(context) } }
+            return
+        }
+        val host = context as? ComponentActivity
+        if (host == null) { rearProjectionStatus = "无法获取应用界面上下文，请返回设置页重试"; return }
+        RearProjectionController.requestPermission(host) { granted, message ->
+            if (!granted) { rearProjectionStatus = message; return@requestPermission }
+            scope.launch {
+                rearProjectionStatus = "正在扫描小米 AI 背屏资源…"
+                try {
+                    rearPickerCards = RearProjectionController.scan(context)
+                    rearPickerMode = "deploy"
+                    showRearPicker = true
+                    rearProjectionStatus = "发现 " + rearPickerCards.size + " 个可替换背屏资源，请选择目标"
+                } catch (error: Exception) { rearProjectionStatus = error.message ?: "扫描背屏资源失败"; rearPetEnabled = false }
+            }
+        }
+    }
     val messages = remember { mutableStateListOf<ChatLine>() }
     var isThinking by remember { mutableStateOf(false) }
     val weatherPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
@@ -670,8 +766,13 @@ private fun HyperCatApp() {
                     else "未授予位置权限，无法获取当地天气。请在系统权限弹窗中允许位置访问，或直接告诉我城市名称。"
                 val display = if (hasLocation && !precise) "提示：目前只获得大致位置权限，天气区域可能不够准确。请在应用权限中开启“精确位置”。\\n$result" else result
                 appendAgentReply(context, messages, display)
+                petReply = display
+                petMood = "happy"
             } catch (error: Exception) {
-                appendAgentReply(context, messages, "天气查询失败：${error.message ?: "请稍后重试"}")
+                val failure = "天气查询失败：${error.message ?: "请稍后重试"}"
+                appendAgentReply(context, messages, failure)
+                petReply = failure
+                petMood = "sad"
             } finally { isThinking = false }
         }
     }
@@ -724,6 +825,7 @@ private fun HyperCatApp() {
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
         autoReadReplies = prefs.getBoolean("auto_read_replies", false)
         petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
+        petEmoji = (prefs.getString("pet_emoji", "sakura") ?: "sakura").let { if (it in setOf("sakura", "aoi", "luna", "yuna")) it else "sakura" }
         themeMode = prefs.getString("theme_mode", "system") ?: "system"
     }
 
@@ -742,9 +844,32 @@ private fun HyperCatApp() {
         }
     }
 
-    LaunchedEffect(petName, petMood) {
-        val state = PetStateStore.read(context)
-        PetStateStore.update(context, petName, "🤖", petMood, state.reply)
+    LaunchedEffect(rearPetState.updatedAt) {
+        if (rearPetState.updatedAt > 0L) {
+            petName = rearPetState.petName
+            petMood = rearPetState.mood
+            val transientRearFeedback = setOf("让我想一想……", "我准备休息啦。", "我在听，你想和我聊什么？", "嘿嘿，你摸到我啦！")
+            if (rearPetState.reply.isNotBlank() &&
+                rearPetState.reply != petReply &&
+                rearPetState.reply !in transientRearFeedback
+            ) {
+                val interactionText = rearPetState.userText.trim()
+                messages.add(ChatLine(
+                    interactionText.ifBlank { "（背屏互动）用户通过背屏和虚拟形象进行了互动。" },
+                    true
+                ))
+                messages.add(ChatLine(rearPetState.reply, false))
+            }
+            petReply = rearPetState.reply
+        }
+    }
+
+    LaunchedEffect(isThinking) {
+        if (isThinking) petMood = "thinking"
+    }
+
+    LaunchedEffect(petName, petEmoji, petMood, petReply) {
+        PetStateStore.update(context, petName, petEmoji, petMood, petReply, userText = rearPetState.userText)
     }
 
     MaterialTheme(colorScheme = if (darkNow) darkColorScheme(
@@ -769,6 +894,8 @@ private fun HyperCatApp() {
                     onShareCurrentSession = { shareChatText(context, formatChatForSharing(currentSessionTitle, messages)) },
                     onClearCurrentSession = { currentSessionTitle = "" },
                     currentSessionTitle = currentSessionTitle,
+                    onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                    onPetNameChange = { value -> val clean = value.trim().take(16).ifBlank { "小橘" }; petName = clean; chatPrefs.edit().putString("pet_name", clean).apply() },
                     modelProfiles = modelProfiles.toList(), ttsProfiles = ttsProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
                     onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
                     savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
@@ -781,7 +908,7 @@ private fun HyperCatApp() {
                             val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") })
                             messages.add(userLine)
                             if (value.isNotBlank()) {
-                                if (currentSessionTitle == value.trim().take(42)) recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(12)
+                                if (currentSessionTitle == value.trim().take(42)) recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
                                 chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
                                 val explicitMemory = Regex("^(?:请)?记住[：:，, ]*(.+)$", RegexOption.DOT_MATCHES_ALL).find(value.trim())?.groupValues?.getOrNull(1)?.trim()
                                 if (!explicitMemory.isNullOrBlank()) {
@@ -795,24 +922,46 @@ private fun HyperCatApp() {
                                 if (requestedPlace.isNotBlank() || AgentDeviceTools.hasPreciseLocationPermission(context)) {
                                     scope.launch {
                                         isThinking = true
-                                        try { appendAgentReply(context, messages, withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context, requestedPlace.ifBlank { null }) }) }
-                                        catch (error: Exception) { appendAgentReply(context, messages, "天气查询失败：${error.message ?: "请稍后重试"}") }
+                                        try {
+                                            val weatherReply = withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context, requestedPlace.ifBlank { null }) }
+                                            appendAgentReply(context, messages, weatherReply)
+                                            petReply = weatherReply
+                                            petMood = "happy"
+                                        } catch (error: Exception) {
+                                            val failure = "天气查询失败：${error.message ?: "请稍后重试"}"
+                                            appendAgentReply(context, messages, failure)
+                                            petReply = failure
+                                            petMood = "sad"
+                                        }
                                         finally { isThinking = false }
                                     }
                                 } else weatherPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                             } else {
                                 val localAction = AgentDeviceTools.handleSystemAction(context, value)
-                                if (localAction != null) appendAgentReply(context, messages, localAction)
-                                else if (!saved || endpoint.isBlank() || model.isBlank()) messages.add(ChatLine("请先在设置中完成模型配置，再发送消息。", false))
+                                if (localAction != null) {
+                                    appendAgentReply(context, messages, localAction)
+                                    petReply = localAction
+                                    petMood = "happy"
+                                } else if (!saved || endpoint.isBlank() || model.isBlank()) {
+                                    val setupHint = "请先在设置中完成模型配置，再发送消息。"
+                                    messages.add(ChatLine(setupHint, false))
+                                    petReply = setupHint
+                                    petMood = "sad"
+                                }
                                 else {
                                     val requestHistory = messages.toList()
                                     scope.launch {
                                         isThinking = true
                                         try {
                                             val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                            appendAgentReply(context, messages, reply.text, reply.reasoning); petMood = inferMood(reply.text)
+                                            appendAgentReply(context, messages, reply.text, reply.reasoning)
+                                            petReply = reply.text
+                                            petMood = inferMood(reply.text)
                                         } catch (error: Exception) {
-                                            appendAgentReply(context, messages, "模型请求未成功：${error.message ?: "网络或服务异常"}")
+                                            val failure = "模型请求未成功：${error.message ?: "网络或服务异常"}"
+                                            appendAgentReply(context, messages, failure)
+                                            petReply = failure
+                                            petMood = "sad"
                                         } finally { isThinking = false }
                                     }
                                 }
@@ -826,9 +975,14 @@ private fun HyperCatApp() {
                                 isThinking = true
                                 try {
                                     val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                    appendAgentReply(context, messages, reply.text, reply.reasoning); petMood = inferMood(reply.text)
+                                    appendAgentReply(context, messages, reply.text, reply.reasoning)
+                                    petReply = reply.text
+                                    petMood = inferMood(reply.text)
                                 } catch (error: Exception) {
-                                    appendAgentReply(context, messages, "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}")
+                                    val failure = "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}"
+                                    appendAgentReply(context, messages, failure)
+                                    petReply = failure
+                                    petMood = "sad"
                                 } finally { isThinking = false }
                             }
                         }
@@ -836,6 +990,7 @@ private fun HyperCatApp() {
                     openSettings = { page = Page.CHAT; openSettingsDrawer = true },
                     configured = saved,
                     petName = petName,
+                    petEmoji = petEmoji,
                     petMood = petMood,
                     ttsLanguage = ttsLanguage, ttsRate = ttsRate, ttsPitch = ttsPitch,
                     ttsMode = ttsMode, ttsProfileName = ttsProfileName, ttsModel = ttsModel, ttsVoice = ttsVoice,
@@ -843,6 +998,44 @@ private fun HyperCatApp() {
                     onMood = { mood -> petMood = mood },
                     showSettingsOnEnter = openSettingsDrawer,
                     onSettingsDrawerShown = { openSettingsDrawer = false },
+                    petSettingsContent = { drawerModifier ->
+                        PetSettingsPage(
+                            modifier = drawerModifier,
+                            petName = petName,
+                            petEmoji = petEmoji,
+                            onPetEmojiChange = { value -> petEmoji = value; chatPrefs.edit().putString("pet_emoji", value).apply() },
+                            petMood = petMood,
+                            rearPetEnabled = rearPetEnabled,
+                            rearBackgroundColor = rearBackgroundColor,
+                            onRearBackgroundColorChange = { color -> rearBackgroundColor = color; PetStateStore.setBackgroundColor(context, color) },
+                            rearProjectionStatus = rearProjectionStatus,
+                            onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
+                            onRearPetRestore = {
+                                rearPetEnabled = false
+
+                                val ids = RearProjectionController.listBackups(context)
+
+                                if (ids.isEmpty()) rearProjectionStatus = "没有找到可恢复的背屏备份"
+
+                                else {
+
+                                    rearPickerCards = ids.map { RearCard(it, it, "backup", "", "备份") }
+
+                                    rearPickerMode = "restore"
+
+                                    showRearPicker = true
+
+                                }
+
+                                },
+                            onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                            onPetNameChange = { value ->
+                                val clean = value.trim().take(16).ifBlank { "小橘" }
+                                petName = clean
+                                chatPrefs.edit().putString("pet_name", clean).apply()
+                            }
+                        )
+                    },
                     settingsContent = { drawerModifier ->
                         SettingsPage(
                             modifier = drawerModifier,
@@ -853,6 +1046,28 @@ private fun HyperCatApp() {
                             onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
                              petName = petName,
                              petMood = petMood,
+                             rearPetEnabled = rearPetEnabled,
+                             onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
+                             onRearPetRestore = {
+                                 rearPetEnabled = false
+
+                                 val ids = RearProjectionController.listBackups(context)
+
+                                 if (ids.isEmpty()) rearProjectionStatus = "没有找到可恢复的背屏备份"
+
+                                 else {
+
+                                     rearPickerCards = ids.map { RearCard(it, it, "backup", "", "备份") }
+
+                                     rearPickerMode = "restore"
+
+                                     showRearPicker = true
+
+                                 }
+
+                                 },
+                             onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                             rearProjectionStatus = rearProjectionStatus,
                              onPetNameChange = { value ->
                                  val clean = value.trim().take(16).ifBlank { "小橘" }
                                  petName = clean
@@ -910,6 +1125,28 @@ private fun HyperCatApp() {
                             onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
                     petName = petName,
                     petMood = petMood,
+                    rearPetEnabled = rearPetEnabled,
+                    onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
+                    onRearPetRestore = {
+                        rearPetEnabled = false
+
+                        val ids = RearProjectionController.listBackups(context)
+
+                        if (ids.isEmpty()) rearProjectionStatus = "没有找到可恢复的背屏备份"
+
+                        else {
+
+                            rearPickerCards = ids.map { RearCard(it, it, "backup", "", "备份") }
+
+                            rearPickerMode = "restore"
+
+                            showRearPicker = true
+
+                        }
+
+                        },
+                    onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                    rearProjectionStatus = rearProjectionStatus,
                     onPetNameChange = { value ->
                         val clean = value.trim().take(16).ifBlank { "小橘" }
                         petName = clean
@@ -981,6 +1218,53 @@ private fun HyperCatApp() {
                 dismissButton = { TextButton(onClick = { showUpdatePrompt = false }) { Text("稍后") } }
             )
         }
+    if (showRearPicker) AlertDialog(
+        onDismissRequest = { if (!rearPickerBusy) showRearPicker = false },
+        title = { Text(if (rearPickerMode == "deploy") "选择要替换的背屏" else "选择要恢复的背屏") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text(if (rearPickerMode == "deploy") "已扫描 .ai_wallpaper/maml/ 和旧版 .ai_app。请选择一张 AI 壁纸，程序只替换其中的 rearscreen 文件，不会覆盖整个壁纸目录。" else "选择此前备份过原始资源的背屏卡片。恢复只影响所选卡片。", color = Muted, fontSize = 11.sp)
+                Spacer(Modifier.height(10.dp))
+                if (rearProjectionStatus.isNotBlank() && rearProjectionStatus != "尚未检查") {
+                    Text(rearProjectionStatus, color = if (rearPickerBusy) Cyan else Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp))
+                }
+                rearPickerCards.sortedByDescending { it.modifiedAt }.forEach { card ->
+                    Surface(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = Panel2, shape = RoundedCornerShape(12.dp)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(card.name, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(if (card.modifiedAt > 0L) "资源时间：" + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(card.modifiedAt)) else "资源时间：系统未提供", color = Muted, fontSize = 10.sp)
+                            Text("大小：" + android.text.format.Formatter.formatShortFileSize(context, card.sizeBytes) + " · " + card.root + "/" + card.path, color = Muted, fontSize = 9.sp, maxLines = 3)
+                            Text(if (rearPickerMode == "deploy") "确认后备份原资源并替换此卡片" else "确认后恢复此卡片的原始资源", color = Cyan, fontSize = 10.sp)
+                            Spacer(Modifier.height(6.dp))
+                            Button(
+                                enabled = !rearPickerBusy,
+                                onClick = {
+                                    rearPickerBusy = true
+                                    rearProjectionStatus = if (rearPickerMode == "deploy") "正在替换「${card.name}」…" else "正在恢复「${card.name}」…"
+                                    scope.launch {
+                                        try {
+                                            rearProjectionStatus = if (rearPickerMode == "deploy") RearProjectionController.deploy(context, card) else RearProjectionController.restore(context, card.cardId)
+                                            rearPetEnabled = rearPickerMode == "deploy"
+                                            PetStateStore.setEnabled(context, rearPetEnabled)
+                                            showRearPicker = false
+                                            android.widget.Toast.makeText(context, rearProjectionStatus, android.widget.Toast.LENGTH_LONG).show()
+                                        } catch (error: Exception) {
+                                            rearProjectionStatus = error.message ?: "背屏操作失败"
+                                            android.widget.Toast.makeText(context, "操作失败：$rearProjectionStatus", android.widget.Toast.LENGTH_LONG).show()
+                                        } finally { rearPickerBusy = false }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(if (rearPickerMode == "deploy") "替换这张卡片" else "恢复这张卡片") }
+                        }
+                    }
+                }
+                if (rearPickerBusy) { Spacer(Modifier.height(8.dp)); Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)); Text("正在处理所选背屏…", color = Muted, fontSize = 11.sp) } }
+            }
+        },
+        confirmButton = { TextButton(enabled = !rearPickerBusy, onClick = { showRearPicker = false }) { Text("取消") } }
+    )
+
     }
 }
 
@@ -1166,15 +1450,32 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @Composable
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
-    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
+    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String, petEmoji: String,
     petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
-    ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit,
+    ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
     showSettingsOnEnter: Boolean,
     onSettingsDrawerShown: () -> Unit,
-    settingsContent: @Composable (Modifier) -> Unit
+    settingsContent: @Composable (Modifier) -> Unit,
+    petSettingsContent: @Composable (Modifier) -> Unit
 ) {
     val context: Context = LocalContext.current
-    var drawerSection by remember { mutableStateOf("recent") }
+    val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var userMovedChat by remember(currentSessionTitle) { mutableStateOf(false) }
+    LaunchedEffect(chatListState) {
+        chatListState.interactionSource.interactions.collect { interaction ->
+            if (interaction is androidx.compose.foundation.interaction.DragInteraction.Start) userMovedChat = true
+        }
+    }
+    LaunchedEffect(currentSessionTitle) {
+        userMovedChat = false
+        if (messages.isNotEmpty()) chatListState.scrollToItem(messages.lastIndex)
+    }
+    LaunchedEffect(messages.size) {
+        if (!userMovedChat && messages.isNotEmpty()) chatListState.animateScrollToItem(messages.lastIndex)
+    }
+    var drawerSection by remember { mutableStateOf("pet") }
+    var showPetNameDialog by remember { mutableStateOf(false) }
+    var petNameDraft by remember(petName) { mutableStateOf(petName) }
     var selectedFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var selectedPhotos by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
     var previewPhoto by remember { mutableStateOf<Bitmap?>(null) }
@@ -1556,6 +1857,13 @@ private fun ChatPage(
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
+    BackHandler(enabled = drawerState.isOpen) {
+        if (drawerSection == "settings" || drawerSection == "pet_settings") {
+            drawerSection = "pet"
+        } else {
+            drawerScope.launch { drawerState.close() }
+        }
+    }
     LaunchedEffect(drawerState) { androidx.compose.runtime.snapshotFlow { drawerState.isOpen }.collect { onDrawerVisibility(it) } }
     LaunchedEffect(showSettingsOnEnter) {
         if (showSettingsOnEnter) {
@@ -1658,7 +1966,7 @@ private fun ChatPage(
                 TextButton(onClick = { selectedMessageIndices = emptySet() }) { Text("取消") }
             }
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
+        LazyColumn(state = chatListState, modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Bg).padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("开始与 Agent 对话", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
@@ -1805,8 +2113,11 @@ private fun ChatPage(
             Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 15.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(Modifier.requiredSize(34.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted, modifier = Modifier.size(19.dp)) }
+                    }
                     BasicTextField(value = draft, onValueChange = onDraft,
-                        modifier = Modifier.weight(1f).heightIn(min = 42.dp, max = 132.dp).padding(vertical = 10.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 42.dp, max = 132.dp).padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
                         decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$petName…", color = Muted, fontSize = 14.sp); inner() })
                     VoiceInputButton(isListening = isListening, onPressStart = { startInAppRecognition() }, onPressEnd = { stopInAppRecognition() })
@@ -1821,9 +2132,6 @@ private fun ChatPage(
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                Surface(Modifier.requiredSize(40.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
-                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted, modifier = Modifier.size(20.dp)) }
-                }
                 Surface(Modifier.requiredSize(42.dp).clickable(enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) {
                     onSend(draft, selectedFiles, selectedPhotos); selectedFiles = emptyList(); selectedPhotos = emptyList()
                 }, color = if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
@@ -1836,84 +2144,71 @@ private fun ChatPage(
         }
     }
         AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()) {
-                    Surface(modifier = Modifier.fillMaxSize(), color = Panel, shape = RoundedCornerShape(0.dp)) {
-                        if (drawerSection == "settings") {
-                            Column(Modifier.fillMaxSize()) {
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(onClick = { drawerSection = "recent" }) { Text("‹ 最近对话", color = MainText) }
-                                    Spacer(Modifier.weight(1f))
-                                    Text("设置", color = MainText, fontWeight = FontWeight.Bold)
-                                    Spacer(Modifier.width(8.dp))
-                                    IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭设置", tint = Muted) }
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(), exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()) {
+            Surface(modifier = Modifier.fillMaxSize(), color = Panel) {
+                if (drawerSection == "pet_settings") {
+                    Column(Modifier.fillMaxSize()) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { drawerSection = "pet" }) { Text("‹ 返回个人页", color = MainText) }
+                            Spacer(Modifier.weight(1f)); Text("虚拟形象设置", color = MainText, fontWeight = FontWeight.Bold)
+                        }
+                        petSettingsContent(Modifier.weight(1f).fillMaxWidth())
+                    }
+                } else if (drawerSection == "settings") {
+                    Column(Modifier.fillMaxSize()) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { drawerSection = "pet" }) { Text("‹ 返回个人页", color = MainText) }
+                            Spacer(Modifier.weight(1f)); Text("设置", color = MainText, fontWeight = FontWeight.Bold)
+                        }
+                        settingsContent(Modifier.weight(1f).fillMaxWidth())
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text("我的虚拟形象", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
+                        }
+                        Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+                            Row(Modifier.fillMaxWidth().clickable { drawerSection = "pet_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(104.dp).clickable { drawerSection = "pet_settings" }, contentAlignment = Alignment.Center) {
+                                    AnimeGirlAvatar(petEmoji, Modifier.fillMaxSize(), petMood)
                                 }
-                                settingsContent(Modifier.weight(1f).fillMaxWidth())
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(petName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    Text(when (petMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
+                                    Text("点击头像管理虚拟形象与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                                }
                             }
-                        } else {
-                            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                                Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("最近对话", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                        Text("选择一条记录，重新打开完整问答并继续聊天", color = Muted, fontSize = 11.sp)
-                                    }
-                                    IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭最近对话", tint = Muted) }
+                        }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text("最近和历史对话", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold); Text("选择记录即可继续上次聊天", color = Muted, fontSize = 10.sp) }
+                            Text(orderedRecent.size.toString() + " 条", color = Muted, fontSize = 10.sp)
+                        }
+                        OutlinedTextField(value = recentQuery, onValueChange = { recentQuery = it }, placeholder = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 7.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 10.sp) }) } }
+                        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 8.dp)) {
+                            if (orderedRecent.isEmpty()) item { Column(Modifier.fillMaxWidth().padding(top = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("暂无历史对话", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold); Text("开始聊天后，记录会显示在这里", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp)) } }
+                            items(orderedRecent) { prompt ->
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(vertical = 6.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f).clickable { onOpenRecentSession(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 5.dp)) { Text(prompt, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 2); Text("与 " + petName + " 的对话", color = Muted, fontSize = 10.sp) }
+                                    IconButton(onClick = { onShareRecentSession(prompt) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Share, contentDescription = "分享完整对话", tint = Cyan, modifier = Modifier.size(17.dp)) }
+                                    IconButton(onClick = { onDeleteRecentPrompt(prompt) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Delete, contentDescription = "删除对话", tint = Color(0xFFE07878), modifier = Modifier.size(17.dp)) }
                                 }
-                                Spacer(Modifier.height(14.dp))
-                                OutlinedTextField(value = recentQuery, onValueChange = { recentQuery = it }, placeholder = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 10.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 11.sp) }) } }
-                                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp)) {
-                                    if (orderedRecent.isEmpty()) item {
-                                        Column(Modifier.fillMaxWidth().padding(top = 42.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("暂无最近对话", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                            Text("发送消息后，这里会显示最近使用的内容", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
-                                        }
-                                    }
-                                    items(orderedRecent) { prompt ->
-                                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(vertical = 8.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f).clickable { onOpenRecentSession(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 4.dp)) {
-                                                Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                                Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 2)
-                                            }
-                                            IconButton(onClick = { onShareRecentSession(prompt) }, modifier = Modifier.size(38.dp)) {
-                                                Icon(Icons.Outlined.Share, contentDescription = "分享完整对话", tint = Cyan, modifier = Modifier.size(18.dp))
-                                            }
-                                            IconButton(onClick = { onDeleteRecentPrompt(prompt) }, modifier = Modifier.size(40.dp)) {
-                                                Icon(Icons.Outlined.Delete, contentDescription = "删除这条最近对话", tint = Color(0xFFE07878), modifier = Modifier.size(19.dp))
-                                            }
-                                        }
-                                        Divider(color = GlassBorder.copy(alpha = .4f))
-                                    }
+                                Divider(color = GlassBorder.copy(alpha = .4f))
+                            }
+                        }
+                        Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp), color = Panel2, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                listOf("⌕" to "找一下", "✎" to "记一下", "⚙" to "设置").forEachIndexed { index, item ->
+                                    Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable {
+                                        when (index) { 0 -> { showSearch = true; drawerScope.launch { drawerState.close() } }; 1 -> { noteDraft = draft; showRemember = true; drawerScope.launch { drawerState.close() } }; else -> drawerSection = "settings" }
+                                    }.padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(item.first, color = Cyan, fontSize = 20.sp); Text(item.second, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium) }
                                 }
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp),
-                                    color = Panel2,
-                                    shape = RoundedCornerShape(18.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-                                ) {
-                                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        listOf("⌕" to "找一下", "✎" to "记一下", "⚙" to "设置").forEachIndexed { index, item ->
-                                            Column(
-                                                Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                                                    .clickable {
-                                                        when (index) {
-                                                            0 -> { showSearch = true; drawerScope.launch { drawerState.close() } }
-                                                            1 -> { noteDraft = draft; showRemember = true; drawerScope.launch { drawerState.close() } }
-                                                            else -> drawerSection = "settings"
-                                                        }
-                                                    }.padding(vertical = 8.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally
-                                            ) {
-                                                Text(item.first, color = Cyan, fontSize = 20.sp)
-                                                Text(item.second, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                            }
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.height(12.dp))
                             }
                         }
                     }
+                }
+            }
         }
     }
     if (ttsDiagnostic != null) AlertDialog(
@@ -1935,6 +2230,13 @@ private fun ChatPage(
         dismissButton = { TextButton(onClick = { ttsDiagnostic = null }) { Text("关闭") } }
     )
     if (previewPhoto != null) AlertDialog(onDismissRequest = { previewPhoto = null }, title = { Text("照片预览") }, text = { Image(bitmap = previewPhoto!!.asImageBitmap(), contentDescription = "照片预览", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) }, confirmButton = { TextButton(onClick = { previewPhoto = null }) { Text("完成") } })
+    if (showPetNameDialog) AlertDialog(
+        onDismissRequest = { showPetNameDialog = false },
+        title = { Text("编辑虚拟形象资料") },
+        text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("虚拟形象名称") }) },
+        confirmButton = { TextButton(onClick = { onPetNameChange(petNameDraft); showPetNameDialog = false }) { Text("保存") } },
+        dismissButton = { TextButton(onClick = { showPetNameDialog = false }) { Text("取消") } }
+    )
     if (showSearch) AlertDialog(onDismissRequest = { showSearch = false; searchQuery = "" }, title = { Text("查找对话内容") },
         text = { Column { OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("输入关键词，聊天列表即时筛选") }, singleLine = true); Text("${messages.count { it.text.contains(searchQuery, true) }} 条匹配消息", color = Muted, fontSize = 12.sp) } },
         confirmButton = { TextButton(onClick = { showSearch = false; searchQuery = "" }) { Text("完成") } })
@@ -2119,8 +2421,367 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 }
 
 @Composable
+private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier, mood: String = "normal") {
+    val idleMotion = rememberInfiniteTransition(label = "avatarIdleMotion")
+    val bob by idleMotion.animateFloat(
+        initialValue = -2.5f, targetValue = 2.5f,
+        animationSpec = infiniteRepeatable(tween(if (mood == "thinking") 2800 else 2100), RepeatMode.Reverse),
+        label = "avatarBob"
+    )
+    val sway by idleMotion.animateFloat(
+        initialValue = -0.7f, targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(tween(3400), RepeatMode.Reverse),
+        label = "avatarSway"
+    )
+    val reactionScale by animateFloatAsState(
+        targetValue = when (mood) { "happy" -> 1.025f; "thinking" -> .99f; "sleepy" -> .985f; else -> 1f },
+        animationSpec = tween(320), label = "avatarReactionScale"
+    )
+    val animatedModifier = modifier.graphicsLayer {
+        translationY = bob.dp.toPx()
+        rotationZ = sway
+        scaleX = reactionScale
+        scaleY = reactionScale
+    }
+    val palette = when (character) {
+        "aoi" -> listOf(Color(0xFFBDEBFF), Color(0xFF4C80D8), Color(0xFF2CADD9), Color(0xFF193A78))
+        "luna" -> listOf(Color(0xFFEDEBFF), Color(0xFF8582C8), Color(0xFFB6A7F4), Color(0xFF49446F))
+        "yuna" -> listOf(Color(0xFFFFD9EC), Color(0xFFB94F86), Color(0xFFEE91B7), Color(0xFF71365C))
+        else -> listOf(Color(0xFFFFE0EC), Color(0xFFBE638B), Color(0xFFEE9AB4), Color(0xFF783C61))
+    }
+    val hairLight = palette[0]
+    val hair = palette[1]
+    val hairBright = palette[2]
+    val hairDark = palette[3]
+    val iris = when (character) {
+        "aoi" -> Color(0xFF258BCB)
+        "luna" -> Color(0xFF7666C8)
+        "yuna" -> Color(0xFF9B4F9C)
+        else -> Color(0xFFB84F79)
+    }
+    Canvas(animatedModifier) {
+        val w = size.width
+        val h = size.height
+        fun p(x: Float, y: Float) = Offset(w * x, h * y)
+        fun oval(color: Color, x: Float, y: Float, rw: Float, rh: Float) {
+            drawOval(color, Offset(w * x, h * y), Size(w * rw, h * rh))
+        }
+        fun oval(brush: Brush, x: Float, y: Float, rw: Float, rh: Float) {
+            drawOval(brush, Offset(w * x, h * y), Size(w * rw, h * rh))
+        }
+        fun strokePath(color: Color, width: Float, block: Path.() -> Unit) {
+            val path = Path().apply(block)
+            drawPath(path, color, style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * width, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        }
+
+        drawRect(Brush.verticalGradient(listOf(hairLight.copy(alpha = .95f), Color(0xFFFFF7FB), Color(0xFFECEBFF))))
+        drawCircle(Color.White.copy(alpha = .42f), w * .15f, p(.12f, .17f))
+        drawCircle(Color.White.copy(alpha = .34f), w * .08f, p(.88f, .31f))
+        drawCircle(hairBright.copy(alpha = .16f), w * .22f, p(.82f, .82f))
+
+        if (character == "yuna") {
+            oval(Brush.verticalGradient(listOf(hairBright, hairDark)), .04f, .25f, .24f, .58f)
+            oval(Brush.verticalGradient(listOf(hairBright, hairDark)), .72f, .23f, .24f, .60f)
+            oval(hairDark, .04f, .22f, .20f, .17f)
+            oval(hairDark, .76f, .20f, .20f, .17f)
+        } else if (character == "aoi") {
+            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .70f, .18f, .23f, .45f)
+        } else if (character == "luna") {
+            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .12f, .23f, .20f, .65f)
+            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .68f, .23f, .20f, .65f)
+        }
+        oval(Brush.verticalGradient(listOf(hair, hairDark)), .16f, .12f, .68f, .70f)
+
+        val body = Path().apply {
+            moveTo(w * .17f, h * 1.02f)
+            cubicTo(w * .19f, h * .80f, w * .28f, h * .70f, w * .43f, h * .68f)
+            lineTo(w * .57f, h * .68f)
+            cubicTo(w * .75f, h * .70f, w * .83f, h * .82f, w * .85f, h * 1.02f)
+            close()
+        }
+        drawPath(body, Brush.verticalGradient(listOf(Color(0xFFFFFBFF), hairBright, hair)))
+        oval(Brush.verticalGradient(listOf(Color(0xFFFFF7FB), hairBright)), .12f, .78f, .25f, .25f)
+        oval(Brush.verticalGradient(listOf(Color(0xFFFFF7FB), hairBright)), .63f, .78f, .25f, .25f)
+
+        drawRoundRect(Brush.verticalGradient(listOf(Color(0xFFFFE2D7), Color(0xFFFFC8C1))), Offset(w * .43f, h * .57f), Size(w * .14f, h * .19f), androidx.compose.ui.geometry.CornerRadius(w * .05f))
+        oval(Brush.verticalGradient(listOf(Color(0xFFFFF4EC), Color(0xFFFFD9D1))), .25f, .22f, .50f, .48f)
+        oval(Color(0xFFFFE5DD), .225f, .43f, .07f, .13f)
+        oval(Color(0xFFFFE5DD), .705f, .43f, .07f, .13f)
+
+        oval(Brush.verticalGradient(listOf(hairBright, hair)), .17f, .31f, .18f, .48f)
+        oval(Brush.verticalGradient(listOf(hairBright, hair)), .65f, .31f, .18f, .48f)
+        val fringe = Path().apply {
+            moveTo(w * .24f, h * .39f)
+            cubicTo(w * .19f, h * .12f, w * .34f, h * .09f, w * .50f, h * .12f)
+            cubicTo(w * .69f, h * .08f, w * .80f, h * .20f, w * .76f, h * .41f)
+            cubicTo(w * .68f, h * .34f, w * .63f, h * .31f, w * .57f, h * .43f)
+            cubicTo(w * .52f, h * .34f, w * .48f, h * .34f, w * .43f, h * .45f)
+            cubicTo(w * .38f, h * .34f, w * .31f, h * .35f, w * .24f, h * .44f)
+            close()
+        }
+        drawPath(fringe, Brush.verticalGradient(listOf(hairLight, hairBright, hairDark)))
+        strokePath(hairLight.copy(alpha = .72f), .009f) {
+            moveTo(w * .31f, h * .18f); cubicTo(w * .34f, h * .29f, w * .34f, h * .34f, w * .37f, h * .39f)
+            moveTo(w * .48f, h * .14f); cubicTo(w * .49f, h * .27f, w * .47f, h * .33f, w * .45f, h * .40f)
+            moveTo(w * .65f, h * .17f); cubicTo(w * .63f, h * .28f, w * .62f, h * .33f, w * .59f, h * .39f)
+        }
+
+        listOf(.395f, .605f).forEach { x ->
+            oval(Color(0xFF6B3D55), x - .064f, .405f, .128f, .105f)
+            oval(Color.White, x - .057f, .412f, .114f, .094f)
+            oval(Brush.verticalGradient(listOf(Color(0xFFB6F1FF), iris, hairDark)), x - .043f, .414f, .086f, .090f)
+            oval(Color(0xFF18233D), x - .025f, .427f, .050f, .071f)
+            oval(Color.White, x - .025f, .425f, .030f, .030f)
+            oval(Color.White.copy(alpha = .78f), x + .014f, .461f, .014f, .014f)
+            strokePath(hairDark, .010f) {
+                moveTo(w * (x - .060f), h * .425f)
+                cubicTo(w * (x - .025f), h * .385f, w * (x + .025f), h * .385f, w * (x + .060f), h * .425f)
+            }
+        }
+        strokePath(hairDark.copy(alpha = .8f), .008f) {
+            moveTo(w * .34f, h * .375f); quadraticTo(w * .395f, h * .35f, w * .445f, h * .375f)
+            moveTo(w * .555f, h * .375f); quadraticTo(w * .605f, h * .35f, w * .66f, h * .375f)
+        }
+        oval(Color(0xFFFFA9B7).copy(alpha = .35f), .295f, .545f, .11f, .035f)
+        oval(Color(0xFFFFA9B7).copy(alpha = .35f), .595f, .545f, .11f, .035f)
+        oval(Color(0xFFEBA99D), .493f, .535f, .014f, .012f)
+        strokePath(Color(0xFFB85B78), .008f) {
+            moveTo(w * .465f, h * .585f)
+            quadraticTo(w * .50f, h * .615f, w * .535f, h * .585f)
+        }
+
+        val collar = Path().apply {
+            moveTo(w * .39f, h * .69f); lineTo(w * .50f, h * .79f); lineTo(w * .61f, h * .69f)
+            lineTo(w * .56f, h * .67f); lineTo(w * .50f, h * .72f); lineTo(w * .44f, h * .67f); close()
+        }
+        drawPath(collar, Brush.verticalGradient(listOf(Color.White, hairLight)))
+        oval(hairBright, .465f, .75f, .07f, .07f)
+        val bowLeft = Path().apply { moveTo(w*.49f,h*.77f); cubicTo(w*.39f,h*.72f,w*.37f,h*.84f,w*.48f,h*.83f); close() }
+        val bowRight = Path().apply { moveTo(w*.51f,h*.77f); cubicTo(w*.61f,h*.72f,w*.63f,h*.84f,w*.52f,h*.83f); close() }
+        drawPath(bowLeft, Brush.verticalGradient(listOf(hairLight, hair)))
+        drawPath(bowRight, Brush.verticalGradient(listOf(hairBright, hairDark)))
+        oval(Color(0xFFFFF2F7), .485f, .765f, .03f, .04f)
+        strokePath(Color.White.copy(alpha = .72f), .006f) {
+            moveTo(w*.25f,h*.88f); quadraticTo(w*.50f,h*.93f,w*.75f,h*.88f)
+        }
+
+        when (character) {
+            "aoi" -> {
+                oval(Color(0xFFFFF7FB), .73f, .22f, .12f, .10f)
+                oval(Color(0xFF4CC8F0), .755f, .24f, .07f, .06f)
+                strokePath(Color.White, .008f) { moveTo(w*.77f,h*.22f); lineTo(w*.80f,h*.15f) }
+            }
+            "luna" -> {
+                oval(Color(0xFFFFE89B), .68f, .18f, .11f, .10f)
+                oval(Color(0xFFFFF9D8), .705f, .195f, .06f, .055f)
+            }
+            "yuna" -> {
+                oval(Color(0xFFFFF5FA), .10f, .25f, .12f, .11f)
+                oval(Color(0xFFFFC4D9), .13f, .27f, .06f, .06f)
+                oval(Color(0xFFFFF5FA), .78f, .24f, .12f, .11f)
+                oval(Color(0xFFFFC4D9), .81f, .26f, .06f, .06f)
+            }
+            else -> {
+                oval(Color(0xFFFFF7FB), .72f, .22f, .12f, .11f)
+                oval(Color(0xFFFFD36D), .75f, .245f, .06f, .055f)
+            }
+        }
+        strokePath(Color.White.copy(alpha = .62f), .007f) {
+            moveTo(w*.27f,h*.29f); quadraticTo(w*.31f,h*.18f,w*.43f,h*.16f)
+            moveTo(w*.67f,h*.30f); quadraticTo(w*.70f,h*.22f,w*.72f,h*.33f)
+        }
+        drawCircle(Color.White.copy(alpha = .9f), w * .012f, p(.19f, .16f))
+        drawCircle(Color.White.copy(alpha = .8f), w * .009f, p(.83f, .47f))
+
+        // Mood-specific facial expressions: cover the neutral eye/mouth details first,
+        // then draw the expression on the same anime face rather than swapping a symbol.
+        val skin = Color(0xFFFFE5DD)
+        when (mood.lowercase()) {
+            "happy" -> {
+                oval(skin, .335f, .402f, .12f, .115f)
+                oval(skin, .545f, .402f, .12f, .115f)
+                strokePath(hairDark, .014f) {
+                    moveTo(w*.345f,h*.458f); quadraticTo(w*.395f,h*.405f,w*.445f,h*.458f)
+                    moveTo(w*.555f,h*.458f); quadraticTo(w*.605f,h*.405f,w*.655f,h*.458f)
+                }
+                oval(skin, .455f, .565f, .09f, .07f)
+                strokePath(Color(0xFFB85B78), .012f) {
+                    moveTo(w*.455f,h*.585f); quadraticTo(w*.50f,h*.645f,w*.545f,h*.585f)
+                }
+                oval(Color(0xFFFF91AE).copy(alpha=.38f), .285f, .535f, .13f, .045f)
+                oval(Color(0xFFFF91AE).copy(alpha=.38f), .585f, .535f, .13f, .045f)
+            }
+            "sleepy" -> {
+                oval(skin, .335f, .402f, .12f, .115f)
+                oval(skin, .545f, .402f, .12f, .115f)
+                strokePath(hairDark, .013f) {
+                    moveTo(w*.345f,h*.445f); quadraticTo(w*.395f,h*.475f,w*.445f,h*.445f)
+                    moveTo(w*.555f,h*.445f); quadraticTo(w*.605f,h*.475f,w*.655f,h*.445f)
+                }
+                oval(skin, .465f, .565f, .07f, .055f)
+                strokePath(Color(0xFFB85B78), .008f) {
+                    moveTo(w*.475f,h*.59f); lineTo(w*.525f,h*.59f)
+                }
+            }
+            "thinking" -> {
+                oval(skin, .465f, .565f, .07f, .06f)
+                strokePath(Color(0xFFB85B78), .009f) {
+                    moveTo(w*.485f,h*.60f); quadraticTo(w*.50f,h*.565f,w*.515f,h*.60f)
+                }
+                strokePath(hairDark.copy(alpha=.9f), .009f) {
+                    moveTo(w*.35f,h*.385f); quadraticTo(w*.40f,h*.36f,w*.445f,h*.39f)
+                    moveTo(w*.56f,h*.37f); quadraticTo(w*.61f,h*.345f,w*.65f,h*.38f)
+                }
+            }
+            "sad" -> {
+                oval(skin, .465f, .565f, .07f, .055f)
+                strokePath(Color(0xFFB85B78), .009f) {
+                    moveTo(w*.46f,h*.61f); quadraticTo(w*.50f,h*.565f,w*.54f,h*.61f)
+                }
+                strokePath(hairDark.copy(alpha=.8f), .009f) {
+                    moveTo(w*.35f,h*.39f); quadraticTo(w*.40f,h*.42f,w*.445f,h*.40f)
+                    moveTo(w*.555f,h*.40f); quadraticTo(w*.60f,h*.42f,w*.65f,h*.39f)
+                }
+            }
+            "surprised" -> {
+                oval(Color.White, .36f, .395f, .09f, .13f)
+                oval(Color.White, .55f, .395f, .09f, .13f)
+                oval(iris, .385f, .425f, .045f, .085f)
+                oval(iris, .575f, .425f, .045f, .085f)
+                oval(skin, .465f, .565f, .07f, .06f)
+                oval(Color(0xFFB85B78), .482f, .575f, .036f, .045f)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PetSettingsPage(
+    modifier: Modifier,
+    petName: String,
+    petEmoji: String,
+    onPetEmojiChange: (String) -> Unit,
+    petMood: String,
+    rearPetEnabled: Boolean,
+    rearBackgroundColor: String,
+    onRearBackgroundColorChange: (String) -> Unit,
+    rearProjectionStatus: String,
+    onRearPetEnabledChange: (Boolean) -> Unit,
+    onRearPetRestore: () -> Unit,
+    onPetInteraction: (String) -> Unit,
+    onPetNameChange: (String) -> Unit
+) {
+    val characters = listOf(
+        Triple("sakura", "樱花", "温柔、黏人又有一点小傲娇。喜欢樱花、甜点和被认真倾听；遇到你时总会先露出笑容。"),
+        Triple("aoi", "葵", "活泼开朗的蓝发歌姬。热爱音乐与新鲜事物，擅长用元气和鼓励陪你度过忙碌的一天。"),
+        Triple("luna", "露娜", "安静细腻的银发魔法师。好奇心强，喜欢探索知识；说话温柔，关键时刻十分可靠。"),
+        Triple("yuna", "优奈", "俏皮可爱的双马尾少女。喜欢恶作剧和分享日常，情绪表达直接，是个热情的小伙伴。")
+    )
+    var selectedIndex by remember(petEmoji) { mutableIntStateOf(characters.indexOfFirst { it.first == petEmoji }.coerceAtLeast(0)) }
+    var nameDraft by remember(petName) { mutableStateOf(petName) }
+    var dragTotal by remember { mutableFloatStateOf(0f) }
+    val selected = characters[selectedIndex]
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+        Spacer(Modifier.height(22.dp))
+        Text("虚拟形象", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text("左右滑动选择伙伴，确认后再保存", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(20.dp))
+                        .background(Brush.verticalGradient(listOf(Color(0xFFFFE6F0), Color(0xFFE9E8FF))))
+                        .pointerInput(selectedIndex) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { dragTotal = 0f },
+                                onHorizontalDrag = { change, amount -> change.consume(); dragTotal += amount },
+                                onDragEnd = {
+                                    if (dragTotal < -36f) selectedIndex = (selectedIndex + 1).mod(characters.size)
+                                    else if (dragTotal > 36f) selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size)
+                                }
+                            )
+                        }.pointerInput(selectedIndex) {
+                            detectTapGestures(
+                                onTap = { onPetInteraction("pet_touch") },
+                                onLongPress = { onPetInteraction("pet_long_press") }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    AnimeGirlAvatar(selected.first, Modifier.fillMaxSize(), petMood)
+                    Text("点击角色互动", color = Color(0xFF754A67), fontSize = 11.sp,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = { selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size) }) { Text("‹ 上一个") }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(selected.second, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("${selectedIndex + 1} / ${characters.size}", color = Muted, fontSize = 11.sp)
+                    }
+                    TextButton(onClick = { selectedIndex = (selectedIndex + 1).mod(characters.size) }) { Text("下一个 ›") }
+                }
+                Text("性格介绍", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                Text(selected.third, color = Muted, fontSize = 12.sp, lineHeight = 19.sp,
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 14.dp))
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(onClick = { onPetInteraction("pet_touch") }) { Text("摸摸") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_happy") }) { Text("打招呼") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_long_press") }) { Text("聊一聊") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_thinking") }) { Text("思考") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_rest") }) { Text("休息") }
+                }
+                Text(
+                    when (petMood) {
+                        "happy" -> "正在回应你的互动"
+                        "thinking" -> "正在思考你的请求"
+                        "sleepy" -> "正在休息，随时可以叫醒"
+                        "sad" -> "连接似乎遇到问题，稍后再试试"
+                        else -> "点击角色可互动，长按可主动开启对话"
+                    },
+                    color = Muted, fontSize = 11.sp,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)
+                )
+                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) },
+                    label = { Text("自定义名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Button(onClick = { onPetEmojiChange(selected.first); onPetNameChange(nameDraft.trim().ifBlank { selected.second }) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("保存虚拟形象") }
+            }
+        }
+        Text("背屏投放", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 22.dp, bottom = 8.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("虚拟形象投放到背屏", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (rearPetEnabled) "已开启" else "关闭状态 · 不影响主屏虚拟形象", color = Muted, fontSize = 11.sp)
+                    }
+                    Switch(checked = rearPetEnabled, onCheckedChange = onRearPetEnabledChange)
+                }
+                Text("背屏背景颜色", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
+                val rearColors = listOf("#080B12", "#F4F1EA", "#E8EEF8", "#FBE7EF", "#DCEFE8", "#242424", "#1C2942", "#4A3048")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    rearColors.forEach { hex ->
+                        val swatch = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color.Black)
+                        Box(Modifier.size(30.dp).clip(CircleShape).background(swatch).clickable { onRearBackgroundColorChange(hex) }, contentAlignment = Alignment.Center) {
+                            if (rearBackgroundColor.equals(hex, true)) Icon(Icons.Outlined.Check, contentDescription = "已选择", tint = if (hex in listOf("#F4F1EA", "#E8EEF8", "#DCEFE8")) Color.Black else Color.White, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+                Text("仅支持具备背屏的 Xiaomi Pro 系列设备。需要先启动 Shizuku 并授权。首次部署后，还需在系统背屏卡片管理中重新应用卡片。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
+                Text(rearProjectionStatus, color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
+                OutlinedButton(onClick = onRearPetRestore, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("恢复原始背屏卡片") }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+@Composable
 private fun SettingsPage(
-    modifier: Modifier, petName: String, petMood: String, onPetNameChange: (String) -> Unit,
+    modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, rearProjectionStatus: String, onRearPetEnabledChange: (Boolean) -> Unit, onRearPetRestore: () -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
     provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit, onDeleteProfile: (ModelProfile) -> Unit,
     ttsProfiles: List<TtsProfile>, onAddTtsProfile: (TtsProfile) -> Unit, onSelectTtsProfile: (TtsProfile) -> Unit, onDeleteTtsProfile: (TtsProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
@@ -2157,6 +2818,7 @@ private fun SettingsPage(
     var taskTitle by remember { mutableStateOf("") }
     var taskDelayMinutes by remember { mutableStateOf("30") }
     var profileName by remember { mutableStateOf("") }
+    var modelSettingsTab by remember { mutableStateOf("推理模型") }
     var pluginEnabled by remember { mutableStateOf(false) }
     var pluginName by remember { mutableStateOf("") }
     var pluginDescription by remember { mutableStateOf("") }
@@ -2244,99 +2906,97 @@ private fun SettingsPage(
         Text("设置", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Text("外观、扩展能力与应用信息", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(16.dp))
-        Text("萌宠伙伴", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(top = 9.dp),
-            color = Panel, shape = RoundedCornerShape(20.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-        ) {
-            Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.fillMaxWidth().height(168.dp), contentAlignment = Alignment.Center) {
-                    CatFace(Modifier.fillMaxWidth(.78f).fillMaxHeight(.96f), petMood)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(petName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { petNameDraft = petName; showPetNameDialog = true }) { Text("修改名称") }
-                }
-                Text("轻触萌宠可查看互动反应；Agent 对话会影响萌宠情绪。", color = Muted, fontSize = 10.sp)
-            }
-        }
-        Spacer(Modifier.height(18.dp))
         Text("模型与服务", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
         Text("先选择服务类型，再配置连接信息与模型档案", color = Muted, fontSize = 11.sp)
         Spacer(Modifier.height(10.dp))
         Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                Text("服务类型", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("本地模型", "OpenAI 兼容接口").forEach { item ->
-                        FilterChip(selected = provider == item, onClick = { onProvider(item) }, label = { Text(item, fontSize = 12.sp) })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("推理模型", "语音 TTS", "模型档案").forEach { tab ->
+                        FilterChip(
+                            selected = modelSettingsTab == tab,
+                            onClick = { modelSettingsTab = tab },
+                            modifier = Modifier.weight(1f),
+                            label = { Text(tab, fontSize = 11.sp, maxLines = 1) }
+                        )
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 http://127.0.0.1:1234/v1")
-                ConfigField("模型名称", model, onModel, "例如 qwen2.5 或 gpt-4o-mini")
-                ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
-                Spacer(Modifier.height(14.dp))
-                Text("TTS 语音配置", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text("选择系统语音，或使用已保存模型档案连接兼容 OpenAI 的云端语音合成服务。", color = Muted, fontSize = 10.sp)
-                Spacer(Modifier.height(7.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    FilterChip(selected = ttsMode == "system", onClick = { onTtsMode("system") }, label = { Text("系统语音") })
-                    FilterChip(selected = ttsMode == "cloud", onClick = { onTtsMode("cloud") }, label = { Text("云端模型 TTS") })
+                if (modelSettingsTab == "推理模型") {
+                                    Text("服务类型", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        listOf("本地模型", "OpenAI 兼容接口").forEach { item ->
+                                            FilterChip(selected = provider == item, onClick = { onProvider(item) }, label = { Text(item, fontSize = 12.sp) })
+                                        }
+                                    }
+                                    Spacer(Modifier.height(12.dp))
+                                    ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 http://127.0.0.1:1234/v1")
+                                    ConfigField("模型名称", model, onModel, "例如 qwen2.5 或 gpt-4o-mini")
+                                    ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
+                                    Spacer(Modifier.height(14.dp))
                 }
-                if (ttsMode == "cloud") {
-                    Text("TTS 服务连接独立于推理模型配置。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
-                    ConfigField("TTS API Base URL", ttsEndpoint, onTtsEndpoint, "例如 https://api.xiaomimimo.com/v1")
-                    ConfigField("TTS API Key", ttsApiKey, onTtsApiKey, "TTS 服务密钥", secret = true)
-                    ttsProfiles.forEach { profile -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).clickable { onSelectTtsProfile(profile) }.padding(7.dp)) { Text(profile.name, color = MainText, fontSize = 12.sp); Text(profile.endpoint, color = Muted, fontSize = 9.sp, maxLines = 1) }
-                        RadioButton(selected = ttsProfileName == profile.name, onClick = { onSelectTtsProfile(profile) })
-                        IconButton(onClick = { onDeleteTtsProfile(profile) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除 TTS 模型", tint = Color(0xFFE07878)) }
-                    } }
-                    OutlinedButton(onClick = { val n = "TTS-${ttsProfiles.size + 1}"; if (ttsEndpoint.isNotBlank()) onAddTtsProfile(TtsProfile(n, ttsEndpoint.trim(), ttsApiKey)) }, enabled = ttsEndpoint.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存当前 TTS 配置") }
-                    ConfigField("TTS 模型名称", ttsModel, onTtsModel, "例如 tts-1 或服务商提供的语音模型")
-                    ConfigField("TTS 音色", ttsVoice, onTtsVoice, "例如 alloy、nova、shimmer")
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                        Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
-                        Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                    }
-                    Text("支持 OpenAI /v1/audio/speech；小米 MiMo-V2.5-TTS 自动使用 /v1/chat/completions，并解析 WAV Base64 音频。MiMo 音色可选 mimo_default、冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean。", color = Muted, fontSize = 10.sp)
-                } else {
-                    Text("朗读语言", color = Muted, fontSize = 11.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        listOf("zh-CN" to "中文普通话", "en-US" to "英语").forEach { (code, label) ->
-                            FilterChip(selected = ttsLanguage == code, onClick = { onTtsLanguage(code) }, label = { Text(label, fontSize = 11.sp) })
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                        Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
-                        Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("音调", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                        Slider(value = ttsPitch, onValueChange = onTtsPitch, valueRange = 0.7f..1.4f, modifier = Modifier.weight(1f))
-                        Text(String.format(Locale.US, "%.1f", ttsPitch), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                    }
-                    Text("参数自动保存并用于回复朗读与 AI 通话播报。", color = Muted, fontSize = 10.sp)
+                if (modelSettingsTab == "语音 TTS") {
+                                    Text("TTS 语音配置", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("选择系统语音，或使用已保存模型档案连接兼容 OpenAI 的云端语音合成服务。", color = Muted, fontSize = 10.sp)
+                                    Spacer(Modifier.height(7.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        FilterChip(selected = ttsMode == "system", onClick = { onTtsMode("system") }, label = { Text("系统语音") })
+                                        FilterChip(selected = ttsMode == "cloud", onClick = { onTtsMode("cloud") }, label = { Text("云端模型 TTS") })
+                                    }
+                                    if (ttsMode == "cloud") {
+                                        Text("TTS 服务连接独立于推理模型配置。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
+                                        ConfigField("TTS API Base URL", ttsEndpoint, onTtsEndpoint, "例如 https://api.xiaomimimo.com/v1")
+                                        ConfigField("TTS API Key", ttsApiKey, onTtsApiKey, "TTS 服务密钥", secret = true)
+                                        ttsProfiles.forEach { profile -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f).clickable { onSelectTtsProfile(profile) }.padding(7.dp)) { Text(profile.name, color = MainText, fontSize = 12.sp); Text(profile.endpoint, color = Muted, fontSize = 9.sp, maxLines = 1) }
+                                            RadioButton(selected = ttsProfileName == profile.name, onClick = { onSelectTtsProfile(profile) })
+                                            IconButton(onClick = { onDeleteTtsProfile(profile) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除 TTS 模型", tint = Color(0xFFE07878)) }
+                                        } }
+                                        OutlinedButton(onClick = { val n = "TTS-${ttsProfiles.size + 1}"; if (ttsEndpoint.isNotBlank()) onAddTtsProfile(TtsProfile(n, ttsEndpoint.trim(), ttsApiKey)) }, enabled = ttsEndpoint.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存当前 TTS 配置") }
+                                        ConfigField("TTS 模型名称", ttsModel, onTtsModel, "例如 tts-1 或服务商提供的语音模型")
+                                        ConfigField("TTS 音色", ttsVoice, onTtsVoice, "例如 alloy、nova、shimmer")
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                                            Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
+                                            Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                                        }
+                                        Text("支持 OpenAI /v1/audio/speech；小米 MiMo-V2.5-TTS 自动使用 /v1/chat/completions，并解析 WAV Base64 音频。MiMo 音色可选 mimo_default、冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean。", color = Muted, fontSize = 10.sp)
+                                    } else {
+                                        Text("朗读语言", color = Muted, fontSize = 11.sp)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                            listOf("zh-CN" to "中文普通话", "en-US" to "英语").forEach { (code, label) ->
+                                                FilterChip(selected = ttsLanguage == code, onClick = { onTtsLanguage(code) }, label = { Text(label, fontSize = 11.sp) })
+                                            }
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                                            Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
+                                            Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("音调", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                                            Slider(value = ttsPitch, onValueChange = onTtsPitch, valueRange = 0.7f..1.4f, modifier = Modifier.weight(1f))
+                                            Text(String.format(Locale.US, "%.1f", ttsPitch), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                                        }
+                                        Text("参数自动保存并用于回复朗读与 AI 通话播报。", color = Muted, fontSize = 10.sp)
+                                    }
                 }
-                Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
-                else modelProfiles.forEach { p ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).clickable { onSelectProfile(p) }.padding(vertical = 9.dp, horizontal = 4.dp)) { Text(p.name, color = MainText, fontSize = 13.sp); Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp) }
-                        Text("设为当前", color = Cyan, fontSize = 11.sp)
-                        IconButton(onClick = { onDeleteProfile(p) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除推理模型", tint = Color(0xFFE07878)) }
-                    }
+                if (modelSettingsTab == "模型档案") {
+                                    Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
+                                    else modelProfiles.forEach { p ->
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f).clickable { onSelectProfile(p) }.padding(vertical = 9.dp, horizontal = 4.dp)) { Text(p.name, color = MainText, fontSize = 13.sp); Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp) }
+                                            Text("设为当前", color = Cyan, fontSize = 11.sp)
+                                            IconButton(onClick = { onDeleteProfile(p) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除推理模型", tint = Color(0xFFE07878)) }
+                                        }
+                                    }
+                                    OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(24) }, label = { Text("档案名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank()) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey)); profileName = "" } },
+                                        enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存为模型档案") }
+                                    Spacer(Modifier.height(8.dp))
                 }
-                OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(24) }, label = { Text("档案名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank()) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey)); profileName = "" } },
-                    enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存为模型档案") }
-                Spacer(Modifier.height(8.dp))
                 Text("密钥目前保存在应用私有配置中；模型推理请求与密钥加密存储仍需后续接入。", color = Muted, fontSize = 10.sp)
                 Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) { Text("保存模型配置", fontWeight = FontWeight.Bold) }
                 if (saved) Text("配置已保存", color = Color(0xFF76E0B1), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
@@ -2478,8 +3138,8 @@ private fun SettingsPage(
     }
     if (showPetNameDialog) AlertDialog(
         onDismissRequest = { showPetNameDialog = false },
-        title = { Text("给萌宠取个名字") },
-        text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("萌宠名称") }) },
+        title = { Text("给虚拟形象取个名字") },
+        text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("虚拟形象名称") }) },
         confirmButton = { TextButton(onClick = { onPetNameChange(petNameDraft); showPetNameDialog = false }) { Text("保存") } },
         dismissButton = { TextButton(onClick = { showPetNameDialog = false }) { Text("取消") } }
     )
