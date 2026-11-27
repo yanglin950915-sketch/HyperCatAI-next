@@ -697,7 +697,6 @@ private fun HyperCatApp() {
     fun setRearProjectionEnabled(enabled: Boolean) {
         if (!enabled) {
             rearPetEnabled = false
-            chatPrefs.edit().putBoolean("rear_pet_enabled", false).apply()
             PetStateStore.setEnabled(context, false)
             rearProjectionStatus = "正在关闭背屏萌宠…"
             scope.launch {
@@ -725,7 +724,6 @@ private fun HyperCatApp() {
                 rearProjectionStatus = result
                 val connected = result.startsWith("已请求背屏显示")
                 rearPetEnabled = connected
-                chatPrefs.edit().putBoolean("rear_pet_enabled", connected).apply()
                 PetStateStore.setEnabled(context, connected)
             }
         }
