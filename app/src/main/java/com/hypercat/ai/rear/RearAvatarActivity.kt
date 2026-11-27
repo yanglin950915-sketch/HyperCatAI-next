@@ -154,7 +154,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         tts = TextToSpeech(this, this)
         setContent {
             val avatar by AvatarStateStore.state.collectAsState()
-            val live2dModel = androidx.compose.runtime.remember { Live2DModelStore.current(this@RearAvatarActivity) }
+            val live2dModel = androidx.compose.runtime.remember { Live2DModelStore.currentRear(this@RearAvatarActivity) }
             Box(Modifier.fillMaxSize().background(Color(0xFF05070D))) {
                 if (live2dModel != null) {
                     Live2DView(
