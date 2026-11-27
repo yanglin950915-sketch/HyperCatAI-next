@@ -8,7 +8,7 @@ import java.io.InputStreamReader
 @Keep
 class RearShellUserService : IRearShellService.Stub() {
     override fun exec(command: String): String {
-        val displayId = Regex("""am start --display (\\d+) -n com\\.hypercat\\.ai/\\.rear\\.RearPetActivity""")
+        val displayId = Regex("""am start --display (\d+) -n com\.hypercat\.ai/\.rear\.RearPetActivity""")
             .matchEntire(command)
         val allowed = command == "dumpsys display" ||
             displayId != null ||
