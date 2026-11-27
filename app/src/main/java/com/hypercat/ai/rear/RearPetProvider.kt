@@ -36,6 +36,7 @@ class RearPetProvider : ContentProvider() {
             .put("updated_at", prefs.getLong("updated_at", 0L).toString())
             .put("enabled", prefs.getBoolean("rear_pet_enabled", false))
             .put("user_text", prefs.getString("user_text", "") ?: "")
+            .put("background_color", prefs.getString("background_color", "#080B12") ?: "#080B12")
             .toString()
     }
 
