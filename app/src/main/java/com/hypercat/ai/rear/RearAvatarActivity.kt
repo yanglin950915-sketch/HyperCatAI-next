@@ -103,7 +103,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     Text(if (listening) "正在聆听…" else "🎙 说话", color = Color.White, fontSize = 13.sp)
                 }
             }
-            LaunchedEffect(pet.updatedAt, avatar.reply) {
+            LaunchedEffect(avatar.updatedAt, avatar.reply) {
                 val reply = avatar.reply.trim()
                 if (reply.isNotBlank() && reply != lastSpokenReply &&
                     reply != "让我想一想……" && reply != "我准备休息啦。" &&
@@ -131,8 +131,8 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         fun getStringByName(name: String): String {
             val state = AvatarStateStore.state.value
             return when (name) {
-                "avatarName" -> state.avatarName
-                "avatarId" -> state.avatarId
+                "avatarName", "petName" -> state.avatarName
+                "avatarId", "petEmoji" -> state.avatarId
                 "mood" -> state.mood
                 "reply" -> state.reply
                 "backgroundColor" -> state.backgroundColor
@@ -145,7 +145,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         @JavascriptInterface
         fun doAction(action: String) {
             activity.runOnUiThread {
-                if (action in setOf("pet_touch", "pet_happy", "pet_long_press", "pet_drag", "pet_thinking", "pet_rest")) {
+                if (action in setOf("avatar_touch", "avatar_happy", "avatar_long_press", "avatar_drag", "avatar_thinking", "avatar_rest")) {
                     RearAgentInteractionDispatcher.enqueue(activity, action)
                 }
             }
@@ -188,7 +188,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         listening = false
         val spoken = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
         if (resultCode == RESULT_OK && spoken.isNotBlank()) {
-            RearAgentInteractionDispatcher.enqueue(this, "pet_voice", spoken)
+            RearAgentInteractionDispatcher.enqueue(this, "avatar_voice", spoken)
         } else {
             val current = AvatarStateStore.read(this)
             AvatarStateStore.update(this, current.avatarName, current.avatarId, "normal", "没有听清，再点麦克风试一次吧。")
