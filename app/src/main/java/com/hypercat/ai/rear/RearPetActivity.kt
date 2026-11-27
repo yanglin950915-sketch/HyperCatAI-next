@@ -38,7 +38,7 @@ import com.hypercat.ai.pet.Live2DModelStore
 import com.hypercat.ai.pet.Live2DView
 import com.hypercat.ai.pet.Live2DControllerHub
 
-/** Direct rear-display host. Reuses the same offline anime renderer as the REAREye MAML card. */
+/** Direct rear-display host. Uses the same Live2D renderer and Agent state as the main screen. */
 class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
