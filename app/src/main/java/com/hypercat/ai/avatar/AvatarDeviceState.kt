@@ -1,6 +1,7 @@
 package com.hypercat.ai.avatar
 
 import android.content.*
+import android.provider.Settings
 import android.hardware.*
 import android.media.session.*
 import android.os.BatteryManager
@@ -22,6 +23,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -106,12 +109,14 @@ class AvatarMediaNotificationListener : NotificationListenerService() {
 @Composable
 fun AvatarStatusBadges(modifier: Modifier = Modifier) {
     val s by AvatarDeviceStateStore.state.collectAsState()
+    val context = LocalContext.current
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         if (s.battery >= 0) Badge(if (s.charging) "⚡${s.battery}%" else "电量 ${s.battery}%")
         if (s.weather.isNotBlank()) Badge("☀ ${s.weather} ${s.temperature}°")
         if (s.steps >= 0) Badge("👣 ${s.steps} 步")
         if (s.music) Badge("♫ ${s.track.ifBlank { "正在播放" }}")
+        else Badge("♫ 音乐同步设置", Modifier.clickable { runCatching { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } })
     }
 }
 @Composable
-private fun Badge(t: String) { Text(t, color = Color.White, fontSize = 9.sp, maxLines = 1, modifier = Modifier.background(Color(0xB8222B3B), RoundedCornerShape(20.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) }
+private fun Badge(t: String, modifier: Modifier = Modifier) { Text(t, color = Color.White, fontSize = 9.sp, maxLines = 1, modifier = modifier.background(Color(0xB8222B3B), RoundedCornerShape(20.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) }
