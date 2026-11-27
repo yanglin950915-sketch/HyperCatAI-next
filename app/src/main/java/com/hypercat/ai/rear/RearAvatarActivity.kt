@@ -77,6 +77,8 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.allowFileAccess = true
+                            settings.allowFileAccessFromFileURLs = true
+                            settings.allowUniversalAccessFromFileURLs = false
                             settings.allowContentAccess = true
                             settings.cacheMode = WebSettings.LOAD_NO_CACHE
                             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
