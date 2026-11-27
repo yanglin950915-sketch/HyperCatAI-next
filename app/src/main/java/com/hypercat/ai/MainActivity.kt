@@ -909,6 +909,7 @@ private fun HyperCatApp() {
             if (rearAvatarState.userText.startsWith("[背屏互动") && rearAvatarState.reply.isNotBlank() && rearAvatarState.reply !in transientRearFeedback) {
                 avatarInteractionReply = rearAvatarState.reply
                 avatarInteractionReplyId = rearAvatarState.updatedAt
+                isThinking = false
             }
         }
     }
@@ -945,6 +946,7 @@ private fun HyperCatApp() {
                     currentSessionTitle = currentSessionTitle,
                     onAvatarInteraction = { action ->
                         if (action in setOf("avatar_touch", "avatar_long_press", "avatar_drag")) {
+                            isThinking = true
                             avatarInteractionReply = ""
                             avatarInteractionReplyId = System.currentTimeMillis()
                         }
@@ -1053,7 +1055,7 @@ private fun HyperCatApp() {
                     onMood = { mood -> avatarMood = mood },
                     showSettingsOnEnter = openSettingsDrawer,
                     onSettingsDrawerShown = { openSettingsDrawer = false },
-                    avatarSettingsContent = { drawerModifier ->
+                    avatarSettingsContent = { drawerModifier, speakingNow ->
                         AvatarSettingsPage(
                             modifier = drawerModifier,
                             avatarName = avatarName,
@@ -1062,6 +1064,8 @@ private fun HyperCatApp() {
                             avatarMood = avatarMood,
                             avatarInteractionReply = avatarInteractionReply,
                             avatarInteractionReplyId = avatarInteractionReplyId,
+                            autoReadReplies = autoReadReplies,
+                            isSpeaking = speakingNow,
                             rearAvatarEnabled = rearAvatarEnabled,
                             rearBackgroundColor = rearBackgroundColor,
                             onRearBackgroundColorChange = { color -> rearBackgroundColor = color; AvatarStateStore.setBackgroundColor(context, color) },
@@ -1087,6 +1091,7 @@ private fun HyperCatApp() {
                                 },
                             onAvatarInteraction = { action ->
                                 if (action in setOf("avatar_touch", "avatar_long_press", "avatar_drag")) {
+                                    isThinking = true
                                     avatarInteractionReply = ""
                                     avatarInteractionReplyId = System.currentTimeMillis()
                                 }
@@ -1377,7 +1382,7 @@ private fun ChatPage(
     showSettingsOnEnter: Boolean,
     onSettingsDrawerShown: () -> Unit,
     settingsContent: @Composable (Modifier) -> Unit,
-    avatarSettingsContent: @Composable (Modifier) -> Unit
+    avatarSettingsContent: @Composable (Modifier, Boolean) -> Unit
 ) {
     val context: Context = LocalContext.current
     val live2dModel by Live2DModelStore.state.collectAsState()
@@ -2075,7 +2080,7 @@ private fun ChatPage(
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("虚拟形象设置", color = MainText, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
                         }
-                        avatarSettingsContent(Modifier.weight(1f).fillMaxWidth())
+                        avatarSettingsContent(Modifier.weight(1f).fillMaxWidth(), isSpeaking)
                     }
                 } else if (drawerSection == "settings") {
                     Column(Modifier.fillMaxSize()) {
@@ -2657,6 +2662,8 @@ private fun AvatarSettingsPage(
     avatarMood: String,
     avatarInteractionReply: String,
     avatarInteractionReplyId: Long,
+    autoReadReplies: Boolean,
+    isSpeaking: Boolean,
     rearAvatarEnabled: Boolean,
     rearBackgroundColor: String,
     onRearBackgroundColorChange: (String) -> Unit,
@@ -2709,7 +2716,9 @@ private fun AvatarSettingsPage(
                         if (avatarInteractionReply.isNotBlank() && avatarInteractionReplyId > 0L) {
                             visibleBubble = avatarInteractionReply
                             val expectedId = avatarInteractionReplyId
-                            delay((avatarInteractionReply.length * 220L).coerceIn(5000L, 12000L))
+                            delay((avatarInteractionReply.length * 320L).coerceIn(6000L, 16000L))
+                            while (autoReadReplies && isSpeaking && avatarInteractionReplyId == expectedId) delay(120)
+                            delay(450)
                             if (avatarInteractionReplyId == expectedId) visibleBubble = ""
                         }
                     }
