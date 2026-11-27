@@ -2367,7 +2367,14 @@ private fun AvatarRenderer(
             }
         )
     } else {
-        AnimeGirlAvatar(character, modifier, mood)
+        // Never draw the legacy simplified avatar when Live2D is unavailable.
+        // Keep the scene visually stable while the model host is being restored.
+        Box(
+            modifier = modifier.background(Color(0xFF101522)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("虚拟形象加载中…", color = Color(0xFFB9D8EA))
+        }
     }
 }
 
@@ -2392,9 +2399,13 @@ private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
                 contentScale = ContentScale.Crop
             )
         } else {
-            // Never create a separate 60 FPS WebView for every message row.
-            // Keep a stable static fallback until the persistent avatar view caches its portrait.
-            AnimeGirlAvatar(character, Modifier.fillMaxSize(), "normal", animated = false)
+            // Do not reintroduce the legacy hand-drawn placeholder in chat rows.
+            Box(
+                Modifier.fillMaxSize().background(Color(0xFF252238)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(model.displayName.take(1), color = Color.White)
+            }
         }
     }
 }
