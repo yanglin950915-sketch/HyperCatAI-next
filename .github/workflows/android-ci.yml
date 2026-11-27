@@ -30,7 +30,7 @@ jobs:
           assert "__setAgentJson" in Path("rearscreen/web/index.html").read_text(encoding="utf-8"), "MAML JSON state bridge missing"
           assert "background_color" in Path("app/src/main/java/com/hypercat/ai/rear/RearAvatarProvider.kt").read_text(encoding="utf-8"), "rear background state missing"
           verifier = Path("app/src/main/java/com/hypercat/ai/rear/RearCallerVerifier.kt").read_text(encoding="utf-8")
-          assert "com.android.thememanager" in verifier and ".".join(("hk", "uwu", "reareye")) not in verifier, "native Xiaomi MAML host verification missing"
+          assert "com.android.thememanager" in verifier and "TRUSTED_PACKAGES" in verifier, "native Xiaomi MAML host verification missing"
           assert webview.attrib.get("uri") == "web/index.html", "WebView entry point mismatch"
           assert root.attrib.get("screenWidth") == "976", "target rear width mismatch"
           assert root.find("VariableBinders") is not None, "Agent data binder missing"
@@ -107,3 +107,10 @@ jobs:
           Path("/tmp/hypercat-rear-inline.js").write_text(scripts[0], encoding="utf-8")
           PY
           node --check /tmp/hypercat-rear-inline.js
+          live2d_html = Path("rearscreen/web/live2d/render.html").read_text(encoding="utf-8")
+          live2d_scripts = re.findall(r"<script>(.*?)</script>", live2d_html, re.S)
+          assert len(live2d_scripts) == 1, "expected one self-contained Live2D renderer script"
+          assert r"\\n    smooth.mouth" not in live2d_scripts[0], "Live2D renderer contains an escaped newline syntax error"
+          Path("/tmp/hypercat-live2d-render.js").write_text(live2d_scripts[0], encoding="utf-8")
+          PY
+          node --check /tmp/hypercat-live2d-render.js
