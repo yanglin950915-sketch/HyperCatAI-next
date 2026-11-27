@@ -2431,9 +2431,10 @@ private fun AvatarRenderer(
     halfBody: Boolean = false,
     onGesture: (String, String) -> Unit = { _, _ -> }
 ) {
+    val deviceState by AvatarDeviceStateStore.state.collectAsState()
     if (model != null) {
         Live2DView(
-            model = model, modifier = modifier, mood = mood, speaking = speaking || deviceState.musicPlaying, halfBody = halfBody,
+            model = model, modifier = modifier, mood = mood, speaking = speaking, musicPlaying = deviceState.music, halfBody = halfBody,
             onGesture = onGesture,
             onPortrait = { dataUrl ->
                 runCatching {
