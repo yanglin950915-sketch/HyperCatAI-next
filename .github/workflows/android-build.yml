@@ -40,9 +40,11 @@ jobs:
           HYPERCAT_KEY_PASSWORD: ${{ secrets.HYPERCAT_KEY_PASSWORD }}
         run: gradle --no-daemon :app:assembleDebug
       - name: Rename APK with version
+        id: version
         run: |
           VERSION_NAME=$(sed -nE 's/.*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -n1)
           test -n "$VERSION_NAME"
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           cp app/build/outputs/apk/debug/app-debug.apk "HyperCatAI-v${VERSION_NAME}-debug.apk"
       - name: Verify APK signature
         run: |
@@ -51,8 +53,8 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HyperCatAI-v0.9.44-debug
-          path: HyperCatAI-v0.9.44-debug.apk
+          name: HyperCatAI-v${{ steps.version.outputs.name }}-debug
+          path: HyperCatAI-v${{ steps.version.outputs.name }}-debug.apk
           if-no-files-found: error
           retention-days: 30
       - name: Publish GitHub Release for pushed versions
