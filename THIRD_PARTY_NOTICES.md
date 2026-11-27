@@ -30,9 +30,16 @@ HyperCat AI includes or adapts the following components for its optional Live2D 
 - Copyright (c) 2026 SZTMBABY; MIT license.
 - Full notice: [LICENSES/virtual-companion-MIT.txt](LICENSES/virtual-companion-MIT.txt)
 
-## User-provided models
+## Live2D Haru sample character
 
-HyperCat AI does not bundle any character model. Imported `.model3.json`, `.moc3`, texture, motion, and expression files remain user-supplied content. Import only models that you created or are authorized to use and distribute to the target device.
+- Source: [Live2D Cubism official Haru sample](https://www.live2d.com/en/learn/sample/haru/) and the official [CubismWebSamples repository](https://github.com/Live2D/CubismWebSamples).
+- Bundled source directory: `Samples/Resources/Haru`.
+- Pinned upstream commit: `b1de66b0b1f1cb881d95fb6158622aeb6a2827bd`.
+- The model is included as an official sample asset, not an original HyperCat AI illustration. Use is subject to the [Live2D Free Material License Agreement](https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html) and [Live2D Cubism Sample Data Terms of Use](https://www.live2d.com/zh-CHS/learn/sample/model-terms/).
+- Required copyright notice:
+  > This content uses sample data owned and copyrighted by Live2D Inc. The sample data are utilized in accordance with terms and conditions set by Live2D Inc. This content itself is created at the author's sole discretion.
+- Live2D's sample terms restrict inappropriate sexual, violent, or otherwise image-damaging uses. The character must not be presented in a way that conflicts with its official settings or terms.
+
 
 ## Publication reminder
 
