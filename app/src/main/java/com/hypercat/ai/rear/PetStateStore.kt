@@ -66,7 +66,7 @@ object PetStateStore {
             mood = prefs.getString(KEY_MOOD, "normal") ?: "normal",
             reply = prefs.getString(KEY_REPLY, "你好！我是你的 AI 萌宠。") ?: "",
             updatedAt = prefs.getLong(KEY_UPDATED, 0L),
-            enabled = prefs.getBoolean(KEY_ENABLED, true)
+            enabled = prefs.getBoolean(KEY_ENABLED, false)
         )
         mutableState.value = result
         return result
