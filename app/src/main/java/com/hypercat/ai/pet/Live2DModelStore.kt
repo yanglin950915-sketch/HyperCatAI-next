@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.util.zip.ZipInputStream
 
@@ -18,7 +20,10 @@ object Live2DModelStore {
     private const val PREFS = "hypercat_live2d"
     private const val KEY_DIRECTORY = "model_directory"
     private const val KEY_ENTRY = "model_entry"
-    private val lock = Any()
+    private val mutableModel = MutableStateFlow<Live2DModel?>(null)
+    val state = mutableModel.asStateFlow()
+
+    fun load(context: Context) { mutableModel.value = current(context) }
 
     fun current(context: Context): Live2DModel? {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -77,6 +82,7 @@ object Live2DModelStore {
                 .putString(KEY_DIRECTORY, model.directory)
                 .putString(KEY_ENTRY, model.entry)
                 .commit()
+            mutableModel.value = model
             model
         } catch (error: Throwable) {
             destination.deleteRecursively()
@@ -87,5 +93,6 @@ object Live2DModelStore {
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .remove(KEY_DIRECTORY).remove(KEY_ENTRY).apply()
+        mutableModel.value = null
     }
 }
