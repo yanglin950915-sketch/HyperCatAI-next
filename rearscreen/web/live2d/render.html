@@ -264,23 +264,33 @@
 
   function capturePortraitWhenReady() {
     if (params.get('portrait') !== '1' || PORTRAIT_CAPTURED) return;
-    // Wait for at least one completed PIXI frame so the exported image contains the
-    // actual Live2D model texture and transparent background, not a placeholder.
-    requestAnimationFrame(function () {
+    // Export the model's rendered display object to a real canvas. Retry across
+    // several completed animation frames: WebGL textures may not be extractable
+    // on the very first frame after Cubism reports ready.
+    var attempts = 0;
+    function capture() {
+      if (PORTRAIT_CAPTURED || !model || !app || !NATIVE || !NATIVE.onPortrait) return;
       requestAnimationFrame(function () {
         try {
-          var extract = app && app.renderer && app.renderer.plugins && app.renderer.plugins.extract;
-          if (!extract || !model || !NATIVE || !NATIVE.onPortrait) return;
-          var dataUrl = extract.base64(model);
-          if (dataUrl && dataUrl.indexOf('data:image/') === 0) {
+          var extract = app.renderer && app.renderer.plugins && app.renderer.plugins.extract;
+          if (!extract || typeof extract.canvas !== 'function') throw new Error('PIXI canvas extractor unavailable');
+          var canvas = extract.canvas(model);
+          var dataUrl = canvas && canvas.toDataURL ? canvas.toDataURL('image/png') : '';
+          if (dataUrl && dataUrl.indexOf('data:image/png;base64,') === 0 && dataUrl.length > 1500) {
             PORTRAIT_CAPTURED = true;
             NATIVE.onPortrait(dataUrl);
+            log('portrait captured', canvas.width + 'x' + canvas.height);
+            return;
           }
+          throw new Error('empty portrait canvas');
         } catch (e) {
-          log('portrait capture failed', String(e));
+          log('portrait capture attempt ' + (attempts + 1) + ' failed', String(e));
         }
+        attempts++;
+        if (attempts < 12) setTimeout(capture, 120);
       });
-    });
+    }
+    setTimeout(capture, 180);
   }
 
   function viewport() {
@@ -315,7 +325,7 @@
       backgroundAlpha: 0,
       antialias: true,
       autoDensity: true,
-      resolution: Math.min(window.devicePixelRatio || 1, 1.5),
+      resolution: Math.min(window.devicePixelRatio || 1, 3.0),
       clearBeforeRender: true,
       powerPreference: 'high-performance'
     });
