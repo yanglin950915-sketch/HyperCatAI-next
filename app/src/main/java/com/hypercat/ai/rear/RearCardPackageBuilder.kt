@@ -40,8 +40,9 @@ object RearCardPackageBuilder {
         val modelDirectory = File(Uri.parse(model.directory).path ?: return)
         check(modelDirectory.isDirectory) { "Live2D 模型目录不存在" }
         addDirectory(zip, modelDirectory, "web/models/active")
-        zip.putNextEntry(ZipEntry("web/models/active/model-entry.json"))
-        zip.write(org.json.JSONObject().put("entry", model.entry).toString().toByteArray(Charsets.UTF_8))
+        zip.putNextEntry(ZipEntry("web/models/active/model-entry.js"))
+        val marker = "window.HyperCatLive2DModel=" + org.json.JSONObject().put("entry", model.entry).toString() + ";"
+        zip.write(marker.toByteArray(Charsets.UTF_8))
         zip.closeEntry()
     }
 
