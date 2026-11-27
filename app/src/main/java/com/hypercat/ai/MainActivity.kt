@@ -2738,17 +2738,6 @@ private fun AvatarSettingsPage(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                 Text(selected.third, color = Muted, fontSize = 12.sp, lineHeight = 19.sp,
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 14.dp))
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedButton(onClick = { onAvatarInteraction("avatar_touch") }) { Text("轻触互动") }
-                    OutlinedButton(onClick = { onAvatarInteraction("avatar_happy") }) { Text("发送问候") }
-                    OutlinedButton(onClick = { onAvatarInteraction("avatar_long_press") }) { Text("开始对话") }
-                    OutlinedButton(onClick = { onAvatarInteraction("avatar_thinking") }) { Text("思考反馈") }
-                    OutlinedButton(onClick = { onAvatarInteraction("avatar_rest") }) { Text("休息状态") }
-                }
                 Text(
                     when (avatarMood) {
                         "happy" -> "正在回应你的互动"
