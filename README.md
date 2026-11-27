@@ -2,7 +2,7 @@
 
 **HyperCat AI 是面向 Android 手机的 AI Agent 智能助手。** Agent 主应用可在其他 Android 设备上使用，不要求手机具备背屏；只有背屏虚拟形象投放与互动功能，目标机型包括 Xiaomi 17 Pro / 17 Pro Max、Xiaomi 18 Pro / 18 Pro Max；具体背屏能力仍需结合机型与系统版本进行实机验证。背屏不是独立运行的虚拟形象应用，而是 Agent 的第二交互界面：主屏与背屏共享角色资料、情绪和交互状态。
 
-- **当前版本：** 0.9.42（versionCode 61）
+- **当前版本：** 0.9.43（versionCode 62）
 - **平台：** Android
 - **技术栈：** Kotlin、Jetpack Compose、Coroutines、Android 系统 API
 - **仓库：** [GitHub](https://github.com/yanglin950915-sketch/HyperCatAI-next)
@@ -83,7 +83,7 @@
 - 优化帧率、内存、发热和息屏/AOD 时的资源占用。
 - 不直接复制未经授权的角色模型、立绘、动作或音频；先以原创或明确许可素材验证技术方案。
 
-## Live2D 二次元虚拟形象（0.9.42 起）
+## Live2D 二次元虚拟形象（0.9.43 起）
 
 - 在「虚拟形象」设置中可导入用户自有的 Live2D Cubism ZIP 模型；当前渲染核心基于 Cubism 4.x，建议导入 Cubism 4 模型。ZIP 内需要包含 `*.model3.json`（也接受 `model3.json`）、对应 `.moc3` 和贴图文件；支持有限层级的嵌套 ZIP，不支持 RAR/7z。
 - 主屏资料卡、虚拟形象设置预览与独立背屏 Activity 共用同一模型与 Agent 情绪状态。
@@ -105,13 +105,16 @@
 ## 构建与发布
 项目通过 GitHub Actions 执行 Android CI、APK 构建和签名校验。请从 [Releases](https://github.com/yanglin950915-sketch/HyperCatAI-next/releases) 获取正式发布包，并查看对应版本说明。开发分支上的构建产物不等同于正式发布版本。
 
-## 0.9.42 更新
+## 0.9.43 更新
+- 统一虚拟形象命名与 Agent 交互状态，清理未引用的旧预览和角色引擎文件。
+- 加固 Live2D ZIP 入口扫描，支持 `model3.json` 命名、按 ZIP 文件签名发现嵌套压缩包，并明确区分 Cubism 2/无效压缩包。
+- APK 内置背屏资源模板，背屏部署由应用在设备上自动组装，不再单独发布资源 ZIP。
 - 引入 Live2D Cubism WebGL 渲染层和用户模型 ZIP 导入能力。
 - 主屏、背屏 Activity 与 APK 内置的 MAML 模板共用 Live2D 模型；部署时由应用自动生成卡片文件，不再单独发布或要求手动导入资源 ZIP。
 - 增加 Agent 情绪表情、眼球跟随、待机动作、直接触摸/长按/拖动互动，以及 TTS 播放波形口型驱动（权限允许时）。
 - 保留无模型时的原有二次元 Canvas 回退显示。
 - 继续保留 0.9.41 的启动主题初始化和抽屉界面优化。
-- 版本号：0.9.42（versionCode 61）。
+- 版本号：0.9.43（versionCode 62）。
 
 ## 开发原则
 - Agent 是核心，背屏是第二交互终端。
