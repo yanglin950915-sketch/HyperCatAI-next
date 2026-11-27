@@ -40,15 +40,21 @@
   'use strict';
 
   var params = new URLSearchParams(location.search);
-  var SHOW_INTERFACE = params.get('ui') !== '0';
+  // The rear card is a clean character display. Legacy title/status/reply overlays are opt-in only.
+  var SHOW_INTERFACE = params.get('ui') === '1';
   // Resolve model assets against this document, not the MAML host's working directory.
   // The rear card hosts this renderer directly, without a nested file:// iframe.
   var DIR = new URL(params.get('dir') || '../models/active/', document.baseURI).href;
   if (DIR.charAt(DIR.length - 1) !== '/') DIR += '/';
 
   // 初始构图由 URL 参数决定，原生侧后续可用 __l2d.setView() 动态切换。
-  var VIEW_HALF = params.get('half') !== '0';
+  var VIEW_HALF = params.get('half') === '1';
   var VIEW_RATIO = parseFloat(params.get('ratio') || '0.78');
+  // The Xiaomi rear camera occupies the top-centre area. Keep the entire model
+  // inside the remaining safe viewport, then centre it in that usable rectangle.
+  var SAFE_TOP_RATIO = parseFloat(params.get('safeTop') || '0.14');
+  if (!isFinite(SAFE_TOP_RATIO)) SAFE_TOP_RATIO = 0.14;
+  SAFE_TOP_RATIO = Math.max(0.08, Math.min(0.24, SAFE_TOP_RATIO));
   var VIEW_OFFSET_X = 0;
   var PORTRAIT_CAPTURED = false;
   // Per-model horizontal correction. Default is zero; only Xiaomi Rice receives a tuned value.
@@ -278,43 +284,33 @@
 
     model.scale.set(1);
     model.position.set(0, 0);
-
     var b = model.getBounds();
     if (!(b.width > 0) || !(b.height > 0)) return;
 
-    var s, boxW, boxH;
+    // Reserve the top camera/cutout zone. The character is centred in the
+    // usable area below it rather than in the physical panel's full rectangle.
+    var safeTop = Math.min(CH * 0.24, Math.max(48, CH * SAFE_TOP_RATIO));
+    var usableH = Math.max(1, CH - safeTop);
+    var s, bounds;
     if (view.halfBody) {
-      // 半身：只按高度定缩放，允许左右溢出到画外。
-      //
-      // 不能用 min(CW/w, CH/(h*ratio))：这个角色是细长的（3326×4992），
-      // 宽度约束永远比高度约束紧（400/3326=0.120 < 534/(4992*0.48)=0.223），
-      // 取 min 之后半身只剩 12% 的放大，等于没效果。要看清脸就必须牺牲两侧。
       var ratio = Math.max(0.3, Math.min(0.8, view.halfBodyRatio));
-      s = CH / (b.height * ratio) * 0.98;
+      s = usableH / (b.height * ratio) * 0.98;
       model.scale.set(s);
-      var bh = model.getBounds();
-      model.position.x += (CW - bh.width) / 2 - bh.x;
-      // 头顶对齐到画布上沿再往下留 3%，脸不会贴边。
-      model.position.y += CH * 0.03 - bh.y;
-      model.position.x += CW * VIEW_OFFSET_X;
-      model.position.x += CW * MODEL_OFFSET_X;
-      boxW = bh.width;
-      boxH = bh.height;
+      bounds = model.getBounds();
     } else {
-      s = Math.min(CW / b.width, CH / b.height) * 0.98;
+      s = Math.min(CW / b.width, usableH / b.height) * 0.94;
       model.scale.set(s);
-      var bf = model.getBounds();
-      model.position.x += (CW - bf.width) / 2 - bf.x;
-      model.position.y += (CH - bf.height) - bf.y;
-      model.position.x += CW * VIEW_OFFSET_X;
-      model.position.x += CW * MODEL_OFFSET_X;
-      boxW = bf.width;
-      boxH = bf.height;
+      bounds = model.getBounds();
     }
+    model.position.x += (CW - bounds.width) / 2 - bounds.x;
+    model.position.y += safeTop + (usableH - bounds.height) / 2 - bounds.y;
+    model.position.x += CW * VIEW_OFFSET_X;
+    model.position.x += CW * MODEL_OFFSET_X;
+
     log('L2D layout canvas=' + CW.toFixed(1) + 'x' + CH.toFixed(1) +
-        ' half=' + view.halfBody + ' scale=' + s.toFixed(5) +
-        ' box=' + boxW.toFixed(1) + 'x' + boxH.toFixed(1) +
-        ' modelOffsetX=' + MODEL_OFFSET_X.toFixed(4));
+        ' safeTop=' + safeTop.toFixed(1) + ' half=' + view.halfBody +
+        ' scale=' + s.toFixed(5) + ' model=' + bounds.width.toFixed(1) +
+        'x' + bounds.height.toFixed(1) + ' modelOffsetX=' + MODEL_OFFSET_X.toFixed(4));
   }
 
   function capturePortraitWhenReady() {
