@@ -1,7 +1,6 @@
 package com.hypercat.ai.rear
 
 import android.content.Context
-import android.net.Uri
 import com.hypercat.ai.avatar.Live2DModelStore
 import java.io.File
 import java.util.zip.ZipEntry
@@ -36,27 +35,29 @@ object RearCardPackageBuilder {
     }
 
     private fun addImportedLive2DModel(context: Context, zip: ZipOutputStream) {
-        val model = Live2DModelStore.current(context) ?: return
-        val modelDirectory = File(Uri.parse(model.directory).path ?: return)
-        check(modelDirectory.isDirectory) { "Live2D 模型目录不存在" }
-        addDirectory(zip, modelDirectory, "web/models/active")
+        val model = Live2DModelStore.current(context)
+        val assetDirectory = model.directory
+            .removePrefix("file:///android_asset/")
+            .trim('/')
+        require(assetDirectory.startsWith("avatar/") && ".." !in assetDirectory.split("/")) {
+            "内置 Live2D 模型资源路径无效"
+        }
+        addAssetTree(context, zip, assetDirectory, "web/models/active")
         zip.putNextEntry(ZipEntry("web/models/active/model-entry.js"))
         val marker = "window.HyperCatLive2DModel=" + org.json.JSONObject().put("entry", model.entry).toString() + ";"
         zip.write(marker.toByteArray(Charsets.UTF_8))
         zip.closeEntry()
     }
 
-    private fun addDirectory(zip: ZipOutputStream, directory: File, entryRoot: String) {
-        val rootPath = directory.canonicalPath
-        directory.walkTopDown().filter { it.isFile }.forEach { file ->
-            val canonical = file.canonicalPath
-            require(canonical.startsWith(rootPath + File.separator)) { "Live2D 模型包含越界文件" }
-            val relative = file.relativeTo(directory).invariantSeparatorsPath
-            val entry = "${entryRoot}/${relative}"
-            require(".." !in entry.split("/") && !entry.startsWith("/")) { "非法 Live2D 模型路径" }
-            zip.putNextEntry(ZipEntry(entry))
-            file.inputStream().buffered().use { it.copyTo(zip) }
-            zip.closeEntry()
+    private fun addAssetTree(context: Context, zip: ZipOutputStream, assetPath: String, entryRoot: String) {
+        context.assets.list(assetPath).orEmpty().sorted().forEach { child ->
+            val nextAsset = "$assetPath/$child"
+            val nextEntry = "$entryRoot/$child"
+            if (context.assets.list(nextAsset).orEmpty().isEmpty()) {
+                addAsset(context, zip, nextAsset, nextEntry)
+            } else {
+                addAssetTree(context, zip, nextAsset, nextEntry)
+            }
         }
     }
 
