@@ -16,6 +16,7 @@ data class Live2DModel(
 object Live2DModelStore {
     private const val PREFS = "hypercat_avatar"
     private const val KEY_MODEL = "avatar_id"
+    private const val KEY_REAR_MODEL = "rear_avatar_id"
 
     val characters = listOf(
         Live2DModel("haru", "file:///android_asset/avatar/haru/", "Haru.model3.json", "春", "温柔开朗、善解人意。喜欢陪伴与倾听，遇到新鲜事会表现出好奇，擅长用积极的话语鼓励你。"),
@@ -45,5 +46,20 @@ object Live2DModelStore {
     fun current(context: Context): Live2DModel {
         val id = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_MODEL, "haru")
         return modelFor(id)
+    }
+
+    /** Rear-screen avatar selection is persisted independently from the main-screen avatar. */
+    fun currentRear(context: Context): Live2DModel {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = prefs.getString(KEY_REAR_MODEL, null) ?: current(context).id.also {
+            prefs.edit().putString(KEY_REAR_MODEL, it).apply()
+        }
+        return modelFor(id)
+    }
+
+    fun selectRear(context: Context, id: String) {
+        val model = modelFor(id)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_REAR_MODEL, model.id).apply()
     }
 }
