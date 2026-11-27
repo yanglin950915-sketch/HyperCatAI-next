@@ -32,6 +32,7 @@ fun Live2DView(
     mood: String = "normal",
     speaking: Boolean = false,
     halfBody: Boolean = true,
+    showInterface: Boolean = false,
     onGesture: (String, String) -> Unit = { _, _ -> },
     onState: (Live2DRenderState) -> Unit = {},
     onPortrait: (String) -> Unit = {}
@@ -68,7 +69,7 @@ fun Live2DView(
     }
     val webView = remember(controller) {
         WebView(context).apply {
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setBackgroundColor(android.graphics.Color.rgb(5, 7, 13))
             setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
             settings.apply {
                 javaScriptEnabled = true
@@ -114,9 +115,9 @@ fun Live2DView(
         // Clear the previous WebView surface before loading the next model. Keeping the old
         // composited frame visible during navigation caused motion trails on fast swaps.
         val riceOffset = if (model.id == "rice") "-0.035" else "0"
-        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&fps=60&portrait=1&offsetX=" + riceOffset
+        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=" + riceOffset
         webView.stopLoading()
-        webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        webView.setBackgroundColor(android.graphics.Color.rgb(5, 7, 13))
         webView.loadUrl("about:blank")
         kotlinx.coroutines.delay(45)
         webView.loadUrl(targetUrl)
