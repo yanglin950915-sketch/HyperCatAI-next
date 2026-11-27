@@ -2674,6 +2674,8 @@ private fun AvatarSettingsPage(
     onAvatarNameChange: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val latestBubbleSpeaking by rememberUpdatedState(isSpeaking)
+    val latestBubbleAutoRead by rememberUpdatedState(autoReadReplies)
     val live2dModel by Live2DModelStore.state.collectAsState()
     LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val characters = Live2DModelStore.characters.map { Triple(it.id, it.displayName, it.personality) }
@@ -2717,7 +2719,7 @@ private fun AvatarSettingsPage(
                             visibleBubble = avatarInteractionReply
                             val expectedId = avatarInteractionReplyId
                             delay((avatarInteractionReply.length * 320L).coerceIn(6000L, 16000L))
-                            while (autoReadReplies && isSpeaking && avatarInteractionReplyId == expectedId) delay(120)
+                            while (latestBubbleAutoRead && latestBubbleSpeaking && avatarInteractionReplyId == expectedId) delay(120)
                             delay(450)
                             if (avatarInteractionReplyId == expectedId) visibleBubble = ""
                         }
