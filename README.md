@@ -113,10 +113,10 @@ Agent 可根据用户请求调用 Android 系统能力或外部数据服务，�
 
 ### REAREye 接入流程（依据 v2.0.0 APK 内置工具）
 
-REAREye v2.0.0 的内置工作流不是简单把 ZIP 当 APK 安装：其工具说明要求先通过 `get_html_widget_spec` 获取规范，再用 `create_html_widget` 创建 HTML 组件，最后用返回的 `business` 调用 `create_card` 添加背屏卡片。
+REAREye v2.0.0 的内置工作流不是简单把 ZIP 当 APK 安装：其工具说明要求先通过 `get_widget_spec` 获取规范，再用 `create_html_widget` 创建 HTML 组件，最后用返回的 `business` 调用 `create_card` 添加背屏卡片。
 
 1. 下载 Release 中的 `HyperCatAI-reareye-widget.html`（单文件 HTML）和 `HyperCatAI-rearscreen.zip`（MAML WebView 绑定参考包）。
-2. 在 REAREye 自带的 AI 助手中，提供 HTML 文件，要求先调用 `get_html_widget_spec`，再按 904×572 尺寸调用 `create_html_widget`，标题使用「HyperCat AI」。
+2. 在 REAREye 自带的 AI 助手中，提供 HTML 文件，要求先调用 `get_widget_spec`，再按 904×572 尺寸调用 `create_html_widget`，标题使用「HyperCat AI」。
 3. 取得组件返回的 `business` 后，调用 `create_card` 创建背屏显示卡片；按 REAREye 的确认提示授权创建。
 4. **状态同步验证是单独步骤：** MAML 绑定参考包保留了 HyperCat AI ContentProvider 和触摸广播定义。REAREye 的 HTML 创建流程是否允许保留/配置这些绑定，需要在 v2.0.0 实机工作流中验证；若工具只接收 HTML 而不能配置绑定，不要把“卡片创建成功”误认为 Agent 双向同步已成功。
 
