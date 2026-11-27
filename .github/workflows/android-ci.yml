@@ -117,7 +117,7 @@ jobs:
           assert "attachBaseContext(newBase: Context)" not in main_activity, "startup must not depend on a late Activity base-context theme override"
           renderer_source = Path("rearscreen/web/live2d/render.html").read_text(encoding="utf-8")
           assert "new URL(selfUrl, document.baseURI).href" in renderer_source and "new URL(params.get('dir') || '../models/active/', document.baseURI).href" in renderer_source and "new URL(normalized, json.url).href" in renderer_source, "Live2D model assets must be resolved to absolute URLs"
-          assert "return normalized;" in renderer_source and "return dir + normalized" not in renderer_source, "Live2D model-relative files must not be double-prefixed"
+          assert "return resolved;" in renderer_source and "return dir + normalized" not in renderer_source and "new URL(normalized, json.url).href" in renderer_source, "Live2D model-relative files must be resolved once to absolute URLs"
           assert "expectedMarker" in package_builder and '"DisplayInfo"' in package_builder and 'motion.optString("Sound")' in package_builder, "rear package verifier must validate model marker and auxiliary files"
           assert "</div></div></div>\n<!-- SAFE_ZONE:" not in html, "rear error panel markup has an unmatched closing tag"
           assert "window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(initialWindowColor))" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8") and "setKeepOnScreenCondition { !splashThemeReady }" in main_activity and "splashScreen.setOnExitAnimationListener" in main_activity, "splash must stay visible until saved app theme is applied"
