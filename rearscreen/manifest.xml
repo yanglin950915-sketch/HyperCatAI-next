@@ -6,29 +6,11 @@
     <Var name="mood" type="string" expression="'normal'"/>
     <Var name="reply" type="string" expression="'你好！我是你的 AI 萌宠。'"/>
     <Var name="updatedAt" type="string" expression="'0'"/>
-    <Var name="moodIndex" expression="ifelse(@mood=='happy',1,ifelse(@mood=='thinking',2,ifelse(@mood=='sleepy',3,ifelse(@mood=='sad',4,0))))"/>
-    <Var name="moodLabel" type="string" expression="ifelse(@mood=='happy','很开心',ifelse(@mood=='thinking','正在思考',ifelse(@mood=='sleepy','休息中',ifelse(@mood=='sad','需要安慰','陪伴中'))))"/>
     <Var name="refreshTick" expression="#second">
         <Trigger>
             <BinderCommand name="petBinder" command="refresh"/>
         </Trigger>
     </Var>
-
-    <Function name="parsePet">
-        <VariableCommand name="petName" expression="jsonGetString(strToJson(@resultJson), 'pet_name')" type="string"/>
-        <VariableCommand name="mood" expression="jsonGetString(strToJson(@resultJson), 'mood')" type="string"/>
-        <VariableCommand name="reply" expression="jsonGetString(strToJson(@resultJson), 'reply')" type="string"/>
-        <VariableCommand name="updatedAt" expression="jsonGetString(strToJson(@resultJson), 'updated_at')" type="string"/>
-        <WebViewCommand target="wv" command="runjs" params="'__setMoodIndex(' + #moodIndex + ')'"/>
-    </Function>
-
-    <!-- Full-width WebView; the HTML engine keeps all content outside the camera exclusion zone. -->
-    <WebView name="wv" x="0" y="0" w="#view_width" h="#view_height" local="true" cachePage="true" uri="web/index.html"/>
-
-    <!-- Native MAML text is kept above the WebView so Agent data remains live-bound to the Provider. -->
-    <Text x="(0.54 * #view_width)" y="(0.075 * #view_height)" w="(0.20 * #view_width)" size="20" color="#FFFFFF" bold="true" textExp="@petName"/>
-    <Text x="(0.77 * #view_width)" y="(0.082 * #view_height)" w="(0.18 * #view_width)" size="15" color="#73DFFF" align="right" textExp="@moodLabel"/>
-    <Text x="(0.38 * #view_width)" y="(0.715 * #view_height)" w="(0.58 * #view_width)" size="14" color="#A8D7E8" multiLine="true" spacingMult="1.05" textExp="@reply"/>
 
     <VariableBinders>
         <ContentProviderBinder name="petBinder" uriExp="@petUri" columns="result">
@@ -37,13 +19,41 @@
         </ContentProviderBinder>
     </VariableBinders>
 
+    <Function name="parsePet">
+        <VariableCommand name="petName" expression="jsonGetString(strToJson(@resultJson), 'pet_name')" type="string"/>
+        <VariableCommand name="mood" expression="jsonGetString(strToJson(@resultJson), 'mood')" type="string"/>
+        <VariableCommand name="reply" expression="jsonGetString(strToJson(@resultJson), 'reply')" type="string"/>
+        <VariableCommand name="updatedAt" expression="jsonGetString(strToJson(@resultJson), 'updated_at')" type="string"/>
+    </Function>
+
+    <!-- Local offline HTML renderer; content itself reserves the left camera exclusion zone. -->
+    <WebView name="wv" x="0" y="0" w="#view_width" h="#view_height" local="true" cachePage="true" uri="web/index.html">
+        <Triggers>
+            <Trigger action="pet_happy">
+                <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'pet_happy'"/>
+                </IntentCommand>
+            </Trigger>
+            <Trigger action="pet_thinking">
+                <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'pet_thinking'"/>
+                </IntentCommand>
+            </Trigger>
+            <Trigger action="pet_rest">
+                <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'pet_rest'"/>
+                </IntentCommand>
+            </Trigger>
+        </Triggers>
+    </WebView>
+
     <ExternalCommands>
         <Trigger action="init">
-            <WebViewCommand target="wv" command="runjs" params="'__fit();__setAod(0);__setMoodIndex(' + #moodIndex + ')'" delay="2000"/>
+            <WebViewCommand target="wv" command="runjs" params="'__fit();__setAod(0)'" delay="2000"/>
             <BinderCommand name="petBinder" command="refresh" delay="2100"/>
         </Trigger>
         <Trigger action="resume,exitAod">
-            <WebViewCommand target="wv" command="runjs" params="'__fit();__setAod(0);__setMoodIndex(' + #moodIndex + ')'" delay="200"/>
+            <WebViewCommand target="wv" command="runjs" params="'__fit();__setAod(0)'" delay="200"/>
             <BinderCommand name="petBinder" command="refresh" delay="250"/>
         </Trigger>
         <Trigger action="pause,enterAod">
