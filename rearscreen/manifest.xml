@@ -6,7 +6,7 @@
     <Var name="mood" type="string" expression="'normal'"/>
     <Var name="reply" type="string" expression="'你好！我是你的 AI 萌宠。'"/>
     <Var name="updatedAt" type="string" expression="'0'"/>
-    <Var name="enabled" type="string" expression="'true'"/>
+    <Var name="enabled" type="string" expression="'false'"/>
     <Var name="refreshTick" expression="#second">
         <Trigger>
             <BinderCommand name="petBinder" command="refresh"/>
