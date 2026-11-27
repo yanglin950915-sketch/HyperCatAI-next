@@ -1,0 +1,91 @@
+package com.hypercat.ai.pet
+
+import android.content.Context
+import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.zip.ZipInputStream
+
+data class Live2DModel(
+    val directory: String,
+    val entry: String,
+    val displayName: String
+)
+
+/** Imports a user-owned Cubism model bundle. Model files are never bundled without permission. */
+object Live2DModelStore {
+    private const val PREFS = "hypercat_live2d"
+    private const val KEY_DIRECTORY = "model_directory"
+    private const val KEY_ENTRY = "model_entry"
+    private val lock = Any()
+
+    fun current(context: Context): Live2DModel? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val directory = prefs.getString(KEY_DIRECTORY, null) ?: return null
+        val entry = prefs.getString(KEY_ENTRY, null) ?: return null
+        val parent = File(Uri.parse(directory).path ?: return null)
+        val modelFile = File(parent, entry)
+        if (!parent.isDirectory || !modelFile.isFile) return null
+        return Live2DModel(directory, entry, modelFile.name.removeSuffix(".model3.json"))
+    }
+
+    suspend fun importZip(context: Context, uri: Uri): Live2DModel = withContext(Dispatchers.IO) {
+        val root = File(context.filesDir, "live2d-models").apply { mkdirs() }
+        val destination = File(root, "model-${System.currentTimeMillis()}").apply { mkdirs() }
+        var expanded = 0L
+        try {
+            val input = context.contentResolver.openInputStream(uri)
+                ?: error("无法读取所选模型压缩包")
+            ZipInputStream(input.buffered()).use { zip ->
+                while (true) {
+                    val item = zip.nextEntry ?: break
+                    val raw = item.name.replace('\\\\', '/')
+                    require(!raw.startsWith("/") && !raw.split('/').any { it == ".." }) { "模型压缩包包含不安全路径" }
+                    if (raw.isBlank() || item.isDirectory) {
+                        zip.closeEntry()
+                        continue
+                    }
+                    val output = File(destination, raw)
+                    require(output.canonicalPath.startsWith(destination.canonicalPath + File.separator)) { "模型文件路径越界" }
+                    output.parentFile?.mkdirs()
+                    output.outputStream().buffered().use { out ->
+                        val buffer = ByteArray(32 * 1024)
+                        while (true) {
+                            val count = zip.read(buffer)
+                            if (count < 0) break
+                            expanded += count
+                            require(expanded <= 160L * 1024L * 1024L) { "模型解压后超过 160 MB 限制" }
+                            out.write(buffer, 0, count)
+                        }
+                    }
+                    zip.closeEntry()
+                }
+            }
+            val settings = destination.walkTopDown().firstOrNull {
+                it.isFile && it.name.endsWith(".model3.json", ignoreCase = true)
+            } ?: error("压缩包中没有找到 .model3.json 模型入口文件")
+            val json = settings.readText()
+            require(json.contains("FileReferences") && json.contains("Moc")) { "模型配置缺少必要的 FileReferences/Moc 信息" }
+            val modelDir = settings.parentFile ?: error("模型目录无效")
+            val model = Live2DModel(
+                directory = Uri.fromFile(modelDir).toString().trimEnd('/') + "/",
+                entry = settings.name,
+                displayName = settings.name.removeSuffix(".model3.json")
+            )
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString(KEY_DIRECTORY, model.directory)
+                .putString(KEY_ENTRY, model.entry)
+                .commit()
+            model
+        } catch (error: Throwable) {
+            destination.deleteRecursively()
+            throw error
+        }
+    }
+
+    fun clear(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .remove(KEY_DIRECTORY).remove(KEY_ENTRY).apply()
+    }
+}
