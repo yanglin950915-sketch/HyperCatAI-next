@@ -632,6 +632,7 @@ private fun HyperCatApp() {
     var draft by remember { mutableStateOf("") }
     var petName by remember { mutableStateOf("小橘") }
     var petMood by remember { mutableStateOf("normal") }
+    var petReply by remember { mutableStateOf(PetStateStore.read(context).reply) }
     var themeMode by remember { mutableStateOf("system") }
     var timeRefresh by remember { mutableIntStateOf(0) }
     var updateStatus by remember { mutableStateOf("尚未检查") }
@@ -670,8 +671,13 @@ private fun HyperCatApp() {
                     else "未授予位置权限，无法获取当地天气。请在系统权限弹窗中允许位置访问，或直接告诉我城市名称。"
                 val display = if (hasLocation && !precise) "提示：目前只获得大致位置权限，天气区域可能不够准确。请在应用权限中开启“精确位置”。\\n$result" else result
                 appendAgentReply(context, messages, display)
+                petReply = display
+                petMood = "happy"
             } catch (error: Exception) {
-                appendAgentReply(context, messages, "天气查询失败：${error.message ?: "请稍后重试"}")
+                val failure = "天气查询失败：${error.message ?: "请稍后重试"}"
+                appendAgentReply(context, messages, failure)
+                petReply = failure
+                petMood = "sad"
             } finally { isThinking = false }
         }
     }
@@ -742,9 +748,12 @@ private fun HyperCatApp() {
         }
     }
 
-    LaunchedEffect(petName, petMood) {
-        val state = PetStateStore.read(context)
-        PetStateStore.update(context, petName, "🤖", petMood, state.reply)
+    LaunchedEffect(isThinking) {
+        if (isThinking) petMood = "thinking"
+    }
+
+    LaunchedEffect(petName, petMood, petReply) {
+        PetStateStore.update(context, petName, "🤖", petMood, petReply)
     }
 
     MaterialTheme(colorScheme = if (darkNow) darkColorScheme(
@@ -795,24 +804,46 @@ private fun HyperCatApp() {
                                 if (requestedPlace.isNotBlank() || AgentDeviceTools.hasPreciseLocationPermission(context)) {
                                     scope.launch {
                                         isThinking = true
-                                        try { appendAgentReply(context, messages, withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context, requestedPlace.ifBlank { null }) }) }
-                                        catch (error: Exception) { appendAgentReply(context, messages, "天气查询失败：${error.message ?: "请稍后重试"}") }
+                                        try {
+                                            val weatherReply = withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context, requestedPlace.ifBlank { null }) }
+                                            appendAgentReply(context, messages, weatherReply)
+                                            petReply = weatherReply
+                                            petMood = "happy"
+                                        } catch (error: Exception) {
+                                            val failure = "天气查询失败：${error.message ?: "请稍后重试"}"
+                                            appendAgentReply(context, messages, failure)
+                                            petReply = failure
+                                            petMood = "sad"
+                                        }
                                         finally { isThinking = false }
                                     }
                                 } else weatherPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                             } else {
                                 val localAction = AgentDeviceTools.handleSystemAction(context, value)
-                                if (localAction != null) appendAgentReply(context, messages, localAction)
-                                else if (!saved || endpoint.isBlank() || model.isBlank()) messages.add(ChatLine("请先在设置中完成模型配置，再发送消息。", false))
+                                if (localAction != null) {
+                                    appendAgentReply(context, messages, localAction)
+                                    petReply = localAction
+                                    petMood = "happy"
+                                } else if (!saved || endpoint.isBlank() || model.isBlank()) {
+                                    val setupHint = "请先在设置中完成模型配置，再发送消息。"
+                                    messages.add(ChatLine(setupHint, false))
+                                    petReply = setupHint
+                                    petMood = "sad"
+                                }
                                 else {
                                     val requestHistory = messages.toList()
                                     scope.launch {
                                         isThinking = true
                                         try {
                                             val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                            appendAgentReply(context, messages, reply.text, reply.reasoning); petMood = inferMood(reply.text)
+                                            appendAgentReply(context, messages, reply.text, reply.reasoning)
+                                            petReply = reply.text
+                                            petMood = inferMood(reply.text)
                                         } catch (error: Exception) {
-                                            appendAgentReply(context, messages, "模型请求未成功：${error.message ?: "网络或服务异常"}")
+                                            val failure = "模型请求未成功：${error.message ?: "网络或服务异常"}"
+                                            appendAgentReply(context, messages, failure)
+                                            petReply = failure
+                                            petMood = "sad"
                                         } finally { isThinking = false }
                                     }
                                 }
@@ -826,9 +857,14 @@ private fun HyperCatApp() {
                                 isThinking = true
                                 try {
                                     val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                    appendAgentReply(context, messages, reply.text, reply.reasoning); petMood = inferMood(reply.text)
+                                    appendAgentReply(context, messages, reply.text, reply.reasoning)
+                                    petReply = reply.text
+                                    petMood = inferMood(reply.text)
                                 } catch (error: Exception) {
-                                    appendAgentReply(context, messages, "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}")
+                                    val failure = "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}"
+                                    appendAgentReply(context, messages, failure)
+                                    petReply = failure
+                                    petMood = "sad"
                                 } finally { isThinking = false }
                             }
                         }
