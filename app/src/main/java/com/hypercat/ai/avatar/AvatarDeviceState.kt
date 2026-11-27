@@ -130,8 +130,8 @@ fun AvatarStatusBadges(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Badge(if (s.battery >= 0) (if (s.charging) "⚡ " else "电量 ") + "${s.battery}%" else "电量读取中", Modifier.weight(1f))
-            Badge(if (s.weather.isNotBlank()) "☀ ${s.weather}${if (s.temperature.isNotBlank()) " ${s.temperature}°C" else ""}" else "天气获取中",
+            AvatarStatusBadge(if (s.battery >= 0) (if (s.charging) "⚡ " else "电量 ") + "${s.battery}%" else "电量读取中", Modifier.weight(1f))
+            AvatarStatusBadge(if (s.weather.isNotBlank()) "☀ ${s.weather}${if (s.temperature.isNotBlank()) " ${s.temperature}°C" else ""}" else "天气获取中",
                 Modifier.weight(1f).clickable {
                     runCatching {
                         context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -140,17 +140,17 @@ fun AvatarStatusBadges(modifier: Modifier = Modifier) {
                 })
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Badge(if (s.steps >= 0) "👣 ${s.steps} 步" else "👣 步数未授权", Modifier.weight(1f))
-            Badge(if (s.music) "♫ ${s.track.ifBlank { "正在播放" }}" else "♫ 音乐同步设置",
+            AvatarStatusBadge(if (s.steps >= 0) "👣 ${s.steps} 步" else "👣 步数未授权", Modifier.weight(1f))
+            AvatarStatusBadge(if (s.music) "♫ ${s.track.ifBlank { "正在播放" }}" else "♫ 音乐同步设置",
                 Modifier.weight(1f).clickable { runCatching { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } })
         }
     }
 }
 @Composable
-private fun Badge(t: String, modifier: Modifier = Modifier) {
+private fun AvatarStatusBadge(t: String, modifier: Modifier = Modifier) {
     Text(t, color = Color.White, fontSize = 9.sp, maxLines = 1,
         modifier = modifier.background(Color(0xB8222B3B), RoundedCornerShape(20.dp))
             .padding(horizontal = 8.dp, vertical = 6.dp))
 }
 @Composable
-private fun Badge(t: String, modifier: Modifier = Modifier) { Text(t, color = Color.White, fontSize = 9.sp, maxLines = 1, modifier = modifier.background(Color(0xB8222B3B), RoundedCornerShape(20.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) }
+private fun AvatarStatusBadge(t: String, modifier: Modifier = Modifier) { Text(t, color = Color.White, fontSize = 9.sp, maxLines = 1, modifier = modifier.background(Color(0xB8222B3B), RoundedCornerShape(20.dp)).padding(horizontal = 7.dp, vertical = 4.dp)) }
