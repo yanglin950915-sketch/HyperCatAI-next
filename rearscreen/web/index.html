@@ -41,6 +41,15 @@ function syncMamlState(){
     applyAgentState(bridge.getStringByName("avatarName"),bridge.getStringByName("avatarId"),bridge.getStringByName("mood"),bridge.getStringByName("reply"),bridge.getStringByName("backgroundColor"));
   }catch(e){}
 }
+function readRearSafeTopRatio(){
+  try{
+    if(window.maml&&typeof window.maml.getStringByName==="function"){
+      var ratio=parseFloat(window.maml.getStringByName("safeTopRatio"));
+      if(isFinite(ratio))return Math.max(0,Math.min(0.30,ratio));
+    }
+  }catch(e){}
+  return 0;
+}
 function showLoadError(message){var panel=document.getElementById("load-error"),detail=document.getElementById("load-error-detail");if(detail)detail.textContent=String(message||"未知错误");if(panel)panel.style.display="block";console.error("Rear Live2D failed:",String(message||"unknown"));}
 window.__onRearLive2DReady=function(){var panel=document.getElementById("load-error");if(panel)panel.style.display="none";console.log("Rear Live2D ready");};
 window.__onRearLive2DError=showLoadError;
@@ -59,7 +68,7 @@ marker.onload=function(){
   frame.id="live2d-stage";
   frame.title="HyperCat AI Live2D";
   frame.setAttribute("aria-label","Live2D 虚拟形象与交互界面");
-  frame.src="live2d/render.html?dir=../models/active/&entry="+encodeURIComponent(info.entry)+"&half=0&safeTop=0.18&fps=30";
+  frame.src="live2d/render.html?dir=../models/active/&entry="+encodeURIComponent(info.entry)+"&half=0&safeTop="+encodeURIComponent(readRearSafeTopRatio())+"&fps=30";
   live2dFrame=frame;
   frame.onerror=function(){showLoadError("无法打开 Live2D 渲染页面：web/live2d/render.html");};
   document.body.appendChild(frame);
