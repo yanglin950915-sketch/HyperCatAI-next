@@ -1,7 +1,7 @@
 <!doctype html>
-<!-- SAFE_ZONE: BASE_CAM=325 | OUTER.x=345 OK | HEADER.x=370 OK | FACE.x=460 OK | REPLY.x=370 OK | BUTTONS.x=370/563/756 OK | max_x=930 <= 956 OK -->
-<!-- AVAIL: 611x556 ratio=1.10 | OUTER 611x556 fill=100% | CHILD 560x507 fillW=91.65% fillH=91.19% ratio=1.10 deviation<1% OK -->
-<!-- TOUCH: FACE 380x290 OK | PET 170x72 OK | THINK 170x72 OK | REST 174x72 OK | gaps=23px OK -->
+<!-- SAFE_ZONE: BASE_CAM=301 | OUTER.x=321 OK | HEADER.x=345 OK | FACE.x=405 OK | REPLY.x=345 OK | BUTTONS.x=345/520/695 OK | max_x=860 <= 884 OK -->
+<!-- AVAIL: 563x532 ratio=1.06 | OUTER 563x532 fill=100% | CHILD 515x497 fillW=91.47% fillH=93.42% ratio=1.04 deviation=2.1% OK -->
+<!-- TOUCH: FACE 355x270 OK | PET 155x72 OK | THINK 155x72 OK | REST 165x72 OK | gaps=20px OK -->
 <!-- The engine uses cachePage="true"; clear the cache or reinstall the widget after editing the file. -->
 <html lang="zh-CN">
 <head>
@@ -37,17 +37,17 @@ var T={
 };
 
 /* BASE is the Xiaomi rear-screen landscape design space. */
-var BASE_W=976,BASE_H=596,BASE_CAM=Math.floor(BASE_W/3);
+var BASE_W=904,BASE_H=572,BASE_CAM=Math.floor(BASE_W/3);
 var FRAME_RATE=30,FRAME_MS=1000/FRAME_RATE;
 var LAYOUT=Object.freeze({
-  OUTER:{x:345,y:20,w:611,h:556},
-  HEADER:{x:370,y:40,w:560,h:64},
-  FACE:{x:460,y:130,w:380,h:290},
-  REPLY:{x:370,y:420,w:560,h:36},
+  OUTER:{x:321,y:20,w:563,h:532},
+  HEADER:{x:345,y:40,w:515,h:64},
+  FACE:{x:405,y:130,w:355,h:270},
+  REPLY:{x:345,y:410,w:515,h:36},
   BUTTONS:[
-    {x:370,y:475,w:170,h:72,label:T.pet,mood:1},
-    {x:563,y:475,w:170,h:72,label:T.think,mood:2},
-    {x:756,y:475,w:174,h:72,label:T.rest,mood:3}
+    {x:345,y:465,w:155,h:72,label:T.pet,mood:1},
+    {x:520,y:465,w:155,h:72,label:T.think,mood:2},
+    {x:695,y:465,w:165,h:72,label:T.rest,mood:3}
   ]
 });
 var AVAIL={x:BASE_CAM+20,y:20,w:BASE_W-BASE_CAM-40,h:BASE_H-40};
