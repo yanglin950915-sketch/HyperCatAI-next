@@ -88,9 +88,11 @@ fun Live2DView(
         }
     }
     DisposableEffect(webView) {
+        controller.attach(webView)
         Live2DControllerHub.register(controller)
         onDispose {
             Live2DControllerHub.unregister(controller)
+            controller.detach()
             webView.stopLoading()
             webView.removeJavascriptInterface("NativeBridge")
             webView.loadUrl("about:blank")
