@@ -52,7 +52,8 @@ jobs:
           assert "bindUserService" in projection and "scanCarriers" in projection and "deployCarrier" in projection, "Shizuku card deployment path missing"
           assert "RearCardPackageBuilder.build(context)" in projection, "MAML package builder must be invoked"
           package_builder = Path("app/src/main/java/com/hypercat/ai/rear/RearCardPackageBuilder.kt").read_text(encoding="utf-8")
-          assert "manifest.xml" in package_builder and "web" in package_builder, "MAML package must be generated from bundled APK assets"
+          assert 'addAsset(context, zip, "manifest.xml", "manifest.xml")' in package_builder, "MAML manifest must be loaded from APK assets root"
+          assert 'addTree(context, zip, "web", "web")' in package_builder, "MAML web tree must be loaded from APK assets root"
           shell_service = Path("app/src/main/java/com/hypercat/ai/rear/RearShellUserService.kt").read_text(encoding="utf-8")
           assert "scanCarriers" in shell_service and "deployCarrier" in shell_service and "restoreCarrier" in shell_service, "Shizuku carrier scan/deploy/restore operations missing"
           assert "copyAtomically(target, backup)" in shell_service and "isMamlPackage(source, requireWeb = true)" in shell_service, "carrier must be backed up and package-validated before write"
