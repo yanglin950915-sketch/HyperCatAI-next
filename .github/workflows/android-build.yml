@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/unified-rear-pet-toggle-v0.9.23, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29]
   push:
-    branches: [main, feat/multi-pet-engine, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29]
+    branches: [fix/v0.9.39-avatar-splash-copy, feat/rear-voice-v0.9.36, main, feat/multi-pet-engine, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29]
   workflow_dispatch:
 
 permissions:
@@ -60,8 +60,8 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HyperCatAI-v0.9.31-debug
-          path: HyperCatAI-v0.9.31-debug.apk
+          name: HyperCatAI-v0.9.39-debug
+          path: HyperCatAI-v0.9.39-debug.apk
           if-no-files-found: error
           retention-days: 30
       - name: Upload REAREye HTML source artifact

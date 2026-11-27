@@ -1,7 +1,7 @@
 name: Android CI
 on:
   push:
-    branches: [ main, feature/unified-rear-pet-toggle-v0.9.23, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29 ]
+    branches: [fix/v0.9.39-avatar-splash-copy, feat/rear-voice-v0.9.36,  main, feature/unified-rear-pet-toggle-v0.9.23, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29 ]
   pull_request:
     branches: [ main, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29 ]
 permissions:
@@ -27,9 +27,11 @@ jobs:
           webview = root.find("WebView")
           assert webview is not None, "REAREye WebView element missing"
           assert webview.attrib.get("local") == "true", "WebView must load local assets"
-          assert webview.attrib.get("cachePage") == "true", "WebView cache contract missing"
+          assert webview.attrib.get("cachePage") == "false", "rear WebView must not retain stale avatar page cache"
+          assert "__setAgentJson" in Path("rearscreen/web/index.html").read_text(encoding="utf-8"), "MAML JSON state bridge missing"
+          assert "background_color" in Path("app/src/main/java/com/hypercat/ai/rear/RearPetProvider.kt").read_text(encoding="utf-8"), "rear background state missing"
           assert webview.attrib.get("uri") == "web/index.html", "WebView entry point mismatch"
-          assert root.attrib.get("screenWidth") == "904", "target rear width mismatch"
+          assert root.attrib.get("screenWidth") == "976", "target rear width mismatch"
           assert root.find("VariableBinders") is not None, "Agent data binder missing"
           assert "com.hypercat.ai.rear.provider/pet-state" in manifest.read_text(encoding="utf-8"), "Agent provider URI missing"
           assert "PET_INTERACTION" in manifest.read_text(encoding="utf-8"), "rear touch receiver actions missing"
@@ -41,26 +43,38 @@ jobs:
           dispatcher = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionDispatcher.kt").read_text(encoding="utf-8")
           assert "enqueueUniqueWork" in dispatcher and "RearAgentInteractionWorker" in dispatcher, "rear event must be queued durably"
           assert "rear_pet_enabled" in Path("app/src/main/java/com/hypercat/ai/rear/PetStateStore.kt").read_text(encoding="utf-8"), "rear projection preference missing"
-          assert "projectionEnabled" in html and 'getStringByName("enabled")' in html, "rear projection toggle bridge missing"
+          assert "canvas.style.visibility=projectionEnabled" not in html, "rear canvas must not be hidden by optional provider state"
+          assert "data:image/svg+xml;charset=utf-8" in html and "avatarSvg(id)" in html, "rear character art must be embedded inline"
           assert 'assets.srcDir("../rearscreen")' in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "rear widget assets must be bundled in APK"
           assert "RearAgentInteractionDispatcher.enqueue(context, action)" in receiver, "rear receiver must use shared dispatcher"
+          pet_store = Path("app/src/main/java/com/hypercat/ai/rear/PetStateStore.kt").read_text(encoding="utf-8")
+          rear_worker = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionWorker.kt").read_text(encoding="utf-8")
+          assert "user_text" in Path("app/src/main/java/com/hypercat/ai/rear/RearPetProvider.kt").read_text(encoding="utf-8"), "rear interaction text must be exposed to the app state bridge"
+          assert "userText = if (action == \"pet_voice\") userText else eventPrompt" in rear_worker, "rear Agent turn must retain original user text"
+          assert "applyAgentState" in html and "__setAgentState=applyAgentState" in html, "rear avatar must apply synchronized Agent state"
           assert '<meta name="viewport"' in html, "viewport meta missing"
           assert "SAFE_ZONE:" in html and "AVAIL:" in html and "TOUCH:" in html, "layout audit comments missing"
-          assert "BASE_W=904,BASE_H=572" in html, "target design space mismatch"
+          assert "BASE_W=976,BASE_H=596" in html, "target design space mismatch"
           projection = Path("app/src/main/java/com/hypercat/ai/rear/RearProjectionController.kt").read_text(encoding="utf-8")
           rear_activity = Path("app/src/main/java/com/hypercat/ai/rear/RearPetActivity.kt").read_text(encoding="utf-8")
           assert "bindUserService" in projection and "scanCarriers" in projection and "deployCarrier" in projection, "Shizuku card deployment path missing"
           assert "RearCardPackageBuilder.build(context)" in projection, "MAML package builder must be invoked"
           package_builder = Path("app/src/main/java/com/hypercat/ai/rear/RearCardPackageBuilder.kt").read_text(encoding="utf-8")
-          assert "manifest.xml" in package_builder and "web" in package_builder, "MAML package must be generated from bundled APK assets"
+          assert 'addAsset(context, zip, "manifest.xml", "manifest.xml")' in package_builder, "MAML manifest must be loaded from APK assets root"
+          assert 'addTree(context, zip, "web", "web")' in package_builder, "MAML web tree must be loaded from APK assets root"
           shell_service = Path("app/src/main/java/com/hypercat/ai/rear/RearShellUserService.kt").read_text(encoding="utf-8")
           assert "scanCarriers" in shell_service and "deployCarrier" in shell_service and "restoreCarrier" in shell_service, "Shizuku carrier scan/deploy/restore operations missing"
           assert "copyAtomically(target, backup)" in shell_service and "isMamlPackage(source, requireWeb = true)" in shell_service, "carrier must be backed up and package-validated before write"
           assert "am start --display" not in projection, "legacy direct Activity launch must not be the primary projection path"
           assert "RearAgentInteractionDispatcher.enqueue" in rear_activity, "rear activity must share Agent interaction pipeline"
+          assert 'file:///android_asset/web/index.html' in rear_activity and 'addJavascriptInterface' in rear_activity, "direct rear display must use the shared anime renderer and Agent bridge"
           assert "aidl = true" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "Shizuku UserService AIDL support missing"
           assert "class RearShellUserService" in Path("app/src/main/java/com/hypercat/ai/rear/RearShellUserService.kt").read_text(encoding="utf-8"), "Shizuku shell service missing"
-          assert "versionName = \"0.9.31\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "versionName = \"0.9.39\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "Theme.HyperCat.Starting" in Path("app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"), "launch splash theme missing"
+          assert "core-splashscreen:1.2.0" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "SplashScreen compat dependency missing"
+          assert "installSplashScreen()" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "SplashScreen must be installed before Compose content"
+          assert "padding(start = 12.dp" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "chat placeholder left spacing missing"
           assert "bridge.getStringByName" in html and "window.maml.doAction" in html, "MAML bridge integration missing"
           for name in ("__fit", "__setAod", "__debugSize", "__setMoodIndex"):
               assert f"window.{name}" in html, f"{name} lifecycle API missing"
