@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Widget version="2" screenWidth="904" frameRate="30" scaleByDensity="false" transparentSurface="false" useVariableUpdater="DateTime.Second">
+<Widget version="2" screenWidth="976" frameRate="30" scaleByDensity="false" transparentSurface="true" useVariableUpdater="DateTime.Second">
     <Var name="petUri" type="string" expression="'content://com.hypercat.ai.rear.provider/pet-state'" const="true"/>
     <Var name="resultJson" type="string" expression="'{}'"/>
     <Var name="petName" type="string" expression="'小橘'"/>

@@ -2392,47 +2392,154 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 @Composable
 private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier) {
     val palette = when (character) {
-        "aoi" -> listOf(Color(0xFFB9E8FF), Color(0xFF526BC7), Color(0xFF35A8D8), Color(0xFF173A72))
-        "luna" -> listOf(Color(0xFFE8E7FF), Color(0xFF777BAF), Color(0xFF9C91E8), Color(0xFF45466F))
-        "yuna" -> listOf(Color(0xFFFFD7E8), Color(0xFFB85C91), Color(0xFFE88AB6), Color(0xFF783C72))
-        else -> listOf(Color(0xFFFFDCE9), Color(0xFFB95F83), Color(0xFFE98AA8), Color(0xFF713A58))
+        "aoi" -> listOf(Color(0xFFBDEBFF), Color(0xFF4C80D8), Color(0xFF2CADD9), Color(0xFF193A78))
+        "luna" -> listOf(Color(0xFFEDEBFF), Color(0xFF8582C8), Color(0xFFB6A7F4), Color(0xFF49446F))
+        "yuna" -> listOf(Color(0xFFFFD9EC), Color(0xFFB94F86), Color(0xFFEE91B7), Color(0xFF71365C))
+        else -> listOf(Color(0xFFFFE0EC), Color(0xFFBE638B), Color(0xFFEE9AB4), Color(0xFF783C61))
+    }
+    val hairLight = palette[0]
+    val hair = palette[1]
+    val hairBright = palette[2]
+    val hairDark = palette[3]
+    val iris = when (character) {
+        "aoi" -> Color(0xFF258BCB)
+        "luna" -> Color(0xFF7666C8)
+        "yuna" -> Color(0xFF9B4F9C)
+        else -> Color(0xFFB84F79)
     }
     Canvas(modifier) {
         val w = size.width
         val h = size.height
-        drawRect(brush = Brush.verticalGradient(listOf(palette[0], Color(0xFFFFF1F5))))
-        drawCircle(Color.White.copy(alpha = .28f), w * .12f, Offset(w * .16f, h * .18f))
-        drawCircle(Color.White.copy(alpha = .22f), w * .08f, Offset(w * .83f, h * .32f))
-        // shoulders and outfit
-        drawOval(Brush.verticalGradient(listOf(Color(0xFFFFF8FB), palette[2])), Offset(w*.12f,h*.69f), Size(w*.76f,h*.48f))
-        drawRoundRect(palette[1], Offset(w*.42f,h*.58f), Size(w*.16f,h*.18f), androidx.compose.ui.geometry.CornerRadius(w*.04f))
-        // long hair behind the face
-        drawOval(Brush.verticalGradient(listOf(palette[1], palette[3])), Offset(w*.19f,h*.13f), Size(w*.62f,h*.67f))
-        drawOval(Brush.verticalGradient(listOf(Color(0xFFFFE5EF),Color(0xFFFFC9DD))), Offset(w*.27f,h*.23f), Size(w*.46f,h*.48f))
-        // side locks
-        drawOval(Brush.verticalGradient(listOf(palette[2],palette[1])), Offset(w*.17f,h*.30f), Size(w*.19f,h*.47f))
-        drawOval(Brush.verticalGradient(listOf(palette[2],palette[1])), Offset(w*.64f,h*.30f), Size(w*.19f,h*.47f))
-        // face
-        drawOval(Brush.verticalGradient(listOf(Color(0xFFFFF0E9),Color(0xFFFFD8D0))), Offset(w*.30f,h*.25f), Size(w*.40f,h*.42f))
-        // fringe
+        fun p(x: Float, y: Float) = Offset(w * x, h * y)
+        fun oval(color: Color, x: Float, y: Float, rw: Float, rh: Float) {
+            drawOval(color, Offset(w * x, h * y), Size(w * rw, h * rh))
+        }
+        fun oval(brush: Brush, x: Float, y: Float, rw: Float, rh: Float) {
+            drawOval(brush, Offset(w * x, h * y), Size(w * rw, h * rh))
+        }
+        fun strokePath(color: Color, width: Float, block: Path.() -> Unit) {
+            val path = Path().apply(block)
+            drawPath(path, color, style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * width, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        }
+
+        drawRect(Brush.verticalGradient(listOf(hairLight.copy(alpha = .95f), Color(0xFFFFF7FB), Color(0xFFECEBFF))))
+        drawCircle(Color.White.copy(alpha = .42f), w * .15f, p(.12f, .17f))
+        drawCircle(Color.White.copy(alpha = .34f), w * .08f, p(.88f, .31f))
+        drawCircle(hairBright.copy(alpha = .16f), w * .22f, p(.82f, .82f))
+
+        if (character == "yuna") {
+            oval(Brush.verticalGradient(listOf(hairBright, hairDark)), .04f, .25f, .24f, .58f)
+            oval(Brush.verticalGradient(listOf(hairBright, hairDark)), .72f, .23f, .24f, .60f)
+            oval(hairDark, .04f, .22f, .20f, .17f)
+            oval(hairDark, .76f, .20f, .20f, .17f)
+        } else if (character == "aoi") {
+            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .70f, .18f, .23f, .45f)
+        } else if (character == "luna") {
+            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .12f, .23f, .20f, .65f)
+            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .68f, .23f, .20f, .65f)
+        }
+        oval(Brush.verticalGradient(listOf(hair, hairDark)), .16f, .12f, .68f, .70f)
+
+        val body = Path().apply {
+            moveTo(w * .17f, h * 1.02f)
+            cubicTo(w * .19f, h * .80f, w * .28f, h * .70f, w * .43f, h * .68f)
+            lineTo(w * .57f, h * .68f)
+            cubicTo(w * .75f, h * .70f, w * .83f, h * .82f, w * .85f, h * 1.02f)
+            close()
+        }
+        drawPath(body, Brush.verticalGradient(listOf(Color(0xFFFFFBFF), hairBright, hair)))
+        oval(Brush.verticalGradient(listOf(Color(0xFFFFF7FB), hairBright)), .12f, .78f, .25f, .25f)
+        oval(Brush.verticalGradient(listOf(Color(0xFFFFF7FB), hairBright)), .63f, .78f, .25f, .25f)
+
+        drawRoundRect(Brush.verticalGradient(listOf(Color(0xFFFFE2D7), Color(0xFFFFC8C1))), Offset(w * .43f, h * .57f), Size(w * .14f, h * .19f), androidx.compose.ui.geometry.CornerRadius(w * .05f))
+        oval(Brush.verticalGradient(listOf(Color(0xFFFFF4EC), Color(0xFFFFD9D1))), .25f, .22f, .50f, .48f)
+        oval(Color(0xFFFFE5DD), .225f, .43f, .07f, .13f)
+        oval(Color(0xFFFFE5DD), .705f, .43f, .07f, .13f)
+
+        oval(Brush.verticalGradient(listOf(hairBright, hair)), .17f, .31f, .18f, .48f)
+        oval(Brush.verticalGradient(listOf(hairBright, hair)), .65f, .31f, .18f, .48f)
         val fringe = Path().apply {
-            moveTo(w*.27f,h*.39f); cubicTo(w*.25f,h*.12f,w*.70f,h*.12f,w*.73f,h*.40f)
-            cubicTo(w*.62f,h*.32f,w*.58f,h*.31f,w*.51f,h*.42f)
-            cubicTo(w*.45f,h*.32f,w*.38f,h*.34f,w*.27f,h*.43f); close()
+            moveTo(w * .24f, h * .39f)
+            cubicTo(w * .19f, h * .12f, w * .34f, h * .09f, w * .50f, h * .12f)
+            cubicTo(w * .69f, h * .08f, w * .80f, h * .20f, w * .76f, h * .41f)
+            cubicTo(w * .68f, h * .34f, w * .63f, h * .31f, w * .57f, h * .43f)
+            cubicTo(w * .52f, h * .34f, w * .48f, h * .34f, w * .43f, h * .45f)
+            cubicTo(w * .38f, h * .34f, w * .31f, h * .35f, w * .24f, h * .44f)
+            close()
         }
-        drawPath(fringe, Brush.verticalGradient(listOf(palette[2],palette[1])))
-        // eyes and highlights
-        listOf(w*.405f,w*.595f).forEach { x ->
-            drawOval(Color.White, Offset(x-w*.045f,h*.43f), Size(w*.09f,h*.105f))
-            drawOval(palette[3], Offset(x-w*.027f,h*.445f), Size(w*.054f,h*.083f))
-            drawCircle(Color.White,w*.014f,Offset(x-w*.009f,h*.462f))
+        drawPath(fringe, Brush.verticalGradient(listOf(hairLight, hairBright, hairDark)))
+        strokePath(hairLight.copy(alpha = .72f), .009f) {
+            moveTo(w * .31f, h * .18f); cubicTo(w * .34f, h * .29f, w * .34f, h * .34f, w * .37f, h * .39f)
+            moveTo(w * .48f, h * .14f); cubicTo(w * .49f, h * .27f, w * .47f, h * .33f, w * .45f, h * .40f)
+            moveTo(w * .65f, h * .17f); cubicTo(w * .63f, h * .28f, w * .62f, h * .33f, w * .59f, h * .39f)
         }
-        drawCircle(Color(0xFFFFA4B9).copy(alpha=.55f),w*.035f,Offset(w*.345f,h*.555f))
-        drawCircle(Color(0xFFFFA4B9).copy(alpha=.55f),w*.655f,Offset(w*.555f,h*.555f))
-        drawOval(Color(0xFFB85E75), Offset(w*.475f,h*.585f), Size(w*.05f,h*.018f))
-        // decorative bow / hair accessory
-        drawCircle(Color(0xFFFFF7FB),w*.055f,Offset(w*.76f,h*.24f))
-        drawCircle(palette[2],w*.035f,Offset(w*.76f,h*.24f))
+
+        listOf(.395f, .605f).forEach { x ->
+            oval(Color(0xFF6B3D55), x - .064f, .405f, .128f, .105f)
+            oval(Color.White, x - .057f, .412f, .114f, .094f)
+            oval(Brush.verticalGradient(listOf(Color(0xFFB6F1FF), iris, hairDark)), x - .043f, .414f, .086f, .090f)
+            oval(Color(0xFF18233D), x - .025f, .427f, .050f, .071f)
+            oval(Color.White, x - .025f, .425f, .030f, .030f)
+            oval(Color.White.copy(alpha = .78f), x + .014f, .461f, .014f, .014f)
+            strokePath(hairDark, .010f) {
+                moveTo(w * (x - .060f), h * .425f)
+                cubicTo(w * (x - .025f), h * .385f, w * (x + .025f), h * .385f, w * (x + .060f), h * .425f)
+            }
+        }
+        strokePath(hairDark.copy(alpha = .8f), .008f) {
+            moveTo(w * .34f, h * .375f); quadraticTo(w * .395f, h * .35f, w * .445f, h * .375f)
+            moveTo(w * .555f, h * .375f); quadraticTo(w * .605f, h * .35f, w * .66f, h * .375f)
+        }
+        oval(Color(0xFFFFA9B7).copy(alpha = .35f), .295f, .545f, .11f, .035f)
+        oval(Color(0xFFFFA9B7).copy(alpha = .35f), .595f, .545f, .11f, .035f)
+        oval(Color(0xFFEBA99D), .493f, .535f, .014f, .012f)
+        strokePath(Color(0xFFB85B78), .008f) {
+            moveTo(w * .465f, h * .585f)
+            quadraticTo(w * .50f, h * .615f, w * .535f, h * .585f)
+        }
+
+        val collar = Path().apply {
+            moveTo(w * .39f, h * .69f); lineTo(w * .50f, h * .79f); lineTo(w * .61f, h * .69f)
+            lineTo(w * .56f, h * .67f); lineTo(w * .50f, h * .72f); lineTo(w * .44f, h * .67f); close()
+        }
+        drawPath(collar, Brush.verticalGradient(listOf(Color.White, hairLight)))
+        oval(hairBright, .465f, .75f, .07f, .07f)
+        val bowLeft = Path().apply { moveTo(w*.49f,h*.77f); cubicTo(w*.39f,h*.72f,w*.37f,h*.84f,w*.48f,h*.83f); close() }
+        val bowRight = Path().apply { moveTo(w*.51f,h*.77f); cubicTo(w*.61f,h*.72f,w*.63f,h*.84f,w*.52f,h*.83f); close() }
+        drawPath(bowLeft, Brush.verticalGradient(listOf(hairLight, hair)))
+        drawPath(bowRight, Brush.verticalGradient(listOf(hairBright, hairDark)))
+        oval(Color(0xFFFFF2F7), .485f, .765f, .03f, .04f)
+        strokePath(Color.White.copy(alpha = .72f), .006f) {
+            moveTo(w*.25f,h*.88f); quadraticTo(w*.50f,h*.93f,w*.75f,h*.88f)
+        }
+
+        when (character) {
+            "aoi" -> {
+                oval(Color(0xFFFFF7FB), .73f, .22f, .12f, .10f)
+                oval(Color(0xFF4CC8F0), .755f, .24f, .07f, .06f)
+                strokePath(Color.White, .008f) { moveTo(w*.77f,h*.22f); lineTo(w*.80f,h*.15f) }
+            }
+            "luna" -> {
+                oval(Color(0xFFFFE89B), .68f, .18f, .11f, .10f)
+                oval(Color(0xFFFFF9D8), .705f, .195f, .06f, .055f)
+            }
+            "yuna" -> {
+                oval(Color(0xFFFFF5FA), .10f, .25f, .12f, .11f)
+                oval(Color(0xFFFFC4D9), .13f, .27f, .06f, .06f)
+                oval(Color(0xFFFFF5FA), .78f, .24f, .12f, .11f)
+                oval(Color(0xFFFFC4D9), .81f, .26f, .06f, .06f)
+            }
+            else -> {
+                oval(Color(0xFFFFF7FB), .72f, .22f, .12f, .11f)
+                oval(Color(0xFFFFD36D), .75f, .245f, .06f, .055f)
+            }
+        }
+        strokePath(Color.White.copy(alpha = .62f), .007f) {
+            moveTo(w*.27f,h*.29f); quadraticTo(w*.31f,h*.18f,w*.43f,h*.16f)
+            moveTo(w*.67f,h*.30f); quadraticTo(w*.70f,h*.22f,w*.72f,h*.33f)
+        }
+        drawCircle(Color.White.copy(alpha = .9f), w * .012f, p(.19f, .16f))
+        drawCircle(Color.White.copy(alpha = .8f), w * .009f, p(.83f, .47f))
     }
 }
 
