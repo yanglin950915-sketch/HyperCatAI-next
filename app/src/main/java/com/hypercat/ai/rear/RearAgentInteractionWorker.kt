@@ -82,7 +82,7 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
                 else -> "normal"
             }
             val current = PetStateStore.read(applicationContext)
-            PetStateStore.update(applicationContext, current.petName, current.petEmoji, mood, reply)
+            PetStateStore.update(applicationContext, current.petName, current.petEmoji, mood, reply, userText = if (action == "pet_voice") userText else eventPrompt)
             Result.success()
         } catch (error: Exception) {
             if (runAttemptCount < 2) return@withContext Result.retry()
