@@ -825,7 +825,11 @@ private fun HyperCatApp() {
                 rearPetState.reply != petReply &&
                 rearPetState.reply !in transientRearFeedback
             ) {
-                messages.add(ChatLine("（背屏互动）用户通过背屏和虚拟形象进行了互动。", true))
+                val interactionText = rearPetState.userText.trim()
+                messages.add(ChatLine(
+                    interactionText.ifBlank { "（背屏互动）用户通过背屏和虚拟形象进行了互动。" },
+                    true
+                ))
                 messages.add(ChatLine(rearPetState.reply, false))
             }
             petReply = rearPetState.reply
