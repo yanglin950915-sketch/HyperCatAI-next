@@ -82,7 +82,7 @@ jobs:
           assert "onGesture" in (live2d / "render.html").read_text(encoding="utf-8"), "Live2D touch gesture bridge missing"
           assert "Visualizer" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "TTS waveform mouth driver missing"
           assert "Live2D Cubism Core" in Path("THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8"), "Live2D proprietary license notice missing"
-          assert "versionName = \"0.9.42\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "versionName = \"0.9.43\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           assert "Theme.HyperCat.Starting" in Path("app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"), "launch splash theme missing"
           styles = Path("app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           assert 'windowSplashScreenBackground">#F7F7F8' in styles and 'android:windowBackground">#F7F7F8' in styles, "light splash and Activity backgrounds must match"
