@@ -75,10 +75,23 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             if (width <= 0 || height <= 0) return
 
             val cutout = rearDisplay.cutout
-            val left = cutout?.safeInsetLeft ?: 0
-            val top = cutout?.safeInsetTop ?: 0
-            val right = cutout?.safeInsetRight ?: 0
-            val bottom = cutout?.safeInsetBottom ?: 0
+            val rects = cutout?.boundingRects.orEmpty()
+            val left = maxOf(
+                cutout?.safeInsetLeft ?: 0,
+                rects.filter { it.left <= width * 0.15f }.maxOfOrNull { it.right } ?: 0
+            )
+            val top = maxOf(
+                cutout?.safeInsetTop ?: 0,
+                rects.filter { it.top <= height * 0.15f }.maxOfOrNull { it.bottom } ?: 0
+            )
+            val right = maxOf(
+                cutout?.safeInsetRight ?: 0,
+                rects.filter { it.right >= width * 0.85f }.maxOfOrNull { width - it.left } ?: 0
+            )
+            val bottom = maxOf(
+                cutout?.safeInsetBottom ?: 0,
+                rects.filter { it.bottom >= height * 0.85f }.maxOfOrNull { height - it.top } ?: 0
+            )
 
             // Xiaomi 17 Pro Max community projects document a left-side camera island
             // occupying roughly 30% of the rear panel; layouts start at 32%.
