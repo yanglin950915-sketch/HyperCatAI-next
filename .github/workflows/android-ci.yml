@@ -105,12 +105,11 @@ jobs:
           scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
           assert len(scripts) == 1, "expected one self-contained inline script"
           Path("/tmp/hypercat-rear-inline.js").write_text(scripts[0], encoding="utf-8")
-          PY
-          node --check /tmp/hypercat-rear-inline.js
           live2d_html = Path("rearscreen/web/live2d/render.html").read_text(encoding="utf-8")
           live2d_scripts = re.findall(r"<script>(.*?)</script>", live2d_html, re.S)
           assert len(live2d_scripts) == 1, "expected one self-contained Live2D renderer script"
-          assert r"\\n    smooth.mouth" not in live2d_scripts[0], "Live2D renderer contains an escaped newline syntax error"
+          assert "\\\\n    smooth.mouth" not in live2d_scripts[0], "Live2D renderer contains an escaped newline syntax error"
           Path("/tmp/hypercat-live2d-render.js").write_text(live2d_scripts[0], encoding="utf-8")
           PY
+          node --check /tmp/hypercat-rear-inline.js
           node --check /tmp/hypercat-live2d-render.js
