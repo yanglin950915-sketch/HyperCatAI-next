@@ -2163,7 +2163,7 @@ private fun ChatPage(
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().clickable { drawerSection = "avatar_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(104.dp).clickable { drawerSection = "avatar_settings" }, contentAlignment = Alignment.Center) {
-                                    AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel) { action, _ -> onAvatarInteraction(action) }
+                                    AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel, halfBody = true) { action, _ -> onAvatarInteraction(action) }
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
@@ -2420,11 +2420,12 @@ private fun AvatarRenderer(
     mood: String = "normal",
     speaking: Boolean = false,
     model: Live2DModel? = Live2DModelStore.state.value,
+    halfBody: Boolean = false,
     onGesture: (String, String) -> Unit = { _, _ -> }
 ) {
     if (model != null) {
         Live2DView(
-            model = model, modifier = modifier, mood = mood, speaking = speaking, halfBody = true,
+            model = model, modifier = modifier, mood = mood, speaking = speaking, halfBody = halfBody,
             onGesture = onGesture,
             onPortrait = { dataUrl ->
                 runCatching {
