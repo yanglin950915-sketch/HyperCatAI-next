@@ -45,7 +45,7 @@ object Live2DModelStore {
             ZipInputStream(input.buffered()).use { zip ->
                 while (true) {
                     val item = zip.nextEntry ?: break
-                    val raw = item.name.replace('\\\\', '/')
+                    val raw = item.name.replace(92.toChar(), '/')
                     require(!raw.startsWith("/") && !raw.split('/').any { it == ".." }) { "模型压缩包包含不安全路径" }
                     if (raw.isBlank() || item.isDirectory) {
                         zip.closeEntry()
