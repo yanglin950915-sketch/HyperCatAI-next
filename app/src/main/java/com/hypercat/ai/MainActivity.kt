@@ -2214,8 +2214,9 @@ private fun ChatPage(
                         Surface(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 9.dp), color = Panel2, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Column(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 9.dp)) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(76.dp).clickable(interactionSource = null, indication = null) { drawerSection = "avatar_settings" }, contentAlignment = Alignment.Center) {
+                                    Box(Modifier.size(76.dp), contentAlignment = Alignment.Center) {
                                         AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel, halfBody = false) { _, _ -> }
+                                        Box(Modifier.matchParentSize().clickable(interactionSource = null, indication = null) { drawerSection = "avatar_settings" })
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f).clickable { drawerSection = "avatar_settings" }) {
