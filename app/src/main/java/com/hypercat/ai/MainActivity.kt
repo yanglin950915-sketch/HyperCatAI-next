@@ -2163,7 +2163,7 @@ private fun ChatPage(
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().clickable { drawerSection = "avatar_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(104.dp).clickable { drawerSection = "avatar_settings" }, contentAlignment = Alignment.Center) {
-                                    AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel, halfBody = true) { action, _ -> onAvatarInteraction(action) }
+                                    AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel, halfBody = false) { action, _ -> onAvatarInteraction(action) }
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
@@ -2761,6 +2761,8 @@ private fun AvatarSettingsPage(
     var nameDraft by remember(avatarName) { mutableStateOf(avatarName) }
     var dragTotal by remember { mutableFloatStateOf(0f) }
     val selected = characters[selectedIndex]
+    var rearSelectedIndex by remember { mutableIntStateOf(characters.indexOfFirst { it.first == Live2DModelStore.currentRear(context).id }.coerceAtLeast(0)) }
+    val rearSelected = characters[rearSelectedIndex]
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
         Text("虚拟形象", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
@@ -2876,6 +2878,19 @@ private fun AvatarSettingsPage(
                 }
                 Text("仅支持具备背屏的 Xiaomi Pro 系列设备。需要先启动 Shizuku 并授权。首次部署后，还需在系统背屏卡片管理中重新应用卡片。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
                 Text(rearProjectionStatus, color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
+                Text("背屏独立形象资源", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
+                Text("背屏角色与主屏角色分别保存；更换后重新投放背屏卡片即可生效。", color = Muted, fontSize = 10.sp)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = { rearSelectedIndex = (rearSelectedIndex - 1 + characters.size).mod(characters.size) }) { Text("‹ 上一个") }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(rearSelected.second, color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text("背屏角色 ${rearSelectedIndex + 1} / ${characters.size}", color = Muted, fontSize = 10.sp)
+                    }
+                    TextButton(onClick = { rearSelectedIndex = (rearSelectedIndex + 1).mod(characters.size) }) { Text("下一个 ›") }
+                }
+                Button(onClick = { Live2DModelStore.selectRear(context, rearSelected.first) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("保存背屏独立形象")
+                }
                 OutlinedButton(onClick = onRearAvatarRestore, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("恢复原始背屏卡片") }
             }
         }
