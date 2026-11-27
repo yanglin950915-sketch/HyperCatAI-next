@@ -25,6 +25,6 @@ class RearPetInteractionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_PET_INTERACTION = "com.hypercat.ai.rear.PET_INTERACTION"
         const val EXTRA_ACTION = "action"
-        private val SUPPORTED_ACTIONS = setOf("pet_touch", "pet_happy", "pet_long_press", "pet_thinking", "pet_rest")
+        private val SUPPORTED_ACTIONS = setOf("pet_touch", "pet_happy", "pet_long_press", "pet_drag", "pet_thinking", "pet_rest")
     }
 }
