@@ -32,7 +32,7 @@ object RearAgentInteractionDispatcher {
             "pet_voice" -> "我听到啦，正在回答你……"
             else -> "嘿嘿，你摸到我啦！"
         }
-        PetStateStore.update(context, current.petName, current.petEmoji, immediateMood, immediateReply)
+        PetStateStore.update(context, current.petName, current.petEmoji, immediateMood, immediateReply, userText = userText)
         val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         val request = OneTimeWorkRequestBuilder<RearAgentInteractionWorker>()
             .setConstraints(constraints)
