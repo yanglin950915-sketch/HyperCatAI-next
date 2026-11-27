@@ -42,7 +42,7 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
             val history = runCatching { JSONArray(prefs.getString(sessionKey, "[]") ?: "[]") }.getOrElse { JSONArray() }
             val messages = JSONArray()
             messages.put(JSONObject().put("role", "system").put("content",
-                "你是 HyperCat AI 的二次元虚拟形象伙伴。用户通过手机主屏或背屏与你交流，请结合近期对话自然回应。保持角色性格，回复简短亲切，不输出推理过程。"))
+                "你是 HyperCat AI 的二次元虚拟形象伙伴。用户通过手机主屏或背屏与你交流，请结合近期对话自然回应。保持角色性格，回复简短亲切，不输出推理过程。对于触摸、长按、拖动、思考和休息等形象互动，只输出可以直接说出口的话，禁止用括号添加动作、神态、心理或舞台描写。普通语音对话按正常聊天方式回答。"))
             val start = (history.length() - 10).coerceAtLeast(0)
             for (i in start until history.length()) {
                 val item = history.optJSONObject(i) ?: continue
@@ -79,21 +79,22 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
                     else -> ""
                 }.ifBlank { "我收到你的互动啦！再和我说说话吧。" }
             } finally { connection.disconnect() }
+            val finalReply = if (action == "avatar_voice") reply else stripInteractionStageDirections(reply)
             history.put(JSONObject().put("text", if (action == "avatar_voice") userText else eventPrompt).put("fromUser", true).put("attachments", JSONArray()))
-            history.put(JSONObject().put("text", reply).put("fromUser", false).put("attachments", JSONArray()))
+            history.put(JSONObject().put("text", finalReply).put("fromUser", false).put("attachments", JSONArray()))
             prefs.edit()
                 .putString(sessionKey, history.toString())
                 .putString("recent_chat_titles", (listOf(title) + prefs.getString("recent_chat_titles", "").orEmpty().split("||").filter { it.isNotBlank() && it != title }).take(12).joinToString("||"))
                 .apply()
             val mood = when {
-                listOf("开心", "高兴", "喜欢", "舒服", "嘿嘿", "好耶").any { reply.contains(it) } -> "happy"
+                listOf("开心", "高兴", "喜欢", "舒服", "嘿嘿", "好耶").any { finalReply.contains(it) } -> "happy"
                 listOf("休息", "晚安", "睡觉").any { reply.contains(it) } -> "sleepy"
                 listOf("惊讶", "哇", "竟然").any { reply.contains(it) } -> "surprised"
                 else -> "normal"
             }
             if (!isLatestInteraction()) return@withContext Result.success()
             val current = AvatarStateStore.read(applicationContext)
-            AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, mood, reply, userText = if (action == "avatar_voice") userText else eventPrompt)
+            AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, mood, finalReply, userText = if (action == "avatar_voice") userText else eventPrompt)
             Result.success()
         } catch (error: Exception) {
             if (runAttemptCount < 2) return@withContext Result.retry()
@@ -102,6 +103,15 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
             AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, "sad", "刚才没能连接到 Agent，请稍后再试。", userText = eventPrompt)
             Result.success()
         }
+    }
+
+    /** Remove parenthetical stage directions only for avatar touch interactions. */
+    private fun stripInteractionStageDirections(source: String): String {
+        var result = source
+        val stageDirection = Regex("（[^）]*）|\\([^)]*\\)")
+        repeat(4) { result = stageDirection.replace(result, " ") }
+        return result.replace(Regex("[ \\t]{2,}"), " ").replace(Regex(" +([，。！？；：])"), "$1").trim()
+            .ifBlank { "我收到你的互动啦！再和我说说话吧。" }
     }
 
     private fun eventPrompt(action: String, text: String): String? = when (action) {
