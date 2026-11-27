@@ -666,6 +666,7 @@ private fun HyperCatApp() {
     var saved by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
     var petName by remember { mutableStateOf(initialRearState.petName) }
+    var petEmoji by remember { mutableStateOf(initialRearState.petEmoji.ifBlank { "🐱" }) }
     var petMood by remember { mutableStateOf(initialRearState.mood) }
     var petReply by remember { mutableStateOf(initialRearState.reply) }
     var rearPetEnabled by remember { mutableStateOf(initialRearState.enabled) }
@@ -793,7 +794,7 @@ private fun HyperCatApp() {
         if (ttsProfiles.isEmpty()) modelProfiles.firstOrNull { it.name == ttsProfileName }?.let { old -> val p=TtsProfile(old.name,old.endpoint,old.apiKey); ttsProfiles.add(p); ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; prefs.edit().putString("tts_profiles",org.json.JSONArray().put(JSONObject().put("name",p.name).put("endpoint",p.endpoint).put("apiKey",p.apiKey)).toString()).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() }
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
         autoReadReplies = prefs.getBoolean("auto_read_replies", false)
-        petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
+        petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"\n        petEmoji = prefs.getString("pet_emoji", "🐱") ?: "🐱"
         themeMode = prefs.getString("theme_mode", "system") ?: "system"
     }
 
