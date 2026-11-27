@@ -30,6 +30,7 @@ import android.speech.RecognitionListener
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
@@ -136,6 +137,7 @@ import java.net.URL
 import android.webkit.URLUtil
 import com.hypercat.ai.rear.PetStateStore
 import com.hypercat.ai.rear.RearAgentInteractionDispatcher
+import com.hypercat.ai.rear.RearProjectionController
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
@@ -666,6 +668,7 @@ private fun HyperCatApp() {
     var petMood by remember { mutableStateOf(initialRearState.mood) }
     var petReply by remember { mutableStateOf(initialRearState.reply) }
     var rearPetEnabled by remember { mutableStateOf(initialRearState.enabled) }
+    var rearProjectionStatus by remember { mutableStateOf("尚未连接背屏") }
     var themeMode by remember { mutableStateOf("system") }
     var timeRefresh by remember { mutableIntStateOf(0) }
     var updateStatus by remember { mutableStateOf("尚未检查") }
@@ -692,6 +695,40 @@ private fun HyperCatApp() {
         else -> systemDark
     }
     SideEffect { appDarkState = darkNow }
+    fun setRearProjectionEnabled(enabled: Boolean) {
+        if (!enabled) {
+            rearPetEnabled = false
+            PetStateStore.setEnabled(context, false)
+            rearProjectionStatus = "正在关闭背屏萌宠…"
+            scope.launch {
+                rearProjectionStatus = withContext(Dispatchers.IO) {
+                    RearProjectionController.hide(context)
+                }
+            }
+            return
+        }
+        val host = context as? ComponentActivity
+        if (host == null) {
+            rearProjectionStatus = "无法获取应用界面上下文，请返回设置页重试"
+            return
+        }
+        RearProjectionController.requestPermission(host) { granted, message ->
+            if (!granted) {
+                rearProjectionStatus = message
+                return@requestPermission
+            }
+            scope.launch {
+                rearProjectionStatus = "正在检测背屏并启动萌宠…"
+                val result = withContext(Dispatchers.IO) {
+                    RearProjectionController.connect(context)
+                }
+                rearProjectionStatus = result
+                val connected = result.startsWith("已部署背屏卡片")
+                rearPetEnabled = connected
+                PetStateStore.setEnabled(context, connected)
+            }
+        }
+    }
     val messages = remember { mutableStateListOf<ChatLine>() }
     var isThinking by remember { mutableStateOf(false) }
     val weatherPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
@@ -827,6 +864,8 @@ private fun HyperCatApp() {
                     onShareCurrentSession = { shareChatText(context, formatChatForSharing(currentSessionTitle, messages)) },
                     onClearCurrentSession = { currentSessionTitle = "" },
                     currentSessionTitle = currentSessionTitle,
+                    onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                    onPetNameChange = { value -> val clean = value.trim().take(16).ifBlank { "小橘" }; petName = clean; chatPrefs.edit().putString("pet_name", clean).apply() },
                     modelProfiles = modelProfiles.toList(), ttsProfiles = ttsProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
                     onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
                     savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
@@ -839,7 +878,7 @@ private fun HyperCatApp() {
                             val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") })
                             messages.add(userLine)
                             if (value.isNotBlank()) {
-                                if (currentSessionTitle == value.trim().take(42)) recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(12)
+                                if (currentSessionTitle == value.trim().take(42)) recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
                                 chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
                                 val explicitMemory = Regex("^(?:请)?记住[：:，, ]*(.+)$", RegexOption.DOT_MATCHES_ALL).find(value.trim())?.groupValues?.getOrNull(1)?.trim()
                                 if (!explicitMemory.isNullOrBlank()) {
@@ -928,6 +967,28 @@ private fun HyperCatApp() {
                     onMood = { mood -> petMood = mood },
                     showSettingsOnEnter = openSettingsDrawer,
                     onSettingsDrawerShown = { openSettingsDrawer = false },
+                    petSettingsContent = { drawerModifier ->
+                        PetSettingsPage(
+                            modifier = drawerModifier,
+                            petName = petName,
+                            petMood = petMood,
+                            rearPetEnabled = rearPetEnabled,
+                            rearProjectionStatus = rearProjectionStatus,
+                            onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
+                            onRearPetRestore = {
+                                rearPetEnabled = false
+                                scope.launch {
+                                    rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.restore(context) }
+                                }
+                            },
+                            onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                            onPetNameChange = { value ->
+                                val clean = value.trim().take(16).ifBlank { "小橘" }
+                                petName = clean
+                                chatPrefs.edit().putString("pet_name", clean).apply()
+                            }
+                        )
+                    },
                     settingsContent = { drawerModifier ->
                         SettingsPage(
                             modifier = drawerModifier,
@@ -939,9 +1000,15 @@ private fun HyperCatApp() {
                              petName = petName,
                              petMood = petMood,
                              rearPetEnabled = rearPetEnabled,
-                             onRearPetEnabledChange = { enabled -> rearPetEnabled = enabled; chatPrefs.edit().putBoolean("rear_pet_enabled", enabled).apply(); PetStateStore.setEnabled(context, enabled) },
+                             onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
+                             onRearPetRestore = {
+                                 rearPetEnabled = false
+                                 scope.launch {
+                                     rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.restore(context) }
+                                 }
+                             },
                              onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
-                             onExportRearWidget = { exportRearWidgetPackage(context) },
+                             rearProjectionStatus = rearProjectionStatus,
                              onPetNameChange = { value ->
                                  val clean = value.trim().take(16).ifBlank { "小橘" }
                                  petName = clean
@@ -1000,9 +1067,15 @@ private fun HyperCatApp() {
                     petName = petName,
                     petMood = petMood,
                     rearPetEnabled = rearPetEnabled,
-                    onRearPetEnabledChange = { enabled -> rearPetEnabled = enabled; chatPrefs.edit().putBoolean("rear_pet_enabled", enabled).apply(); PetStateStore.setEnabled(context, enabled) },
+                    onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
+                    onRearPetRestore = {
+                        rearPetEnabled = false
+                        scope.launch {
+                            rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.restore(context) }
+                        }
+                    },
                     onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
-                    onExportRearWidget = { exportRearWidgetPackage(context) },
+                    rearProjectionStatus = rearProjectionStatus,
                     onPetNameChange = { value ->
                         val clean = value.trim().take(16).ifBlank { "小橘" }
                         petName = clean
@@ -1261,13 +1334,30 @@ private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
     petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
-    ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit,
+    ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
     showSettingsOnEnter: Boolean,
     onSettingsDrawerShown: () -> Unit,
-    settingsContent: @Composable (Modifier) -> Unit
+    settingsContent: @Composable (Modifier) -> Unit,
+    petSettingsContent: @Composable (Modifier) -> Unit
 ) {
     val context: Context = LocalContext.current
-    var drawerSection by remember { mutableStateOf("recent") }
+    val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var userMovedChat by remember(currentSessionTitle) { mutableStateOf(false) }
+    LaunchedEffect(chatListState) {
+        chatListState.interactionSource.interactions.collect { interaction ->
+            if (interaction is androidx.compose.foundation.interaction.DragInteraction.Start) userMovedChat = true
+        }
+    }
+    LaunchedEffect(currentSessionTitle) {
+        userMovedChat = false
+        if (messages.isNotEmpty()) chatListState.scrollToItem(messages.lastIndex)
+    }
+    LaunchedEffect(messages.size) {
+        if (!userMovedChat && messages.isNotEmpty()) chatListState.animateScrollToItem(messages.lastIndex)
+    }
+    var drawerSection by remember { mutableStateOf("pet") }
+    var showPetNameDialog by remember { mutableStateOf(false) }
+    var petNameDraft by remember(petName) { mutableStateOf(petName) }
     var selectedFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var selectedPhotos by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
     var previewPhoto by remember { mutableStateOf<Bitmap?>(null) }
@@ -1649,6 +1739,13 @@ private fun ChatPage(
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
+    BackHandler(enabled = drawerState.isOpen) {
+        if (drawerSection == "settings" || drawerSection == "pet_settings") {
+            drawerSection = "pet"
+        } else {
+            drawerScope.launch { drawerState.close() }
+        }
+    }
     LaunchedEffect(drawerState) { androidx.compose.runtime.snapshotFlow { drawerState.isOpen }.collect { onDrawerVisibility(it) } }
     LaunchedEffect(showSettingsOnEnter) {
         if (showSettingsOnEnter) {
@@ -1751,7 +1848,7 @@ private fun ChatPage(
                 TextButton(onClick = { selectedMessageIndices = emptySet() }) { Text("取消") }
             }
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
+        LazyColumn(state = chatListState, modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("开始与 Agent 对话", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
@@ -1929,84 +2026,74 @@ private fun ChatPage(
         }
     }
         AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()) {
-                    Surface(modifier = Modifier.fillMaxSize(), color = Panel, shape = RoundedCornerShape(0.dp)) {
-                        if (drawerSection == "settings") {
-                            Column(Modifier.fillMaxSize()) {
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(onClick = { drawerSection = "recent" }) { Text("‹ 最近对话", color = MainText) }
-                                    Spacer(Modifier.weight(1f))
-                                    Text("设置", color = MainText, fontWeight = FontWeight.Bold)
-                                    Spacer(Modifier.width(8.dp))
-                                    IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭设置", tint = Muted) }
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(), exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()) {
+            Surface(modifier = Modifier.fillMaxSize(), color = Panel) {
+                if (drawerSection == "pet_settings") {
+                    Column(Modifier.fillMaxSize()) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { drawerSection = "pet" }) { Text("‹ 返回个人页", color = MainText) }
+                            Spacer(Modifier.weight(1f)); Text("萌宠设置", color = MainText, fontWeight = FontWeight.Bold)
+                            IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭萌宠设置", tint = Muted) }
+                        }
+                        petSettingsContent(Modifier.weight(1f).fillMaxWidth())
+                    }
+                } else if (drawerSection == "settings") {
+                    Column(Modifier.fillMaxSize()) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { drawerSection = "pet" }) { Text("‹ 返回个人页", color = MainText) }
+                            Spacer(Modifier.weight(1f)); Text("设置", color = MainText, fontWeight = FontWeight.Bold)
+                            IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭设置", tint = Muted) }
+                        }
+                        settingsContent(Modifier.weight(1f).fillMaxWidth())
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text("我的萌宠", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
+                            IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭侧栏", tint = Muted) }
+                        }
+                        Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+                            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
+                                    CatFace(Modifier.fillMaxSize().pointerInput(petMood) { detectTapGestures(onTap = { drawerSection = "pet_settings" }, onLongPress = { onPetInteraction("pet_long_press") }) }, petMood)
                                 }
-                                settingsContent(Modifier.weight(1f).fillMaxWidth())
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(petName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    Text(when (petMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
+                                    Text("点击头像管理萌宠与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                                }
                             }
-                        } else {
-                            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                                Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("最近对话", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                        Text("选择一条记录，重新打开完整问答并继续聊天", color = Muted, fontSize = 11.sp)
-                                    }
-                                    IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭最近对话", tint = Muted) }
+                        }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text("最近和历史对话", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold); Text("选择记录即可继续上次聊天", color = Muted, fontSize = 10.sp) }
+                            Text(orderedRecent.size.toString() + " 条", color = Muted, fontSize = 10.sp)
+                        }
+                        OutlinedTextField(value = recentQuery, onValueChange = { recentQuery = it }, placeholder = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 7.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 10.sp) }) } }
+                        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 8.dp)) {
+                            if (orderedRecent.isEmpty()) item { Column(Modifier.fillMaxWidth().padding(top = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("暂无历史对话", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold); Text("开始聊天后，记录会显示在这里", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp)) } }
+                            items(orderedRecent) { prompt ->
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(vertical = 6.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f).clickable { onOpenRecentSession(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 5.dp)) { Text(prompt, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 2); Text("与 " + petName + " 的对话", color = Muted, fontSize = 10.sp) }
+                                    IconButton(onClick = { onShareRecentSession(prompt) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Share, contentDescription = "分享完整对话", tint = Cyan, modifier = Modifier.size(17.dp)) }
+                                    IconButton(onClick = { onDeleteRecentPrompt(prompt) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Delete, contentDescription = "删除对话", tint = Color(0xFFE07878), modifier = Modifier.size(17.dp)) }
                                 }
-                                Spacer(Modifier.height(14.dp))
-                                OutlinedTextField(value = recentQuery, onValueChange = { recentQuery = it }, placeholder = { Text("搜索聊天记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 10.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 11.sp) }) } }
-                                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp)) {
-                                    if (orderedRecent.isEmpty()) item {
-                                        Column(Modifier.fillMaxWidth().padding(top = 42.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("暂无最近对话", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                            Text("发送消息后，这里会显示最近使用的内容", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
-                                        }
-                                    }
-                                    items(orderedRecent) { prompt ->
-                                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(vertical = 8.dp, horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f).clickable { onOpenRecentSession(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 4.dp)) {
-                                                Text(petName, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                                Text(prompt, color = Muted, fontSize = 11.sp, maxLines = 2)
-                                            }
-                                            IconButton(onClick = { onShareRecentSession(prompt) }, modifier = Modifier.size(38.dp)) {
-                                                Icon(Icons.Outlined.Share, contentDescription = "分享完整对话", tint = Cyan, modifier = Modifier.size(18.dp))
-                                            }
-                                            IconButton(onClick = { onDeleteRecentPrompt(prompt) }, modifier = Modifier.size(40.dp)) {
-                                                Icon(Icons.Outlined.Delete, contentDescription = "删除这条最近对话", tint = Color(0xFFE07878), modifier = Modifier.size(19.dp))
-                                            }
-                                        }
-                                        Divider(color = GlassBorder.copy(alpha = .4f))
-                                    }
+                                Divider(color = GlassBorder.copy(alpha = .4f))
+                            }
+                        }
+                        Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp), color = Panel2, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                listOf("⌕" to "找一下", "✎" to "记一下", "⚙" to "设置").forEachIndexed { index, item ->
+                                    Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable {
+                                        when (index) { 0 -> { showSearch = true; drawerScope.launch { drawerState.close() } }; 1 -> { noteDraft = draft; showRemember = true; drawerScope.launch { drawerState.close() } }; else -> drawerSection = "settings" }
+                                    }.padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(item.first, color = Cyan, fontSize = 20.sp); Text(item.second, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium) }
                                 }
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp),
-                                    color = Panel2,
-                                    shape = RoundedCornerShape(18.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-                                ) {
-                                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        listOf("⌕" to "找一下", "✎" to "记一下", "⚙" to "设置").forEachIndexed { index, item ->
-                                            Column(
-                                                Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                                                    .clickable {
-                                                        when (index) {
-                                                            0 -> { showSearch = true; drawerScope.launch { drawerState.close() } }
-                                                            1 -> { noteDraft = draft; showRemember = true; drawerScope.launch { drawerState.close() } }
-                                                            else -> drawerSection = "settings"
-                                                        }
-                                                    }.padding(vertical = 8.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally
-                                            ) {
-                                                Text(item.first, color = Cyan, fontSize = 20.sp)
-                                                Text(item.second, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                            }
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.height(12.dp))
                             }
                         }
                     }
+                }
+            }
         }
     }
     if (ttsDiagnostic != null) AlertDialog(
@@ -2028,6 +2115,13 @@ private fun ChatPage(
         dismissButton = { TextButton(onClick = { ttsDiagnostic = null }) { Text("关闭") } }
     )
     if (previewPhoto != null) AlertDialog(onDismissRequest = { previewPhoto = null }, title = { Text("照片预览") }, text = { Image(bitmap = previewPhoto!!.asImageBitmap(), contentDescription = "照片预览", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) }, confirmButton = { TextButton(onClick = { previewPhoto = null }) { Text("完成") } })
+    if (showPetNameDialog) AlertDialog(
+        onDismissRequest = { showPetNameDialog = false },
+        title = { Text("编辑萌宠资料") },
+        text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("萌宠名称") }) },
+        confirmButton = { TextButton(onClick = { onPetNameChange(petNameDraft); showPetNameDialog = false }) { Text("保存") } },
+        dismissButton = { TextButton(onClick = { showPetNameDialog = false }) { Text("取消") } }
+    )
     if (showSearch) AlertDialog(onDismissRequest = { showSearch = false; searchQuery = "" }, title = { Text("查找对话内容") },
         text = { Column { OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("输入关键词，聊天列表即时筛选") }, singleLine = true); Text("${messages.count { it.text.contains(searchQuery, true) }} 条匹配消息", color = Muted, fontSize = 12.sp) } },
         confirmButton = { TextButton(onClick = { showSearch = false; searchQuery = "" }) { Text("完成") } })
@@ -2212,8 +2306,62 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 }
 
 @Composable
+private fun PetSettingsPage(
+    modifier: Modifier,
+    petName: String,
+    petMood: String,
+    rearPetEnabled: Boolean,
+    rearProjectionStatus: String,
+    onRearPetEnabledChange: (Boolean) -> Unit,
+    onRearPetRestore: () -> Unit,
+    onPetInteraction: (String) -> Unit,
+    onPetNameChange: (String) -> Unit
+) {
+    var nameDraft by remember(petName) { mutableStateOf(petName) }
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+        Spacer(Modifier.height(22.dp))
+        Text("萌宠设置", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text("管理伙伴资料、互动与背屏投放", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(76.dp).background(Panel2, CircleShape), contentAlignment = Alignment.Center) {
+                        CatFace(Modifier.fillMaxSize(), petMood)
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(petName, color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                        Text(when (petMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) }, label = { Text("萌宠名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Button(onClick = { onPetNameChange(nameDraft) }, modifier = Modifier.fillMaxWidth()) { Text("保存萌宠资料") }
+                OutlinedButton(onClick = { onPetInteraction("pet_touch") }, modifier = Modifier.fillMaxWidth()) { Text("和萌宠互动") }
+            }
+        }
+        Text("背屏投放", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 22.dp, bottom = 8.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("萌宠投放到背屏", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (rearPetEnabled) "已开启" else "关闭状态 · 不影响主屏萌宠", color = Muted, fontSize = 11.sp)
+                    }
+                    Switch(checked = rearPetEnabled, onCheckedChange = onRearPetEnabledChange)
+                }
+                Text("仅支持具备背屏的 Xiaomi Pro 系列设备。需要先启动 Shizuku 并授权。首次部署后，还需在系统背屏卡片管理中重新应用卡片。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
+                Text(rearProjectionStatus, color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
+                OutlinedButton(onClick = onRearPetRestore, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("恢复原始背屏卡片") }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
 private fun SettingsPage(
-    modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, onRearPetEnabledChange: (Boolean) -> Unit, onPetInteraction: (String) -> Unit, onExportRearWidget: () -> Unit, onPetNameChange: (String) -> Unit,
+    modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, rearProjectionStatus: String, onRearPetEnabledChange: (Boolean) -> Unit, onRearPetRestore: () -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
     provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit, onDeleteProfile: (ModelProfile) -> Unit,
     ttsProfiles: List<TtsProfile>, onAddTtsProfile: (TtsProfile) -> Unit, onSelectTtsProfile: (TtsProfile) -> Unit, onDeleteTtsProfile: (TtsProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
@@ -2337,37 +2485,6 @@ private fun SettingsPage(
         Text("设置", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Text("外观、扩展能力与应用信息", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(16.dp))
-        Text("萌宠伙伴", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(top = 9.dp),
-            color = Panel, shape = RoundedCornerShape(20.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-        ) {
-            Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.fillMaxWidth().height(168.dp), contentAlignment = Alignment.Center) {
-                    CatFace(Modifier.fillMaxWidth(.78f).fillMaxHeight(.96f).pointerInput(petMood) {
-                        detectTapGestures(onTap = { onPetInteraction("pet_touch") }, onLongPress = { onPetInteraction("pet_long_press") })
-                    }, petMood)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(petName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { petNameDraft = petName; showPetNameDialog = true }) { Text("修改名称") }
-                }
-                Text("轻触萌宠可摸摸互动，长按可主动开启交流；Agent 对话会同步改变萌宠情绪。", color = Muted, fontSize = 10.sp)
-                Divider(color = GlassBorder, modifier = Modifier.padding(vertical = 10.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("萌宠投放到背屏", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text(if (rearPetEnabled) "已开启背屏状态同步" else "关闭后背屏萌宠将隐藏", color = Muted, fontSize = 10.sp)
-                    }
-                    Switch(checked = rearPetEnabled, onCheckedChange = onRearPetEnabledChange)
-                }
-                Text("仅支持具备背屏的 Xiaomi 17 Pro 系列和 Xiaomi 18 Pro 系列机型。首次使用需先导出 ZIP，解压后按包内 REAREye_IMPORT_PROMPT.md 的步骤创建卡片；此开关控制已安装组件的显示。", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
-                OutlinedButton(onClick = onExportRearWidget, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("导出背屏组件包（含 REAREye 导入说明）") }
-            }
-        }
-        Spacer(Modifier.height(18.dp))
         Text("模型与服务", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
         Text("先选择服务类型，再配置连接信息与模型档案", color = Muted, fontSize = 11.sp)
         Spacer(Modifier.height(10.dp))
