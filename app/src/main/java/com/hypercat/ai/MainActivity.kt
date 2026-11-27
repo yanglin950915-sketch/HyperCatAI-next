@@ -2727,7 +2727,7 @@ private fun PetSettingsPage(
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
         Text("虚拟形象", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Text("左右滑动选择伙伴，确认后再保存", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+        Text("左右滑动选择伙伴，也可以导入自己的 Live2D 模型", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
         Surface(color = Panel, shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
@@ -2750,9 +2750,20 @@ private fun PetSettingsPage(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    AnimeGirlAvatar(selected.first, Modifier.fillMaxSize(), petMood)
-                    Text("点击角色互动", color = Color(0xFF754A67), fontSize = 11.sp,
+                    PetAvatarRenderer(selected.first, Modifier.fillMaxSize(), petMood, model = live2dModel) { action, _ -> onPetInteraction(action) }
+                    Text(if (live2dModel != null) "Live2D · 直接触摸互动" else "点击角色互动", color = Color(0xFF754A67), fontSize = 11.sp,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
+                }
+                Surface(color = Panel2, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text("Live2D 模型", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(if (live2dModel != null) "已导入模型：" + live2dModel.displayName else "尚未导入模型，当前使用内置二次元预览形象。", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { modelPicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }, enabled = !modelImporting) { Text(if (modelImporting) "正在导入…" else "导入 Live2D ZIP") }
+                            if (live2dModel != null) OutlinedButton(onClick = { Live2DModelStore.clear(context); Live2DModelStore.load(context) }) { Text("移除模型") }
+                        }
+                        Text("ZIP 内需包含 .model3.json、MOC3、Textures 等模型文件。请仅导入自己制作或获准使用的模型。", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                    }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = { selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size) }) { Text("‹ 上一个") }
