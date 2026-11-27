@@ -24,7 +24,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.view.ViewCompat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -47,11 +49,27 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var lastSpokenReply = ""
     private var pendingPermission = false
     private var rearWebView: WebView? = null
+    // Measured from the active rear display's real Android DisplayCutout data.
+    // No model-name or device-specific pixel constants are used.
+    private var rearSafeTopRatio by mutableFloatStateOf(0f)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AvatarStateStore.read(applicationContext)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
+            val cutout = insets.displayCutout
+            val cutoutBottom = maxOf(
+                cutout?.safeInsetTop ?: 0,
+                cutout?.boundingRects?.maxOfOrNull { it.bottom } ?: 0
+            )
+            val viewportHeight = view.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+            rearSafeTopRatio = if (viewportHeight > 0) {
+                (cutoutBottom.toFloat() / viewportHeight.toFloat()).coerceIn(0f, 0.30f)
+            } else 0f
+            insets
+        }
+        window.decorView.post { ViewCompat.requestApplyInsets(window.decorView) }
         activeActivity = this
         tts = TextToSpeech(this, this)
         setContent {
@@ -65,7 +83,8 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         mood = avatar.mood,
                         speaking = live2dSpeaking,
                         halfBody = false,
-                        safeTopRatio = 0.20f,
+                        safeTopRatio = rearSafeTopRatio,
+                        rearDisplay = true,
                         showInterface = false,
                         onGesture = { action, _ -> RearAgentInteractionDispatcher.enqueue(this@RearAvatarActivity, action) }
                     )
@@ -142,6 +161,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 "backgroundColor" -> state.backgroundColor
                 "enabled" -> state.enabled.toString()
                 "updatedAt" -> state.updatedAt.toString()
+                "safeTopRatio" -> activity.rearSafeTopRatio.toString()
                 else -> ""
             }
         }
