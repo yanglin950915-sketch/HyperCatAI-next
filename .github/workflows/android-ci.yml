@@ -31,7 +31,7 @@ jobs:
           assert "background_color" in Path("app/src/main/java/com/hypercat/ai/rear/RearAvatarProvider.kt").read_text(encoding="utf-8"), "rear background state missing"
           verifier = Path("app/src/main/java/com/hypercat/ai/rear/RearCallerVerifier.kt").read_text(encoding="utf-8")
           assert "com.android.thememanager" in verifier and "TRUSTED_PACKAGES" in verifier, "native Xiaomi MAML host verification missing"
-          assert webview.attrib.get("uri") == "web/index.html", "WebView entry point mismatch"
+          assert webview.attrib.get("uri", "").startswith("web/live2d/render.html?"), "MAML must load Live2D directly without a nested iframe"
           assert root.attrib.get("screenWidth") == "976", "target rear width mismatch"
           assert root.find("VariableBinders") is not None, "Agent data binder missing"
           assert "com.hypercat.ai.rear.provider/avatar-state" in manifest.read_text(encoding="utf-8"), "Agent provider URI missing"
@@ -101,7 +101,7 @@ jobs:
               if forbidden.lower() in body.lower():
                   line = next((i for i, value in enumerate(body.splitlines(), 1) if forbidden.lower() in value.lower()), 0)
                   raise AssertionError(f"legacy product name remains in {path}:{line}")
-          assert "versionName = \"0.9.66\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "versionName = \"0.9.67\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           main_activity = Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8")
           assert "val controller = remember { Live2DController() }" in live2d_view and "key(model.id)" not in main_activity and "key(selected.first)" not in main_activity, "Live2D preview must reuse its WebView when the selected model changes"
           assert "AvatarPortrait" in main_activity and "Live2DView(" in main_activity and "onPortrait = { dataUrl ->" in main_activity, "Agent chat portraits must be captured from the actual Live2D model"
@@ -112,11 +112,11 @@ jobs:
           styles = Path("app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           assert 'windowSplashScreenBackground">#F7F7F8' in styles and 'android:windowBackground">#F7F7F8' in styles, "light splash and Activity backgrounds must match"
           night_styles = Path("app/src/main/res/values-night/styles.xml").read_text(encoding="utf-8")
-          assert 'windowSplashScreenBackground">#000000' in night_styles and 'android:windowBackground">#000000' in night_styles, "dark splash and Activity backgrounds must match"
+          assert 'windowSplashScreenBackground">#F7F7F8' in night_styles and 'android:windowBackground">#F7F7F8' in night_styles, "night-qualified startup resources must not reintroduce black"
           assert "resolveInitialDarkMode(this)" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "theme must be resolved before first Activity frame"
-          assert "attachBaseContext(newBase: Context)" in main_activity and "createConfigurationContext(configuration)" in main_activity, "saved appearance must select splash resources before Activity creation"
+          assert "attachBaseContext(newBase: Context)" not in main_activity, "startup must not depend on a late Activity base-context theme override"
           renderer_source = Path("rearscreen/web/live2d/render.html").read_text(encoding="utf-8")
-          assert "new URL(selfUrl, document.baseURI).href" in renderer_source, "Live2D settings URL must be normalized against the renderer document"
+          assert "new URL(selfUrl, document.baseURI).href" in renderer_source and "new URL(params.get('dir') || '../models/active/', document.baseURI).href" in renderer_source, "Live2D model paths must resolve against the renderer document"
           assert "return normalized;" in renderer_source and "return dir + normalized" not in renderer_source, "Live2D model-relative files must not be double-prefixed"
           assert "expectedMarker" in package_builder and '"DisplayInfo"' in package_builder and 'motion.optString("Sound")' in package_builder, "rear package verifier must validate model marker and auxiliary files"
           assert "</div></div></div>\n<!-- SAFE_ZONE:" not in html, "rear error panel markup has an unmatched closing tag"
@@ -128,7 +128,9 @@ jobs:
           assert "padding(start = 12.dp" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "chat placeholder left spacing missing"
           assert "bridge.getStringByName" in html and "window.maml.doAction" in html, "MAML bridge integration missing"
           for name in ("__fit", "__setAod", "__debugSize", "__setMoodIndex"):
-              assert f"window.{name}" in html, f"{name} lifecycle API missing"
+              assert f"window.{name}" in renderer_source, f"{name} lifecycle API missing from direct MAML renderer"
+          assert "window.__setAgentJson" in renderer_source and "window.__setAgentState" in renderer_source, "direct MAML Agent state bridge missing"
+          assert "model-entry.js" in renderer_source and "marker.onerror" in renderer_source, "direct renderer must load and diagnose model-entry.js"
           scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
           assert len(scripts) == 1, "expected one self-contained inline script"
           Path("/tmp/hypercat-rear-inline.js").write_text(scripts[0], encoding="utf-8")
