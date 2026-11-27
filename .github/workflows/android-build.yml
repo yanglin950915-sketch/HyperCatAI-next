@@ -1,7 +1,7 @@
 name: Android build
 on:
   pull_request:
-    branches: [main, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22]
+    branches: [main, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/unified-rear-pet-toggle-v0.9.23]
   push:
     branches: [main, feat/multi-pet-engine]
   workflow_dispatch:
