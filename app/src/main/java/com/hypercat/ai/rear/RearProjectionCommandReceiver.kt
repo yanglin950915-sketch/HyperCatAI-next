@@ -8,7 +8,7 @@ import android.content.Intent
 class RearProjectionCommandReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == "com.hypercat.ai.rear.ACTION_HIDE_PROJECTION") {
-            RearPetActivity.hideIfVisible()
+            RearAvatarActivity.hideIfVisible()
         }
     }
 }
