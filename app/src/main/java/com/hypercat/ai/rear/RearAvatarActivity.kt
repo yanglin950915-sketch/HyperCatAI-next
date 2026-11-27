@@ -161,7 +161,6 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             val deviceState by AvatarDeviceStateStore.state.collectAsState()
             val live2dModel = androidx.compose.runtime.remember { Live2DModelStore.currentRear(this@RearAvatarActivity) }
             Box(Modifier.fillMaxSize().background(Color(0xFF05070D))) {
-                AvatarStatusBadges(Modifier.align(Alignment.TopStart).padding(10.dp))
                 if (live2dModel != null) {
                     Live2DView(
                         model = live2dModel,
@@ -208,6 +207,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     }
                 )
                 }
+                AvatarStatusBadges(Modifier.align(Alignment.TopStart).padding(10.dp))
                 if (live2dModel == null) Button(
                     onClick = { startVoiceInput() },
                     modifier = Modifier.align(Alignment.TopEnd).padding(14.dp),

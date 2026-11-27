@@ -66,23 +66,35 @@ object AvatarDeviceStateStore : SensorEventListener {
     }
     fun pause() { sensorManager?.unregisterListener(this) }
     private fun refreshWeather() {
+        val ctx = app ?: return
+        if (!com.hypercat.ai.AgentDeviceTools.hasLocationPermission(ctx)) {
+            mutable.value = mutable.value.copy(weather = "开启定位显示天气", temperature = "")
+        } else {
+            scope.launch { updateWeather(ctx) }
+        }
         if (weatherStarted) return
         weatherStarted = true
         scope.launch {
             while (isActive) {
-                val ctx = app
-                if (ctx != null && com.hypercat.ai.AgentDeviceTools.hasLocationPermission(ctx)) {
-                    val result = runCatching { com.hypercat.ai.AgentDeviceTools.currentWeather(ctx) }.getOrNull().orEmpty()
-                    val line = result.lineSequence().firstOrNull { it.startsWith("当前天气：") }.orEmpty()
-                    if (line.isNotBlank()) {
-                        val description = line.substringAfter("当前天气：").substringBefore("，").trim()
-                        val temp = Regex("气温\\s*[:：]?\\s*([0-9.]+)").find(line)?.groupValues?.getOrNull(1).orEmpty()
-                        mutable.value = mutable.value.copy(weather = description, temperature = temp)
-                    }
-                }
-                delay(30 * 60 * 1000L)
+                delay(10 * 60 * 1000L)
+                val current = app ?: continue
+                if (com.hypercat.ai.AgentDeviceTools.hasLocationPermission(current)) updateWeather(current)
+                else mutable.value = mutable.value.copy(weather = "开启定位显示天气", temperature = "")
             }
         }
+    }
+    private suspend fun updateWeather(ctx: Context) {
+        val result = runCatching { com.hypercat.ai.AgentDeviceTools.currentWeather(ctx) }
+            .getOrElse { "天气获取失败：网络或定位异常" }
+        val description = Regex("当前天气[：:]\\s*([^\\n，,；;]+)", RegexOption.IGNORE_CASE)
+            .find(result)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+        val temp = Regex("(?:气温|temperature_2m)[：:\\s]*([+-]?\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE)
+            .find(result)?.groupValues?.getOrNull(1).orEmpty()
+        val failed = description.isBlank()
+        mutable.value = mutable.value.copy(
+            weather = if (!failed) description else if (result.contains("需要位置权限") || result.contains("位置权限")) "开启定位显示天气" else "天气暂不可用",
+            temperature = temp
+        )
     }
     override fun onSensorChanged(e: SensorEvent) {
         if (e.sensor.type != Sensor.TYPE_STEP_COUNTER || e.values.isEmpty()) return
@@ -117,11 +129,17 @@ fun AvatarStatusBadges(modifier: Modifier = Modifier) {
     val s by AvatarDeviceStateStore.state.collectAsState()
     val context = LocalContext.current
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-        if (s.battery >= 0) Badge(if (s.charging) "⚡${s.battery}%" else "电量 ${s.battery}%")
-        if (s.weather.isNotBlank()) Badge("☀ ${s.weather} ${s.temperature}°")
-        if (s.steps >= 0) Badge("👣 ${s.steps} 步")
-        if (s.music) Badge("♫ ${s.track.ifBlank { "正在播放" }}")
-        else Badge("♫ 音乐同步设置", Modifier.clickable { runCatching { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } })
+        Badge(if (s.battery >= 0) (if (s.charging) "⚡" else "电量 ") + "${s.battery}%" else "电量读取中")
+        Badge(if (s.weather.isNotBlank()) "☀ ${s.weather}${if (s.temperature.isNotBlank()) " ${s.temperature}°C" else ""}" else "天气获取中",
+            Modifier.clickable {
+                runCatching {
+                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.fromParts("package", context.packageName, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            })
+        Badge(if (s.steps >= 0) "👣 ${s.steps} 步" else "步数未授权")
+        Badge(if (s.music) "♫ ${s.track.ifBlank { "正在播放" }}" else "♫ 音乐同步设置",
+            Modifier.clickable { runCatching { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } })
     }
 }
 @Composable

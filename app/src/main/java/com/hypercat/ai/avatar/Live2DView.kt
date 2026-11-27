@@ -150,11 +150,17 @@ fun Live2DView(
         if (state.ready) {
             if (!musicPlaying) controller.setMusicBeat(0f)
             else {
-                var phase = false
+                val startedAt = System.nanoTime()
                 while (true) {
-                    phase = !phase
-                    controller.setMusicBeat(if (phase) 1f else 0.18f)
-                    kotlinx.coroutines.delay(270L)
+                    val elapsed = (System.nanoTime() - startedAt) / 1_000_000_000.0
+                    val bpm = 108.0 + 9.0 * kotlin.math.sin(elapsed * 0.13)
+                    val phase = elapsed * bpm / 60.0 * 2.0 * Math.PI
+                    val mainBeat = kotlin.math.max(0.0, kotlin.math.sin(phase))
+                    val offBeat = kotlin.math.max(0.0, kotlin.math.sin(phase * 0.5 + 0.9))
+                    val accent = 0.08 * (0.5 + 0.5 * kotlin.math.sin(elapsed * 1.7))
+                    val pulse = (0.10 + 0.78 * mainBeat * mainBeat + 0.14 * offBeat * offBeat + accent).coerceIn(0.08, 1.0)
+                    controller.setMusicBeat(pulse.toFloat())
+                    kotlinx.coroutines.delay(55L)
                 }
             }
         }
