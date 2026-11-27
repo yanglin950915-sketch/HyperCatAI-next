@@ -51,7 +51,9 @@ class RearShellUserService : IRearShellService.Stub() {
                         if (CARD_ID.matches(id)) {
                             val label = if (kind == "wallpaper") file.parentFile.name else file.parentFile.name.removeSuffix("_extracted")
                             cards.put(JSONObject().put("cardId", id).put("name", label).put("source", kind)
-                                .put("path", relative).put("root", if (kind == "wallpaper") ".ai_wallpaper/maml" else ".ai_app"))
+                                .put("path", relative).put("root", if (kind == "wallpaper") ".ai_wallpaper/maml" else ".ai_app")
+                                .put("modifiedAt", file.lastModified())
+                                .put("sizeBytes", file.length()))
                         }
                     }
             }
