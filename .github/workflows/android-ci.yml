@@ -11,10 +11,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify complete rearscreen folder
+      - name: Verify REAREye widget source and layout
         run: |
           test -s rearscreen/manifest.xml
+          test -s rearscreen/web/index.html
           test "$(find rearscreen -maxdepth 1 -type f | wc -l)" -eq 1
+          test "$(find rearscreen/web -maxdepth 1 -type f | wc -l)" -eq 1
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+
+          manifest = Path("rearscreen/manifest.xml")
+          html = Path("rearscreen/web/index.html").read_text(encoding="utf-8")
+          root = ET.parse(manifest).getroot()
+          webview = root.find("WebView")
+          assert webview is not None, "REAREye WebView element missing"
+          assert webview.attrib.get("local") == "true", "WebView must load local assets"
+          assert webview.attrib.get("cachePage") == "true", "WebView cache contract missing"
+          assert webview.attrib.get("uri") == "web/index.html", "WebView entry point mismatch"
+          assert '<meta name="viewport"' in html, "viewport meta missing"
+          assert "SAFE_ZONE:" in html and "AVAIL:" in html and "TOUCH:" in html, "layout audit comments missing"
+          for name in ("__fit", "__setAod", "__debugSize", "__setMoodIndex"):
+              assert f"window.{name}" in html, f"{name} lifecycle API missing"
+          scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
+          assert len(scripts) == 1, "expected one self-contained inline script"
+          Path("/tmp/hypercat-rear-inline.js").write_text(scripts[0], encoding="utf-8")
+          PY
+          node --check /tmp/hypercat-rear-inline.js
       - name: Upload rearscreen folder
         uses: actions/upload-artifact@v4
         with:
