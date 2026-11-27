@@ -11,6 +11,7 @@
 <title>HyperCat AI 背屏虚拟形象</title>
 <style>
 *{box-sizing:border-box}
+#live2d-stage{position:fixed;left:39%;top:18%;width:55%;height:59%;border:0;background:transparent;z-index:4;touch-action:none;pointer-events:auto}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
 canvas{display:block;width:100%;height:100%;touch-action:none}
 </style>
@@ -53,6 +54,22 @@ var LAYOUT=Object.freeze({
   CHILD:{x:Math.round(AVAIL.x+AVAIL.w*.04),y:Math.round(AVAIL.y+AVAIL.h*.04),w:Math.round(AVAIL.w*.92),h:Math.round(AVAIL.h*.934)}
 });
 var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:false});
+// If the deployed card contains a user-imported Cubism model, layer its Live2D renderer
+// over the existing lightweight canvas character. The canvas remains underneath as fallback.
+(function activateImportedLive2D(){
+  fetch("models/active/model-entry.json").then(function(response){
+    if(!response.ok)throw new Error("no imported Live2D model");
+    return response.json();
+  }).then(function(info){
+    if(!info || !info.entry)return;
+    var frame=document.createElement("iframe");
+    frame.id="live2d-stage";
+    frame.title="HyperCat AI Live2D";
+    frame.setAttribute("aria-label","Live2D 虚拟形象");
+    frame.src="live2d/render.html?dir=../models/active/&entry="+encodeURIComponent(info.entry)+"&half=1&ratio=0.78&fps=20";
+    document.body.appendChild(frame);
+  }).catch(function(){ /* No imported model: keep the built-in canvas renderer. */ });
+})();
 var W=0,H=0,dpr=1,CAM=0,FIT=1,DX=0,DY=0;
 var rafPend=false,paused=false,lastDraw=-1e9,lastFrame=0,animTime=0,dead=false;
 var mood=0,localMoodUntil=0,blink=0,blinkAt=0,nextBlink=1900,gazeX=0,gazeY=0,petEmoji="sakura";
@@ -84,7 +101,14 @@ function applyAgentState(name,avatar,moodValue,reply,bgColor){
   if(bgColor&&/^#[0-9a-fA-F]{6}$/.test(String(bgColor)))backgroundColor=String(bgColor);
   if(moodValue&&moodValue!=="undefined"&&now()>=localMoodUntil){
     var key=String(moodValue).toLowerCase(),map={normal:0,idle:0,happy:1,thinking:2,curious:2,sleepy:3,sad:4,surprised:5};
-    if(Object.prototype.hasOwnProperty.call(map,key))mood=map[key];
+    if(Object.prototype.hasOwnProperty.call(map,key)){
+      mood=map[key];
+      var frame=document.getElementById("live2d-stage");
+      if(frame&&frame.contentWindow&&frame.contentWindow.__l2d){
+        var expression={happy:"happy",thinking:"thinking",curious:"curious",sleepy:"sleepy",sad:"sad",surprised:"surprised",normal:"neutral",idle:"neutral"};
+        frame.contentWindow.__l2d.setEmotion(expression[key]||"neutral");
+      }
+    }
   }
   kick();
 }
