@@ -893,7 +893,7 @@ private fun HyperCatApp() {
         if (rearAvatarState.updatedAt > 0L) {
             avatarName = rearAvatarState.avatarName
             avatarMood = rearAvatarState.mood
-            val transientRearFeedback = setOf("让我想一想……", "我准备休息啦。", "我在听，你想和我聊什么？", "嘿嘿，你摸到我啦！", "咦？你在带我移动吗？")
+            val transientRearFeedback = setOf("让我想一想……", "我准备休息啦。", "我在听，你想和我聊什么？", "嘿嘿，你摸到我啦！", "咦？你在带我移动吗？", "收到你的虚拟形象互动啦！")
             if (rearAvatarState.reply.isNotBlank() &&
                 rearAvatarState.reply != avatarReply &&
                 rearAvatarState.reply !in transientRearFeedback
@@ -1060,6 +1060,8 @@ private fun HyperCatApp() {
                             avatarId = avatarId,
                             onAvatarIdChange = { value -> avatarId = value; chatPrefs.edit().putString("avatar_id", value).apply() },
                             avatarMood = avatarMood,
+                            avatarInteractionReply = avatarInteractionReply,
+                            avatarInteractionReplyId = avatarInteractionReplyId,
                             rearAvatarEnabled = rearAvatarEnabled,
                             rearBackgroundColor = rearBackgroundColor,
                             onRearBackgroundColorChange = { color -> rearBackgroundColor = color; AvatarStateStore.setBackgroundColor(context, color) },
@@ -1083,7 +1085,13 @@ private fun HyperCatApp() {
                                 }
 
                                 },
-                            onAvatarInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                            onAvatarInteraction = { action ->
+                                if (action in setOf("avatar_touch", "avatar_long_press", "avatar_drag")) {
+                                    avatarInteractionReply = ""
+                                    avatarInteractionReplyId = System.currentTimeMillis()
+                                }
+                                RearAgentInteractionDispatcher.enqueue(context, action)
+                            },
                             onAvatarNameChange = { value ->
                                 val clean = value.trim().take(16).ifBlank { "小橘" }
                                 avatarName = clean
@@ -1101,8 +1109,6 @@ private fun HyperCatApp() {
                             onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
                              avatarName = avatarName,
                              avatarMood = avatarMood,
-                             avatarInteractionReply = avatarInteractionReply,
-                             avatarInteractionReplyId = avatarInteractionReplyId,
                              rearAvatarEnabled = rearAvatarEnabled,
                              onRearAvatarEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                              onRearAvatarRestore = {
@@ -2387,7 +2393,7 @@ private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
         } else {
             // Never create a separate 60 FPS WebView for every message row.
             // Keep a stable static fallback until the persistent avatar view caches its portrait.
-            AnimeGirlAvatar(character, Modifier.fillMaxSize(), "normal")
+            AnimeGirlAvatar(character, Modifier.fillMaxSize(), "normal", animated = false)
         }
     }
 }
