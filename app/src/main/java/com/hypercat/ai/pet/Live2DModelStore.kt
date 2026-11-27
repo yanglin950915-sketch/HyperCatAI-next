@@ -105,7 +105,11 @@ object Live2DModelStore {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val directory = prefs.getString(KEY_DIRECTORY, null)
         prefs.edit().remove(KEY_DIRECTORY).remove(KEY_ENTRY).apply()
-        if (directory != null) runCatching { File(Uri.parse(directory).path.orEmpty()).deleteRecursively() }
+        if (directory != null) runCatching {
+            val root = File(context.filesDir, "live2d-models").canonicalFile
+            val modelDirectory = File(Uri.parse(directory).path.orEmpty()).canonicalFile
+            if (modelDirectory.path.startsWith(root.path + File.separator)) modelDirectory.deleteRecursively()
+        }
         mutableModel.value = null
     }
 }
