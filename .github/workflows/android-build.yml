@@ -42,16 +42,25 @@ jobs:
       - name: Verify APK signature
         run: |
           $ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk
-      - name: Package REAREye rear-screen widget
+      - name: Package REAREye widget sources
         run: |
+          cp rearscreen/web/index.html HyperCatAI-reareye-widget.html
           cd rearscreen
           zip -r ../HyperCatAI-rearscreen.zip manifest.xml web/index.html
           test -s ../HyperCatAI-rearscreen.zip
+          test -s ../HyperCatAI-reareye-widget.html
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: HyperCatAI-debug
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload REAREye HTML source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HyperCatAI-reareye-widget-html
+          path: HyperCatAI-reareye-widget.html
           if-no-files-found: error
           retention-days: 30
       - name: Upload REAREye widget artifact
@@ -72,7 +81,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; skipping duplicate publication."
           else
-            gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk HyperCatAI-rearscreen.zip \
+            gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk HyperCatAI-reareye-widget.html HyperCatAI-rearscreen.zip \
               --title "HyperCat AI $VERSION_NAME" \
               --notes "HyperCat AI $VERSION_NAME stable-signed automatic build. Keep this signing identity for all future updates." \
               --target "$GITHUB_SHA"
