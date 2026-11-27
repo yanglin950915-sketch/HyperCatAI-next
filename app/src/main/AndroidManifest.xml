@@ -12,7 +12,10 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
     <application android:allowBackup="true" android:label="HyperCat AI" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:supportsRtl="true" android:theme="@style/Theme.HyperCat">
+        <service android:name=".avatar.AvatarMediaNotificationListener" android:label="HyperCat AI 音乐状态同步" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true"><intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter></service>
         <activity android:name=".rear.RearAvatarActivity" android:exported="true" android:excludeFromRecents="true" android:launchMode="singleTask" android:taskAffinity="" android:resizeableActivity="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <receiver android:name=".rear.RearProjectionCommandReceiver" android:exported="true">
             <intent-filter><action android:name="com.hypercat.ai.rear.ACTION_HIDE_PROJECTION" /></intent-filter>
