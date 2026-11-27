@@ -722,7 +722,7 @@ private fun HyperCatApp() {
                     RearProjectionController.connect(context)
                 }
                 rearProjectionStatus = result
-                val connected = result.startsWith("已请求背屏显示")
+                val connected = result.startsWith("已部署背屏卡片")
                 rearPetEnabled = connected
                 PetStateStore.setEnabled(context, connected)
             }
@@ -976,6 +976,11 @@ private fun HyperCatApp() {
                              petMood = petMood,
                              rearPetEnabled = rearPetEnabled,
                              onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
+                             onRearPetRestore = {
+                                 scope.launch {
+                                     rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.restore(context) }
+                                 }
+                             },
                              onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
                              rearProjectionStatus = rearProjectionStatus,
                              onPetNameChange = { value ->
@@ -2249,7 +2254,7 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 
 @Composable
 private fun SettingsPage(
-    modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, rearProjectionStatus: String, onRearPetEnabledChange: (Boolean) -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
+    modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, rearProjectionStatus: String, onRearPetEnabledChange: (Boolean) -> Unit, onRearPetRestore: () -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
     provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit, onDeleteProfile: (ModelProfile) -> Unit,
     ttsProfiles: List<TtsProfile>, onAddTtsProfile: (TtsProfile) -> Unit, onSelectTtsProfile: (TtsProfile) -> Unit, onDeleteTtsProfile: (TtsProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
@@ -2395,13 +2400,14 @@ private fun SettingsPage(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("萌宠投放到背屏", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text(if (rearPetEnabled) "已开启背屏状态同步" else "关闭后背屏萌宠将隐藏", color = Muted, fontSize = 10.sp)
+                        Text(if (rearPetEnabled) "已开启背屏萌宠状态同步" else "关闭后停止状态同步，卡片资源保留", color = Muted, fontSize = 10.sp)
                     }
                     Switch(checked = rearPetEnabled, onCheckedChange = onRearPetEnabledChange)
                 }
-                Text("直接在背屏启动 HyperCat AI 独立萌宠界面，不需要导出 ZIP 或创建 REAREye 卡片。首次连接需安装并启动 Shizuku，授权后自动检测背屏；Shizuku 的无线调试授权可能需要在手机重启后重新启动。", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
-                Text(rearProjectionStatus, color = if (rearProjectionStatus.startsWith("已请求背屏显示")) Color(0xFF4CAF50) else Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-                OutlinedButton(onClick = { onRearPetEnabledChange(true) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("连接 / 重新检测背屏") }
+                Text("使用 Shizuku 自动扫描系统本地背屏卡片，将 APK 内置萌宠组件写入兼容载体并自动备份原卡片。首次部署后需在系统背屏设置中重新应用该卡片；不需要安装独立桥接 App 或手动导出资源包。", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                Text(rearProjectionStatus, color = if (rearProjectionStatus.startsWith("已部署背屏卡片")) Color(0xFF4CAF50) else Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                OutlinedButton(onClick = { onRearPetEnabledChange(true) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("扫描并部署背屏卡片") }
+                OutlinedButton(onClick = onRearPetRestore, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) { Text("恢复原始背屏卡片") }
             }
         }
         Spacer(Modifier.height(18.dp))
