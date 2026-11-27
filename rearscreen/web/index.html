@@ -182,7 +182,7 @@ function draw(t){
   /* OUTER is the mandatory backing plate for the usable right-hand display. */
   roundedRect(LAYOUT.OUTER.x,LAYOUT.OUTER.y,LAYOUT.OUTER.w,LAYOUT.OUTER.h,28);
   ctx.fillStyle="#03090e";ctx.fill();ctx.strokeStyle="#102b39";ctx.lineWidth=2;ctx.stroke();
-  syncMamlState();
+  if(!window.__DIAL_NO_ANIM)syncMamlState();
   ctx.fillStyle="#73dfff";ctx.font="bold 17px system-ui,sans-serif";ctx.textAlign="left";ctx.textBaseline="middle";
   ctx.fillText(T.title,LAYOUT.HEADER.x,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.25);
   ctx.fillStyle="#e7f8ff";ctx.font="bold 18px system-ui,sans-serif";
