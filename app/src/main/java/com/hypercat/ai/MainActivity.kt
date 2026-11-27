@@ -2700,6 +2700,20 @@ private fun PetSettingsPage(
     onPetInteraction: (String) -> Unit,
     onPetNameChange: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val live2dModel by Live2DModelStore.state.collectAsState()
+    var modelImporting by remember { mutableStateOf(false) }
+    val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            modelImporting = true
+            runCatching { Live2DModelStore.importZip(context, uri) }
+                .onSuccess { android.widget.Toast.makeText(context, "Live2D 模型导入成功", android.widget.Toast.LENGTH_LONG).show() }
+                .onFailure { error -> android.widget.Toast.makeText(context, "模型导入失败：" + error.message, android.widget.Toast.LENGTH_LONG).show() }
+            modelImporting = false
+        }
+    }
+    LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val characters = listOf(
         Triple("sakura", "樱花", "温柔、黏人又有一点小傲娇。喜欢樱花、甜点和被认真倾听；遇到你时总会先露出笑容。"),
         Triple("aoi", "葵", "活泼开朗的蓝发歌姬。热爱音乐与新鲜事物，擅长用元气和鼓励陪你度过忙碌的一天。"),
