@@ -52,6 +52,9 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     // Measured from the active rear display's real Android DisplayCutout data.
     // No model-name or device-specific pixel constants are used.
     private var rearSafeTopRatio by mutableFloatStateOf(0f)
+    private var rearSafeLeftRatio by mutableFloatStateOf(0f)
+    private var rearSafeRightRatio by mutableFloatStateOf(0f)
+    private var rearSafeBottomRatio by mutableFloatStateOf(0f)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,14 +62,32 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
             val cutout = insets.displayCutout
-            val cutoutBottom = maxOf(
-                cutout?.safeInsetTop ?: 0,
-                cutout?.boundingRects?.maxOfOrNull { it.bottom } ?: 0
-            )
-            val viewportHeight = view.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
-            rearSafeTopRatio = if (viewportHeight > 0) {
-                (cutoutBottom.toFloat() / viewportHeight.toFloat()).coerceIn(0f, 0.30f)
-            } else 0f
+            val width = view.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+            val height = view.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+            if (width > 0 && height > 0) {
+                val rects = cutout?.boundingRects.orEmpty()
+                val obstruction = if (rects.isNotEmpty()) android.graphics.Rect().apply {
+                    set(rects.first())
+                    rects.drop(1).forEach { union(it) }
+                } else null
+                val leftEdge = maxOf(cutout?.safeInsetLeft ?: 0, obstruction?.right?.takeIf { obstruction.left <= width / 2 } ?: 0)
+                val rightEdge = maxOf(cutout?.safeInsetRight ?: 0, (width - (obstruction?.left?.takeIf { obstruction.right >= width / 2 } ?: width)).coerceAtLeast(0))
+                val topEdge = maxOf(cutout?.safeInsetTop ?: 0, obstruction?.bottom?.takeIf { obstruction.top <= height / 2 } ?: 0)
+                val bottomEdge = maxOf(cutout?.safeInsetBottom ?: 0, (height - (obstruction?.top?.takeIf { obstruction.bottom >= height / 2 } ?: height)).coerceAtLeast(0))
+                // Choose the largest full-height/full-width region outside the camera island.
+                val candidates = listOf(
+                    android.graphics.Rect(leftEdge, 0, width - rightEdge, height),
+                    android.graphics.Rect(0, topEdge, width, height - bottomEdge),
+                    android.graphics.Rect(0, 0, leftEdge, height),
+                    android.graphics.Rect(width - rightEdge, 0, width, height)
+                ).filter { it.width() > 0 && it.height() > 0 }
+                val safe = candidates.maxByOrNull { it.width().toLong() * it.height().toLong() }
+                rearSafeLeftRatio = safe?.left?.toFloat()?.div(width)?.coerceIn(0f, 0.95f) ?: 0f
+                rearSafeTopRatio = safe?.top?.toFloat()?.div(height)?.coerceIn(0f, 0.95f) ?: 0f
+                rearSafeRightRatio = safe?.let { (width - it.right).toFloat() / width }?.coerceIn(0f, 0.95f) ?: 0f
+                rearSafeBottomRatio = safe?.let { (height - it.bottom).toFloat() / height }?.coerceIn(0f, 0.95f) ?: 0f
+                android.util.Log.i("HyperCatRear", "viewport=${width}x${height}, model=${android.os.Build.MODEL}, cutout=$obstruction, safe=$safe")
+            }
             insets
         }
         window.decorView.post { ViewCompat.requestApplyInsets(window.decorView) }
@@ -84,6 +105,9 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         speaking = live2dSpeaking,
                         halfBody = false,
                         safeTopRatio = rearSafeTopRatio,
+                        safeLeftRatio = rearSafeLeftRatio,
+                        safeRightRatio = rearSafeRightRatio,
+                        safeBottomRatio = rearSafeBottomRatio,
                         rearDisplay = true,
                         showInterface = false,
                         onGesture = { action, _ -> RearAgentInteractionDispatcher.enqueue(this@RearAvatarActivity, action) }
