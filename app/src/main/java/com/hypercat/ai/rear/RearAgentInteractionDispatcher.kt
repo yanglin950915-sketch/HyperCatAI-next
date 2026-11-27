@@ -18,7 +18,7 @@ object RearAgentInteractionDispatcher {
     fun enqueue(context: Context, action: String, userText: String): Boolean {
         if (action !in supportedActions) return false
         if (action == "pet_voice" && userText.isBlank()) return false
-        val current = PetStateStore.read(context)
+        val current = AvatarStateStore.read(context)
         val immediateMood = when (action) {
             "pet_thinking" -> "thinking"
             "pet_rest" -> "sleepy"
@@ -34,7 +34,7 @@ object RearAgentInteractionDispatcher {
             "pet_drag" -> "咦？你在带我移动吗？"
             else -> "嘿嘿，你摸到我啦！"
         }
-        PetStateStore.update(context, current.petName, current.petEmoji, immediateMood, immediateReply, userText = userText)
+        AvatarStateStore.update(context, current.avatarName, current.avatarId, immediateMood, immediateReply, userText = userText)
         val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         val request = OneTimeWorkRequestBuilder<RearAgentInteractionWorker>()
             .setConstraints(constraints)
