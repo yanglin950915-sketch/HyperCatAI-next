@@ -332,17 +332,13 @@
     document.getElementById('stage').appendChild(app.view);
     applyCanvasSize(W, H);
 
-    // 限制到 24fps。
-    //
-    // 这台机器（MT6761 + PowerVR GE8300）在 640×480 / 480×640 上跑满 60fps 会因为
-    // 贴图带宽吃紧而抖动，肉眼反而不如稳定 24。`PIXI.Ticker.shared` 同时驱动
-    // `_render()` 和 `autoUpdate`（→ internalModel.update），所以只调它的 maxFPS
-    // 就能让「渲染」和「模型动画」一起降速，不会出现画面 24fps 而动作 60fps 的撕裂。
-    var MAX_FPS = parseFloat(params.get('fps') || '30');
-    if (!isFinite(MAX_FPS) || MAX_FPS < 1) MAX_FPS = 30;
-    PIXI.Ticker.shared.maxFPS = MAX_FPS;
-    // Clamp long frame gaps after app switching or transient GPU stalls.
-    PIXI.Ticker.shared.minFPS = 20;
+    // Keep the requested 60 FPS target. Improve frame pacing without lowering
+    // renderer resolution or the ticker's target rate.
+    var MAX_FPS = parseFloat(params.get('fps') || '60');
+    if (!isFinite(MAX_FPS) || MAX_FPS < 1) MAX_FPS = 60;
+    PIXI.Ticker.shared.maxFPS = Math.min(MAX_FPS, 60);
+    // Clamp unusually large animation deltas after a transient GPU stall.
+    PIXI.Ticker.shared.minFPS = 30;
     log('L2D fps cap=' + MAX_FPS);
 
     // 只做 FPS 统计；参数写入全部交给 onBeforeModelUpdate。
@@ -419,6 +415,25 @@
       }
     }
   }
+
+  // Explicitly release the old WebGL scene before this WebView navigates to a
+  // newly selected character. Reusing the native WebView avoids a cold Chromium
+  // startup; disposing the previous PIXI scene prevents stale frames/GL resources.
+  function disposeRenderer() {
+    try {
+      if (model && model.internalModel) model.internalModel.off('beforeModelUpdate', onBeforeModelUpdate);
+    } catch (_) {}
+    try {
+      if (PIXI && PIXI.Ticker && PIXI.Ticker.shared) PIXI.Ticker.shared.stop();
+    } catch (_) {}
+    try {
+      if (app) app.destroy(true, { children: true, texture: false, baseTexture: false });
+    } catch (e) { log('renderer dispose', String(e)); }
+    model = null;
+    app = null;
+  }
+  window.addEventListener('pagehide', disposeRenderer, { once: true });
+  window.addEventListener('beforeunload', disposeRenderer, { once: true });
 
   function onResize() {
     if (!app) return;
