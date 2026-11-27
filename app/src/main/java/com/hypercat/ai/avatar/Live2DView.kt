@@ -23,7 +23,7 @@ import java.util.concurrent.CopyOnWriteArraySet
 
 data class Live2DRenderState(val ready: Boolean = false, val error: String? = null, val fps: Int = 0)
 
-/** WebGL Live2D host. Cubism model assets are imported by the user and remain app-private. */
+/** WebGL Live2D host. The default Cubism model is bundled into the APK assets. */
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 @Composable
 fun Live2DView(
