@@ -33,12 +33,17 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import java.util.Locale
+import android.speech.tts.UtteranceProgressListener
+import com.hypercat.ai.pet.Live2DModelStore
+import com.hypercat.ai.pet.Live2DView
+import com.hypercat.ai.pet.Live2DControllerHub
 
 /** Direct rear-display host. Reuses the same offline anime renderer as the REAREye MAML card. */
 class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var listening by mutableStateOf(false)
+    private var live2dSpeaking by mutableStateOf(false)
     private var lastSpokenReply = ""
     private var pendingPermission = false
     private var rearWebView: WebView? = null
@@ -51,7 +56,18 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         tts = TextToSpeech(this, this)
         setContent {
             val pet by PetStateStore.state.collectAsState()
+            val live2dModel = androidx.compose.runtime.remember { Live2DModelStore.current(this@RearPetActivity) }
             Box(Modifier.fillMaxSize().background(Color(0xFF05070D))) {
+                if (live2dModel != null) {
+                    Live2DView(
+                        model = live2dModel,
+                        modifier = Modifier.fillMaxSize(),
+                        mood = pet.mood,
+                        speaking = live2dSpeaking,
+                        halfBody = true,
+                        onGesture = { action, _ -> RearAgentInteractionDispatcher.enqueue(this@RearPetActivity, action) }
+                    )
+                } else {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { context ->
@@ -78,7 +94,8 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         applyPetState(view, pet.petName, pet.petEmoji, pet.mood, pet.reply, pet.backgroundColor)
                     }
                 )
-                Button(
+                }
+                if (live2dModel == null) Button(
                     onClick = { startVoiceInput() },
                     modifier = Modifier.align(Alignment.TopEnd).padding(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2878F0))
@@ -195,6 +212,18 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         if (ttsReady) {
             tts?.language = Locale.SIMPLIFIED_CHINESE
             tts?.setSpeechRate(1.0f)
+            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    runOnUiThread { live2dSpeaking = true; Live2DControllerHub.setSpeaking(true) }
+                }
+                override fun onDone(utteranceId: String?) {
+                    runOnUiThread { live2dSpeaking = false; Live2DControllerHub.setSpeaking(false) }
+                }
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) {
+                    runOnUiThread { live2dSpeaking = false; Live2DControllerHub.setSpeaking(false) }
+                }
+            })
         }
     }
 
