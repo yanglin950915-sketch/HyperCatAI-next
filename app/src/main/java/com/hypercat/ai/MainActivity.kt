@@ -2069,7 +2069,7 @@ private fun ChatPage(
                 } else {
                     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) { Text("我的虚拟形象", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
+                            Column(Modifier.weight(1f)) { Text("我的虚拟小伙伴", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
                         }
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().clickable { drawerSection = "avatar_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2345,8 +2345,36 @@ private fun AvatarRenderer(
 /** Small, non-animated portrait matching the currently selected virtual character. */
 @Composable
 private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
-    Box(modifier.background(Brush.verticalGradient(listOf(Color(0xFFFFE6F0), Color(0xFFE9E8FF))))) {
-        AnimeGirlAvatar(character, Modifier.fillMaxSize(), "normal", animated = false)
+    val model = Live2DModelStore.characters.firstOrNull { it.id == character }
+        ?: Live2DModelStore.characters.first()
+    var portrait by remember(character) { mutableStateOf<Bitmap?>(null) }
+    Box(modifier.clip(CircleShape).background(Color(0xFFEDEAF4))) {
+        val captured = portrait
+        if (captured != null) {
+            Image(
+                bitmap = captured.asImageBitmap(),
+                contentDescription = model.displayName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            // Render the real bundled Live2D model once, extract its PIXI canvas as a PNG,
+            // then replace the WebView with that static bitmap. No hand-drawn avatar art.
+            key(model.id) {
+                Live2DView(
+                    model = model,
+                    modifier = Modifier.fillMaxSize(),
+                    halfBody = true,
+                    onPortrait = { dataUrl ->
+                        runCatching {
+                            val encoded = dataUrl.substringAfter(',', "")
+                            val bytes = Base64.getDecoder().decode(encoded)
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        }.getOrNull()?.let { portrait = it }
+                    }
+                )
+            }
+        }
     }
 }
 
