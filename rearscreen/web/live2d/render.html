@@ -61,9 +61,10 @@
   // The deployed Xiaomi MAML card opens this page directly (without Live2DView URL args).
   // In that path Android DisplayCutout data is unavailable to the WebView, so the
   // camera-island exclusion must use the measured rear-panel layout fallback.
-  // The camera island occupies about 31% of the 976px panel; 38% adds a clearance buffer.
+  // The camera island occupies about 31% of the 976px panel. Keep only a small
+  // 1% clearance; the previous 38% inset shifted the safe-area centre too far right.
   if (params.get('safeLeft') === null && window.maml) {
-    SAFE_LEFT_RATIO = 0.38;
+    SAFE_LEFT_RATIO = 0.32;
   }
   var VIEW_OFFSET_X = 0;
   var PORTRAIT_CAPTURED = false;
