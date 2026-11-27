@@ -72,7 +72,6 @@ fun Live2DView(
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
             // Let the Compose scene behind the Live2D WebView show through.
-            isOpaque = false
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
