@@ -25,9 +25,13 @@ val downloadBuiltInAvatar by tasks.registering {
     outputs.dir(builtInAvatarAssets)
     doLast {
         val outputRoot = builtInAvatarAssets.get().asFile
-        val avatarDir = outputRoot.resolve("avatar/default")
-        val modelSettings = avatarDir.resolve("Haru.model3.json")
-        if (!modelSettings.isFile) {
+        val sampleCommit = "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd"
+        val models = listOf("Haru", "Hiyori", "Mao", "Natori", "Rice")
+        val missing = models.filter { name ->
+            val folder = outputRoot.resolve("avatar/${name.lowercase()}")
+            !folder.resolve("$name.model3.json").isFile || !folder.resolve("$name.moc3").isFile
+        }
+        if (missing.isNotEmpty()) {
             val archive = temporaryDir.resolve("cubism-web-samples.zip")
             val archiveUrl = URL("https://codeload.github.com/Live2D/CubismWebSamples/zip/$sampleCommit")
             archiveUrl.openConnection().apply {
@@ -36,30 +40,36 @@ val downloadBuiltInAvatar by tasks.registering {
             }.getInputStream().use { input ->
                 archive.outputStream().buffered().use { output -> input.copyTo(output) }
             }
-            val prefix = "CubismWebSamples-$sampleCommit/Samples/Resources/Haru/"
             ZipFile(archive).use { zip ->
-                val entries = zip.entries()
-                while (entries.hasMoreElements()) {
-                    val entry = entries.nextElement()
-                    if (!entry.name.startsWith(prefix)) continue
-                    val relative = entry.name.removePrefix(prefix)
-                    if (relative.isBlank()) continue
-                    val target = avatarDir.resolve(relative)
-                    require(target.canonicalPath.startsWith(avatarDir.canonicalPath + File.separator)) {
-                        "Unsafe path in official Live2D sample archive: ${entry.name}"
-                    }
-                    if (entry.isDirectory) {
-                        target.mkdirs()
-                    } else {
-                        target.parentFile?.mkdirs()
-                        zip.getInputStream(entry).use { input ->
-                            target.outputStream().buffered().use { output -> input.copyTo(output) }
+                for (name in missing) {
+                    val avatarDir = outputRoot.resolve("avatar/${name.lowercase()}")
+                    val prefix = "CubismWebSamples-$sampleCommit/Samples/Resources/$name/"
+                    val entries = zip.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        if (!entry.name.startsWith(prefix)) continue
+                        val relative = entry.name.removePrefix(prefix)
+                        if (relative.isBlank()) continue
+                        val target = avatarDir.resolve(relative)
+                        require(target.canonicalPath.startsWith(avatarDir.canonicalPath + File.separator)) {
+                            "Unsafe path in official Live2D sample archive: ${entry.name}"
+                        }
+                        if (entry.isDirectory) {
+                            target.mkdirs()
+                        } else {
+                            target.parentFile?.mkdirs()
+                            zip.getInputStream(entry).use { input ->
+                                target.outputStream().buffered().use { output -> input.copyTo(output) }
+                            }
                         }
                     }
                 }
             }
-            check(modelSettings.isFile && avatarDir.resolve("Haru.moc3").isFile) {
-                "Official Live2D Haru model download is incomplete"
+        }
+        for (name in models) {
+            val avatarDir = outputRoot.resolve("avatar/${name.lowercase()}")
+            check(avatarDir.resolve("$name.model3.json").isFile && avatarDir.resolve("$name.moc3").isFile) {
+                "Official Live2D $name model download is incomplete"
             }
         }
     }
@@ -72,8 +82,8 @@ android {
         applicationId = "com.hypercat.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 65
-        versionName = "0.9.46"
+        versionCode = 66
+        versionName = "0.9.47"
     }
     signingConfigs {
         create("stable") {
