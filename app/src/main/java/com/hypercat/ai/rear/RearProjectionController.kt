@@ -16,7 +16,9 @@ import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** Shizuku-backed deployment of the bundled MAML card into a verified local carrier. */
+data class RearCard(val cardId: String, val name: String, val source: String, val path: String, val root: String, val modifiedAt: Long = 0L, val sizeBytes: Long = 0L)
+
+/** Shizuku-backed, user-selected deployment of a bundled MAML pet card. */
 object RearProjectionController {
     private const val PERMISSION_REQUEST_CODE = 24025
     @Volatile private var remoteService: IRearShellService? = null
@@ -43,48 +45,45 @@ object RearProjectionController {
         }
     }
 
-    suspend fun connect(context: Context): String {
-        if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) return "Shizuku 服务未运行，请先启动 Shizuku"
-        if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) return "尚未获得 Shizuku 授权"
-        return runCatching {
-            val service = bindUserService(context)
-            val scan = JSONObject(withContext(Dispatchers.IO) { service.scanCarriers() })
-            if (!scan.optBoolean("success")) return scan.optString("message", "扫描卡片失败")
-            val cards = scan.optJSONArray("cards") ?: return "未找到可用的背屏卡片载体"
-            if (cards.length() == 0) return scan.optString("message").ifBlank { "没有找到可替换的本地背屏卡片。请先在系统背屏设置中下载或添加一张卡片，再重试。" }
-            if (cards.length() != 1) {
-                val names = (0 until cards.length()).mapNotNull { cards.optJSONObject(it)?.optString("name") }.joinToString("、")
-                return "检测到 ${cards.length()} 张兼容卡片（$names），为避免覆盖错误卡片，暂未修改任何文件。请先在系统背屏卡片管理中只保留一张可替换卡片后重试。"
+    suspend fun scan(context: Context): List<RearCard> = withContext(Dispatchers.IO) {
+        val service = requireService(context)
+        val response = JSONObject(service.scanCarriers())
+        if (!response.optBoolean("success")) error(response.optString("message", "扫描失败"))
+        val array = response.optJSONArray("cards") ?: org.json.JSONArray()
+        val cards = (0 until array.length()).mapNotNull { i ->
+            array.optJSONObject(i)?.let { item ->
+                RearCard(item.optString("cardId"), item.optString("name"), item.optString("source"),
+                    item.optString("path"), item.optString("root"), item.optLong("modifiedAt"), item.optLong("sizeBytes"))
             }
-            val cardId = cards.getJSONObject(0).getString("cardId")
-            val packageFile = RearCardPackageBuilder.build(context)
-            val backupDir = File(requireNotNull(context.getExternalFilesDir(null)), "rear-backups")
-            if (!backupDir.exists() && !backupDir.mkdirs()) return "无法创建原始卡片备份目录"
-            val backup = File(backupDir, "$cardId-original.zip")
-            val response = JSONObject(withContext(Dispatchers.IO) {
-                service.deployCarrier(cardId, packageFile.absolutePath, backup.absolutePath)
-            })
-            if (response.optBoolean("success")) "已部署背屏卡片：${response.optString("message")}（卡片 ID：$cardId）"
-            else "背屏卡片部署失败：${response.optString("message")}"
-        }.getOrElse { "背屏卡片部署失败：${it.message ?: it.javaClass.simpleName}" }
+        }
+        if (cards.isEmpty()) error(response.optString("message", "没有找到可替换的背屏资源"))
+        cards
     }
 
-    suspend fun restore(context: Context): String {
-        if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false) ||
-            Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) return "需要先启动 Shizuku 并授权，才能恢复原始卡片"
-        return runCatching {
-            val service = bindUserService(context)
-            val backupDir = File(requireNotNull(context.getExternalFilesDir(null)), "rear-backups")
-            val backups = backupDir.listFiles()?.filter { it.name.endsWith("-original.zip") }.orEmpty()
-            if (backups.size != 1) return "检测到 ${backups.size} 个备份；为避免恢复到错误卡片，请先确保只保留一个待恢复备份"
-            val backup = backups.single()
-            val cardId = backup.name.removeSuffix("-original.zip")
-            val response = JSONObject(withContext(Dispatchers.IO) { service.restoreCarrier(cardId, backup.absolutePath) })
-            if (response.optBoolean("success")) {
-                PetStateStore.setEnabled(context, false)
-                response.optString("message")
-            } else "恢复失败：${response.optString("message")}"
-        }.getOrElse { "恢复失败：${it.message ?: it.javaClass.simpleName}" }
+    suspend fun deploy(context: Context, card: RearCard): String = withContext(Dispatchers.IO) {
+        val service = requireService(context)
+        val packageFile = RearCardPackageBuilder.build(context)
+        val backupDir = File(requireNotNull(context.getExternalFilesDir(null)), "rear-backups")
+        if (!backupDir.exists() && !backupDir.mkdirs()) error("无法创建原始卡片备份目录")
+        val backup = File(backupDir, "${card.cardId}-original.zip")
+        val response = JSONObject(service.deployCarrier(card.cardId, packageFile.absolutePath, backup.absolutePath))
+        if (!response.optBoolean("success")) error(response.optString("message", "部署失败"))
+        "已替换「${card.name}」：${response.optString("message")}"
+    }
+
+    fun listBackups(context: Context): List<String> {
+        val backupDir = File(requireNotNull(context.getExternalFilesDir(null)), "rear-backups")
+        return backupDir.listFiles()?.filter { it.isFile && it.name.endsWith("-original.zip") }
+            ?.map { it.name.removeSuffix("-original.zip") }?.sorted().orEmpty()
+    }
+
+    suspend fun restore(context: Context, cardId: String): String = withContext(Dispatchers.IO) {
+        val service = requireService(context)
+        val backup = File(File(requireNotNull(context.getExternalFilesDir(null)), "rear-backups"), "$cardId-original.zip")
+        val response = JSONObject(service.restoreCarrier(cardId, backup.absolutePath))
+        if (!response.optBoolean("success")) error(response.optString("message", "恢复失败"))
+        PetStateStore.setEnabled(context, false)
+        response.optString("message")
     }
 
     suspend fun hide(context: Context): String = runCatching {
@@ -92,11 +91,17 @@ object RearProjectionController {
         "已关闭背屏萌宠状态同步；卡片仍保留在系统中，可再次开启或恢复原始卡片"
     }.getOrElse { "关闭背屏萌宠失败：${it.message ?: it.javaClass.simpleName}" }
 
+    private suspend fun requireService(context: Context): IRearShellService {
+        if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) error("Shizuku 服务未运行，请先启动 Shizuku")
+        if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) error("尚未获得 Shizuku 授权")
+        return bindUserService(context)
+    }
+
     private suspend fun bindUserService(context: Context): IRearShellService = withTimeout(15_000) {
         remoteService?.let { return@withTimeout it }
         suspendCancellableCoroutine { continuation ->
             val args = Shizuku.UserServiceArgs(ComponentName(context, RearShellUserService::class.java))
-                .daemon(false).processNameSuffix("hypercat_rear_shell").tag("hypercat-rear-shell").version(2)
+                .daemon(false).processNameSuffix("hypercat_rear_shell").tag("hypercat-rear-shell").version(3)
             val connection = object : ServiceConnection {
                 override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
                     val service = binder?.let { IRearShellService.Stub.asInterface(it) }

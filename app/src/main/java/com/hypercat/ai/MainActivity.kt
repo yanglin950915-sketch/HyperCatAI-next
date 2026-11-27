@@ -138,6 +138,7 @@ import android.webkit.URLUtil
 import com.hypercat.ai.rear.PetStateStore
 import com.hypercat.ai.rear.RearAgentInteractionDispatcher
 import com.hypercat.ai.rear.RearProjectionController
+import com.hypercat.ai.rear.RearCard
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
@@ -665,10 +666,15 @@ private fun HyperCatApp() {
     var saved by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
     var petName by remember { mutableStateOf(initialRearState.petName) }
+    var petEmoji by remember { mutableStateOf(initialRearState.petEmoji.takeIf { it in setOf("sakura", "aoi", "luna", "yuna") } ?: "sakura") }
     var petMood by remember { mutableStateOf(initialRearState.mood) }
     var petReply by remember { mutableStateOf(initialRearState.reply) }
     var rearPetEnabled by remember { mutableStateOf(initialRearState.enabled) }
     var rearProjectionStatus by remember { mutableStateOf("尚未连接背屏") }
+    var rearPickerCards by remember { mutableStateOf<List<RearCard>>(emptyList()) }
+    var rearPickerMode by remember { mutableStateOf("deploy") }
+    var showRearPicker by remember { mutableStateOf(false) }
+    var rearPickerBusy by remember { mutableStateOf(false) }
     var themeMode by remember { mutableStateOf("system") }
     var timeRefresh by remember { mutableIntStateOf(0) }
     var updateStatus by remember { mutableStateOf("尚未检查") }
@@ -700,32 +706,21 @@ private fun HyperCatApp() {
             rearPetEnabled = false
             PetStateStore.setEnabled(context, false)
             rearProjectionStatus = "正在关闭背屏萌宠…"
-            scope.launch {
-                rearProjectionStatus = withContext(Dispatchers.IO) {
-                    RearProjectionController.hide(context)
-                }
-            }
+            scope.launch { rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.hide(context) } }
             return
         }
         val host = context as? ComponentActivity
-        if (host == null) {
-            rearProjectionStatus = "无法获取应用界面上下文，请返回设置页重试"
-            return
-        }
+        if (host == null) { rearProjectionStatus = "无法获取应用界面上下文，请返回设置页重试"; return }
         RearProjectionController.requestPermission(host) { granted, message ->
-            if (!granted) {
-                rearProjectionStatus = message
-                return@requestPermission
-            }
+            if (!granted) { rearProjectionStatus = message; return@requestPermission }
             scope.launch {
-                rearProjectionStatus = "正在检测背屏并启动萌宠…"
-                val result = withContext(Dispatchers.IO) {
-                    RearProjectionController.connect(context)
-                }
-                rearProjectionStatus = result
-                val connected = result.startsWith("已部署背屏卡片")
-                rearPetEnabled = connected
-                PetStateStore.setEnabled(context, connected)
+                rearProjectionStatus = "正在扫描小米 AI 背屏资源…"
+                try {
+                    rearPickerCards = RearProjectionController.scan(context)
+                    rearPickerMode = "deploy"
+                    showRearPicker = true
+                    rearProjectionStatus = "发现 " + rearPickerCards.size + " 个可替换背屏资源，请选择目标"
+                } catch (error: Exception) { rearProjectionStatus = error.message ?: "扫描背屏资源失败"; rearPetEnabled = false }
             }
         }
     }
@@ -800,6 +795,7 @@ private fun HyperCatApp() {
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
         autoReadReplies = prefs.getBoolean("auto_read_replies", false)
         petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
+        petEmoji = (prefs.getString("pet_emoji", "sakura") ?: "sakura").let { if (it in setOf("sakura", "aoi", "luna", "yuna")) it else "sakura" }
         themeMode = prefs.getString("theme_mode", "system") ?: "system"
     }
 
@@ -838,8 +834,8 @@ private fun HyperCatApp() {
         if (isThinking) petMood = "thinking"
     }
 
-    LaunchedEffect(petName, petMood, petReply) {
-        PetStateStore.update(context, petName, "🤖", petMood, petReply)
+    LaunchedEffect(petName, petEmoji, petMood, petReply) {
+        PetStateStore.update(context, petName, petEmoji, petMood, petReply)
     }
 
     MaterialTheme(colorScheme = if (darkNow) darkColorScheme(
@@ -960,6 +956,7 @@ private fun HyperCatApp() {
                     openSettings = { page = Page.CHAT; openSettingsDrawer = true },
                     configured = saved,
                     petName = petName,
+                    petEmoji = petEmoji,
                     petMood = petMood,
                     ttsLanguage = ttsLanguage, ttsRate = ttsRate, ttsPitch = ttsPitch,
                     ttsMode = ttsMode, ttsProfileName = ttsProfileName, ttsModel = ttsModel, ttsVoice = ttsVoice,
@@ -971,16 +968,30 @@ private fun HyperCatApp() {
                         PetSettingsPage(
                             modifier = drawerModifier,
                             petName = petName,
+                            petEmoji = petEmoji,
+                            onPetEmojiChange = { value -> petEmoji = value; chatPrefs.edit().putString("pet_emoji", value).apply() },
                             petMood = petMood,
                             rearPetEnabled = rearPetEnabled,
                             rearProjectionStatus = rearProjectionStatus,
                             onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                             onRearPetRestore = {
                                 rearPetEnabled = false
-                                scope.launch {
-                                    rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.restore(context) }
+
+                                val ids = RearProjectionController.listBackups(context)
+
+                                if (ids.isEmpty()) rearProjectionStatus = "没有找到可恢复的背屏备份"
+
+                                else {
+
+                                    rearPickerCards = ids.map { RearCard(it, it, "backup", "", "备份") }
+
+                                    rearPickerMode = "restore"
+
+                                    showRearPicker = true
+
                                 }
-                            },
+
+                                },
                             onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
                             onPetNameChange = { value ->
                                 val clean = value.trim().take(16).ifBlank { "小橘" }
@@ -1003,10 +1014,22 @@ private fun HyperCatApp() {
                              onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                              onRearPetRestore = {
                                  rearPetEnabled = false
-                                 scope.launch {
-                                     rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.restore(context) }
+
+                                 val ids = RearProjectionController.listBackups(context)
+
+                                 if (ids.isEmpty()) rearProjectionStatus = "没有找到可恢复的背屏备份"
+
+                                 else {
+
+                                     rearPickerCards = ids.map { RearCard(it, it, "backup", "", "备份") }
+
+                                     rearPickerMode = "restore"
+
+                                     showRearPicker = true
+
                                  }
-                             },
+
+                                 },
                              onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
                              rearProjectionStatus = rearProjectionStatus,
                              onPetNameChange = { value ->
@@ -1070,10 +1093,22 @@ private fun HyperCatApp() {
                     onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                     onRearPetRestore = {
                         rearPetEnabled = false
-                        scope.launch {
-                            rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.restore(context) }
+
+                        val ids = RearProjectionController.listBackups(context)
+
+                        if (ids.isEmpty()) rearProjectionStatus = "没有找到可恢复的背屏备份"
+
+                        else {
+
+                            rearPickerCards = ids.map { RearCard(it, it, "backup", "", "备份") }
+
+                            rearPickerMode = "restore"
+
+                            showRearPicker = true
+
                         }
-                    },
+
+                        },
                     onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
                     rearProjectionStatus = rearProjectionStatus,
                     onPetNameChange = { value ->
@@ -1147,6 +1182,53 @@ private fun HyperCatApp() {
                 dismissButton = { TextButton(onClick = { showUpdatePrompt = false }) { Text("稍后") } }
             )
         }
+    if (showRearPicker) AlertDialog(
+        onDismissRequest = { if (!rearPickerBusy) showRearPicker = false },
+        title = { Text(if (rearPickerMode == "deploy") "选择要替换的背屏" else "选择要恢复的背屏") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text(if (rearPickerMode == "deploy") "已扫描 .ai_wallpaper/maml/ 和旧版 .ai_app。请选择一张 AI 壁纸，程序只替换其中的 rearscreen 文件，不会覆盖整个壁纸目录。" else "选择此前备份过原始资源的背屏卡片。恢复只影响所选卡片。", color = Muted, fontSize = 11.sp)
+                Spacer(Modifier.height(10.dp))
+                if (rearProjectionStatus.isNotBlank() && rearProjectionStatus != "尚未检查") {
+                    Text(rearProjectionStatus, color = if (rearPickerBusy) Cyan else Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp))
+                }
+                rearPickerCards.sortedByDescending { it.modifiedAt }.forEach { card ->
+                    Surface(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = Panel2, shape = RoundedCornerShape(12.dp)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(card.name, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(if (card.modifiedAt > 0L) "资源时间：" + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(card.modifiedAt)) else "资源时间：系统未提供", color = Muted, fontSize = 10.sp)
+                            Text("大小：" + android.text.format.Formatter.formatShortFileSize(context, card.sizeBytes) + " · " + card.root + "/" + card.path, color = Muted, fontSize = 9.sp, maxLines = 3)
+                            Text(if (rearPickerMode == "deploy") "确认后备份原资源并替换此卡片" else "确认后恢复此卡片的原始资源", color = Cyan, fontSize = 10.sp)
+                            Spacer(Modifier.height(6.dp))
+                            Button(
+                                enabled = !rearPickerBusy,
+                                onClick = {
+                                    rearPickerBusy = true
+                                    rearProjectionStatus = if (rearPickerMode == "deploy") "正在替换「${card.name}」…" else "正在恢复「${card.name}」…"
+                                    scope.launch {
+                                        try {
+                                            rearProjectionStatus = if (rearPickerMode == "deploy") RearProjectionController.deploy(context, card) else RearProjectionController.restore(context, card.cardId)
+                                            rearPetEnabled = rearPickerMode == "deploy"
+                                            PetStateStore.setEnabled(context, rearPetEnabled)
+                                            showRearPicker = false
+                                            android.widget.Toast.makeText(context, rearProjectionStatus, android.widget.Toast.LENGTH_LONG).show()
+                                        } catch (error: Exception) {
+                                            rearProjectionStatus = error.message ?: "背屏操作失败"
+                                            android.widget.Toast.makeText(context, "操作失败：$rearProjectionStatus", android.widget.Toast.LENGTH_LONG).show()
+                                        } finally { rearPickerBusy = false }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(if (rearPickerMode == "deploy") "替换这张卡片" else "恢复这张卡片") }
+                        }
+                    }
+                }
+                if (rearPickerBusy) { Spacer(Modifier.height(8.dp)); Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)); Text("正在处理所选背屏…", color = Muted, fontSize = 11.sp) } }
+            }
+        },
+        confirmButton = { TextButton(enabled = !rearPickerBusy, onClick = { showRearPicker = false }) { Text("取消") } }
+    )
+
     }
 }
 
@@ -1332,7 +1414,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @Composable
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
-    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String,
+    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String, petEmoji: String,
     petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
     ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
     showSettingsOnEnter: Boolean,
@@ -2053,9 +2135,9 @@ private fun ChatPage(
                             IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Outlined.Close, contentDescription = "关闭侧栏", tint = Muted) }
                         }
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
-                            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
-                                    CatFace(Modifier.fillMaxSize().pointerInput(petMood) { detectTapGestures(onTap = { drawerSection = "pet_settings" }, onLongPress = { onPetInteraction("pet_long_press") }) }, petMood)
+                            Row(Modifier.fillMaxWidth().clickable { drawerSection = "pet_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(104.dp).clickable { drawerSection = "pet_settings" }, contentAlignment = Alignment.Center) {
+                                    AnimeGirlAvatar(petEmoji, Modifier.fillMaxSize())
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
@@ -2306,9 +2388,64 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 }
 
 @Composable
+private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier) {
+    val palette = when (character) {
+        "aoi" -> listOf(Color(0xFF73D8F7), Color(0xFF2868B8), Color(0xFFBDEFFF))
+        "luna" -> listOf(Color(0xFFD9D9F5), Color(0xFF777BAF), Color(0xFFE8D9FF))
+        "yuna" -> listOf(Color(0xFFFF9EC5), Color(0xFFB93D82), Color(0xFFFFD4E5))
+        else -> listOf(Color(0xFFFFA4B9), Color(0xFFB94D75), Color(0xFFFFE0E8))
+    }
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w * .5f
+        val hair = Brush.verticalGradient(listOf(palette[0], palette[1]), 0f, h)
+        val skin = Brush.verticalGradient(listOf(Color(0xFFFFE6D8), Color(0xFFFFCDBD)), h * .18f, h * .72f)
+        drawCircle(Color(0xFF132B42).copy(alpha = .18f), radius = w * .49f, center = Offset(cx, h * .52f))
+        drawRoundRect(Brush.verticalGradient(listOf(Color(0xFFFAFCFF), Color(0xFF8BAFCB))), Offset(w * .24f, h * .70f), Size(w * .52f, h * .34f), androidx.compose.ui.geometry.CornerRadius(w * .18f))
+        drawOval(hair, Offset(w * .17f, h * .08f), Size(w * .66f, h * .72f))
+        drawOval(skin, Offset(w * .27f, h * .22f), Size(w * .46f, h * .48f))
+        drawOval(hair, Offset(w * .12f, h * .24f), Size(w * .22f, h * .52f))
+        drawOval(hair, Offset(w * .66f, h * .24f), Size(w * .22f, h * .52f))
+        val fringe = Path().apply {
+            moveTo(w * .22f, h * .39f)
+            quadraticTo(w * .25f, h * .06f, w * .50f, h * .17f)
+            quadraticTo(w * .75f, h * .05f, w * .79f, h * .39f)
+            quadraticTo(w * .66f, h * .30f, w * .58f, h * .39f)
+            quadraticTo(w * .50f, h * .30f, w * .42f, h * .40f)
+            quadraticTo(w * .32f, h * .30f, w * .22f, h * .39f)
+            close()
+        }
+        drawPath(fringe, hair)
+        drawOval(Color(0xFF563B58), Offset(w * .34f, h * .43f), Size(w * .10f, h * .10f))
+        drawOval(Color(0xFF563B58), Offset(w * .56f, h * .43f), Size(w * .10f, h * .10f))
+        drawCircle(Color.White, w * .018f, Offset(w * .375f, h * .455f))
+        drawCircle(Color.White, w * .018f, Offset(w * .595f, h * .455f))
+        drawOval(Color(0xFFFF9EAA).copy(alpha = .65f), Offset(w * .28f, h * .54f), Size(w * .10f, h * .045f))
+        drawOval(Color(0xFFFF9EAA).copy(alpha = .65f), Offset(w * .62f, h * .54f), Size(w * .10f, h * .045f))
+        drawLine(Color(0xFFB96C78), Offset(w * .46f, h * .59f), Offset(w * .54f, h * .59f), strokeWidth = w * .012f)
+        if (character == "aoi") {
+            drawCircle(Color(0xFFB9F4FF), w * .075f, Offset(w * .18f, h * .24f))
+            drawCircle(Color(0xFFB9F4FF), w * .075f, Offset(w * .82f, h * .24f))
+        } else if (character == "luna") {
+            val star = Path().apply { moveTo(w*.5f,h*.02f); lineTo(w*.54f,h*.10f); lineTo(w*.62f,h*.12f); lineTo(w*.54f,h*.16f); lineTo(w*.5f,h*.24f); lineTo(w*.46f,h*.16f); lineTo(w*.38f,h*.12f); lineTo(w*.46f,h*.10f); close() }
+            drawPath(star, Brush.verticalGradient(listOf(Color(0xFFFFE8A3), Color(0xFFFFC95E))))
+        } else if (character == "yuna") {
+            drawCircle(Color(0xFFFFE2A8), w * .065f, Offset(w * .18f, h * .22f))
+            drawCircle(Color(0xFFFFE2A8), w * .065f, Offset(w * .82f, h * .22f))
+        } else {
+            drawCircle(Color(0xFFFFE0A8), w * .055f, Offset(w * .20f, h * .19f))
+            drawCircle(Color(0xFFFFE0A8), w * .055f, Offset(w * .80f, h * .19f))
+        }
+    }
+}
+
+@Composable
 private fun PetSettingsPage(
     modifier: Modifier,
     petName: String,
+    petEmoji: String,
+    onPetEmojiChange: (String) -> Unit,
     petMood: String,
     rearPetEnabled: Boolean,
     rearProjectionStatus: String,
@@ -2325,8 +2462,8 @@ private fun PetSettingsPage(
         Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(76.dp).background(Panel2, CircleShape), contentAlignment = Alignment.Center) {
-                        CatFace(Modifier.fillMaxSize(), petMood)
+                    Box(Modifier.size(112.dp).clip(CircleShape).background(Panel2).clickable { onPetInteraction("pet_touch") }, contentAlignment = Alignment.Center) {
+                        AnimeGirlAvatar(petEmoji, Modifier.fillMaxSize())
                     }
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
@@ -2335,6 +2472,22 @@ private fun PetSettingsPage(
                     }
                 }
                 Spacer(Modifier.height(14.dp))
+                Text("选择二次元角色", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                    listOf("sakura" to "樱花 · 樱发少女", "aoi" to "葵 · 蓝发歌姬", "luna" to "露娜 · 银发魔法师", "yuna" to "优奈 · 粉发双马尾").chunked(2).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            row.forEach { (id, label) ->
+                                Surface(onClick = { onPetEmojiChange(id) }, color = if (petEmoji == id) Cyan.copy(alpha = .18f) else Panel2, shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(if (petEmoji == id) 1.5.dp else 0.dp, if (petEmoji == id) Cyan else Color.Transparent), modifier = Modifier.weight(1f)) {
+                                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        AnimeGirlAvatar(id, Modifier.size(58.dp))
+                                        Spacer(Modifier.width(7.dp))
+                                        Text(label, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) }, label = { Text("萌宠名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Button(onClick = { onPetNameChange(nameDraft) }, modifier = Modifier.fillMaxWidth()) { Text("保存萌宠资料") }
                 OutlinedButton(onClick = { onPetInteraction("pet_touch") }, modifier = Modifier.fillMaxWidth()) { Text("和萌宠互动") }
