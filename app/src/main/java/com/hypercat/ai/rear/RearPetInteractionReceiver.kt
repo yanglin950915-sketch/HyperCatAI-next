@@ -3,11 +3,19 @@ package com.hypercat.ai.rear
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 
-/** Receives explicit rear-widget interactions and feeds them into the same Agent pet state. */
+/** Accepts rear-widget interactions only when Android identifies REAREye as sender. */
 class RearPetInteractionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_PET_INTERACTION) return
+
+        // getSentFromUid is available from Android 14 (API 34). Fail closed on
+        // older releases rather than accepting spoofable exported broadcasts.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        val senderUid = sentFromUid
+        if (!RearCallerVerifier.isTrustedUid(context, senderUid)) return
+
         val action = intent.getStringExtra(EXTRA_ACTION).orEmpty()
         val current = PetStateStore.read(context)
         val next = when (action) {
