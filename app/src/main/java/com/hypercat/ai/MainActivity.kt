@@ -848,7 +848,7 @@ private fun HyperCatApp() {
         if (rearPetState.updatedAt > 0L) {
             petName = rearPetState.petName
             petMood = rearPetState.mood
-            val transientRearFeedback = setOf("让我想一想……", "我准备休息啦。", "我在听，你想和我聊什么？", "嘿嘿，你摸到我啦！")
+            val transientRearFeedback = setOf("让我想一想……", "我准备休息啦。", "我在听，你想和我聊什么？", "嘿嘿，你摸到我啦！", "咦？你在带我移动吗？")
             if (rearPetState.reply.isNotBlank() &&
                 rearPetState.reply != petReply &&
                 rearPetState.reply !in transientRearFeedback
