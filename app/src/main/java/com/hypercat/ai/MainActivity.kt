@@ -2581,6 +2581,66 @@ private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier, mo
         }
         drawCircle(Color.White.copy(alpha = .9f), w * .012f, p(.19f, .16f))
         drawCircle(Color.White.copy(alpha = .8f), w * .009f, p(.83f, .47f))
+
+        // Mood-specific facial expressions: cover the neutral eye/mouth details first,
+        // then draw the expression on the same anime face rather than swapping a symbol.
+        val skin = Color(0xFFFFE5DD)
+        when (mood.lowercase()) {
+            "happy" -> {
+                oval(skin, .335f, .402f, .12f, .115f)
+                oval(skin, .545f, .402f, .12f, .115f)
+                strokePath(hairDark, .014f) {
+                    moveTo(w*.345f,h*.458f); quadraticTo(w*.395f,h*.405f,w*.445f,h*.458f)
+                    moveTo(w*.555f,h*.458f); quadraticTo(w*.605f,h*.405f,w*.655f,h*.458f)
+                }
+                oval(skin, .455f, .565f, .09f, .07f)
+                strokePath(Color(0xFFB85B78), .012f) {
+                    moveTo(w*.455f,h*.585f); quadraticTo(w*.50f,h*.645f,w*.545f,h*.585f)
+                }
+                oval(Color(0xFFFF91AE).copy(alpha=.38f), .285f, .535f, .13f, .045f)
+                oval(Color(0xFFFF91AE).copy(alpha=.38f), .585f, .535f, .13f, .045f)
+            }
+            "sleepy" -> {
+                oval(skin, .335f, .402f, .12f, .115f)
+                oval(skin, .545f, .402f, .12f, .115f)
+                strokePath(hairDark, .013f) {
+                    moveTo(w*.345f,h*.445f); quadraticTo(w*.395f,h*.475f,w*.445f,h*.445f)
+                    moveTo(w*.555f,h*.445f); quadraticTo(w*.605f,h*.475f,w*.655f,h*.445f)
+                }
+                oval(skin, .465f, .565f, .07f, .055f)
+                strokePath(Color(0xFFB85B78), .008f) {
+                    moveTo(w*.475f,h*.59f); lineTo(w*.525f,h*.59f)
+                }
+            }
+            "thinking" -> {
+                oval(skin, .465f, .565f, .07f, .06f)
+                strokePath(Color(0xFFB85B78), .009f) {
+                    moveTo(w*.485f,h*.60f); quadraticTo(w*.50f,h*.565f,w*.515f,h*.60f)
+                }
+                strokePath(hairDark.copy(alpha=.9f), .009f) {
+                    moveTo(w*.35f,h*.385f); quadraticTo(w*.40f,h*.36f,w*.445f,h*.39f)
+                    moveTo(w*.56f,h*.37f); quadraticTo(w*.61f,h*.345f,w*.65f,h*.38f)
+                }
+            }
+            "sad" -> {
+                oval(skin, .465f, .565f, .07f, .055f)
+                strokePath(Color(0xFFB85B78), .009f) {
+                    moveTo(w*.46f,h*.61f); quadraticTo(w*.50f,h*.565f,w*.54f,h*.61f)
+                }
+                strokePath(hairDark.copy(alpha=.8f), .009f) {
+                    moveTo(w*.35f,h*.39f); quadraticTo(w*.40f,h*.42f,w*.445f,h*.40f)
+                    moveTo(w*.555f,h*.40f); quadraticTo(w*.60f,h*.42f,w*.65f,h*.39f)
+                }
+            }
+            "surprised" -> {
+                oval(Color.White, .36f, .395f, .09f, .13f)
+                oval(Color.White, .55f, .395f, .09f, .13f)
+                oval(iris, .385f, .425f, .045f, .085f)
+                oval(iris, .575f, .425f, .045f, .085f)
+                oval(skin, .465f, .565f, .07f, .06f)
+                oval(Color(0xFFB85B78), .482f, .575f, .036f, .045f)
+            }
+        }
     }
 }
 
