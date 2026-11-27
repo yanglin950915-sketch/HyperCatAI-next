@@ -93,6 +93,13 @@ function applyAgentState(name,avatar,moodValue,reply,bgColor){
   }
   kick();
 }
+function applyAgentJson(json){
+  try{
+    var data=typeof json==="string"?JSON.parse(json):json;
+    if(!data)return;
+    applyAgentState(data.pet_name,data.pet_emoji,data.mood,data.reply,data.background_color);
+  }catch(_){}
+}
 function syncMamlState(){
   try{
     var bridge=window.maml;
@@ -328,6 +335,7 @@ window.__debugSize=__debugSize;
 window.__setMoodIndex=__setMoodIndex;
 window.__setPetState=function(nextMood){__setMoodIndex(nextMood);};
 window.__setAgentState=applyAgentState;
+window.__setAgentJson=applyAgentJson;
 window.__DIAL_NO_ANIM=!!window.__DIAL_NO_ANIM;
 if(window.__DIAL_NO_ANIM){__fit();}
 else{__fit();lastFrame=now();kick();}
