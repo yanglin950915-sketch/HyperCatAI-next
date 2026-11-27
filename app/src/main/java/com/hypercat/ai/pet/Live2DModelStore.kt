@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
+import java.io.FileInputStream
 import java.util.zip.ZipInputStream
 
 data class Live2DModel(
@@ -36,10 +37,28 @@ object Live2DModelStore {
         val parent = File(Uri.parse(directory).path ?: return null)
         val modelFile = File(parent, entry)
         if (!parent.isDirectory || !modelFile.isFile) return null
-        return Live2DModel(directory, entry, modelFile.name.removeSuffix(".model3.json"))
+        return Live2DModel(directory, entry, displayNameFor(modelFile.name))
     }
 
     private data class ExtractionBudget(var bytes: Long = 0L, var entries: Int = 0)
+
+    private fun isModelEntry(name: String): Boolean {
+        val normalized = name.lowercase()
+        return normalized == "model3.json" || normalized.endsWith(".model3.json")
+    }
+
+    private fun displayNameFor(entryName: String): String =
+        if (entryName.equals("model3.json", ignoreCase = true)) "Live2D"
+        else entryName.removeSuffix(".model3.json")
+
+    private fun File.isZipArchive(): Boolean = runCatching {
+        FileInputStream(this).use { input ->
+            val signature = ByteArray(4)
+            input.read(signature) == 4 &&
+                signature[0] == 0x50.toByte() && signature[1] == 0x4b.toByte() &&
+                signature[2] == 0x03.toByte() && signature[3] == 0x04.toByte()
+        }
+    }.getOrDefault(false)
 
     private fun extractArchive(
         archive: File,
@@ -48,11 +67,15 @@ object Live2DModelStore {
         depth: Int
     ) {
         require(depth <= MAX_ARCHIVE_DEPTH) { "模型压缩包嵌套层级超过限制" }
-        require(archive.isFile) { "模型压缩包无效" }
-        target.mkdirs()
+        require(archive.isFile && archive.isZipArchive()) {
+            "所选文件不是有效 ZIP 压缩包，或压缩包格式不受支持"
+        }
+        check(target.mkdirs() || target.isDirectory) { "无法创建模型解压目录" }
+        var extractedEntries = 0
         ZipInputStream(archive.inputStream().buffered()).use { zip ->
             while (true) {
                 val item = zip.nextEntry ?: break
+                extractedEntries++
                 budget.entries++
                 require(budget.entries <= MAX_ARCHIVE_ENTRIES) { "模型压缩包文件数量过多" }
 
@@ -87,31 +110,27 @@ object Live2DModelStore {
                 zip.closeEntry()
             }
         }
+        require(extractedEntries > 0) { "ZIP 压缩包为空，或无法读取其中的文件" }
     }
 
     private fun expandNestedArchives(root: File, budget: ExtractionBudget) {
         var depth = 0
         while (depth < MAX_ARCHIVE_DEPTH) {
-            val archives = root.walkTopDown().filter {
-                it.isFile && it.extension.equals("zip", ignoreCase = true) &&
-                    !it.name.endsWith(".model3.json", ignoreCase = true)
-            }.toList()
+            val archives = root.walkTopDown().filter { it.isFile && it.isZipArchive() }.toList()
             if (archives.isEmpty()) return
 
-            for ((index, archive) in archives.withIndex()) {
-                val target = File(archive.parentFile, "${archive.nameWithoutExtension}_contents")
-                if (target.exists()) {
-                    archive.delete()
-                    continue
+            for (archive in archives) {
+                var target = File(archive.parentFile, "${archive.nameWithoutExtension}_contents")
+                var suffix = 1
+                while (target.exists()) {
+                    target = File(archive.parentFile, "${archive.nameWithoutExtension}_contents_${suffix++}")
                 }
                 extractArchive(archive, target, budget, depth + 1)
-                archive.delete()
+                check(archive.delete()) { "无法清理嵌套 ZIP 临时文件" }
             }
             depth++
         }
-        val remaining = root.walkTopDown().any {
-            it.isFile && it.extension.equals("zip", ignoreCase = true)
-        }
+        val remaining = root.walkTopDown().any { it.isFile && it.isZipArchive() }
         require(!remaining) { "模型压缩包嵌套层级超过限制，请先手动解压内层 ZIP" }
     }
 
@@ -147,10 +166,19 @@ object Live2DModelStore {
             expandNestedArchives(extracted, budget)
 
             val modelEntries = extracted.walkTopDown().filter {
-                it.isFile && it.name.endsWith(".model3.json", ignoreCase = true)
+                it.isFile && isModelEntry(it.name)
             }.toList()
-            val settings = modelEntries.firstOrNull()
-                ?: error("未找到 .model3.json：请确认选择的是 Cubism 4 模型 ZIP，而不是预览图、素材包或 RAR/7z 文件")
+            val settings = when (modelEntries.size) {
+                0 -> {
+                    val legacyModel = extracted.walkTopDown().any {
+                        it.isFile && it.name.endsWith(".model.json", ignoreCase = true)
+                    }
+                    if (legacyModel) error("检测到 Cubism 2 的 .model.json 模型；当前仅支持 Cubism 3/4 的 .model3.json 模型")
+                    error("未找到 Live2D 模型入口（*.model3.json 或 model3.json）。请上传包含模型入口、MOC3 和贴图的完整 ZIP；RAR/7z 暂不支持")
+                }
+                1 -> modelEntries.first()
+                else -> error("压缩包中包含 ${modelEntries.size} 个 Live2D 模型入口，请将每个模型单独打包后再导入")
+            }
             val json = org.json.JSONObject(settings.readText(Charsets.UTF_8).removePrefix("\uFEFF"))
             val references = json.optJSONObject("FileReferences")
                 ?: error("模型配置缺少 FileReferences")
@@ -170,7 +198,7 @@ object Live2DModelStore {
             val model = Live2DModel(
                 directory = Uri.fromFile(modelDir).toString().trimEnd('/') + "/",
                 entry = settings.name,
-                displayName = settings.name.removeSuffix(".model3.json")
+                displayName = displayNameFor(settings.name)
             )
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val previousDirectory = prefs.getString(KEY_DIRECTORY, null)
