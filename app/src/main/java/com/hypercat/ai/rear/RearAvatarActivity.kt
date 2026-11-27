@@ -101,12 +101,13 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             val device = android.os.Build.DEVICE.orEmpty().lowercase(Locale.ROOT)
             val is17ProMax = device == "popsicle" || model.contains("2509FPN0BC")
             val is17Pro = device == "pandora"
-            // Xiaomi 18 Pro / Pro Max: public rear-panel specs are 912x596 / 976x596.
-            // No dependable public camera-island bounding rects or device codenames found yet;
-            // reuse the matching 17-series left-camera safe-area rule until runtime cutout
-            // data is available or an 18-series device can be measured directly.
-            val is18ProMax = model.contains("18 PRO MAX")
-            val is18Pro = model.contains("18 PRO") && !is18ProMax
+            // Xiaomi 18 Pro rear panel: 912x596; 18 Pro Max: 976x596.
+            // Prefer model/codename identification, with the documented panel dimensions
+            // as a fallback for regional model strings that do not contain the marketing name.
+            val is18ProMax = model.contains("18 PRO MAX") ||
+                (width >= height && width in 960..992 && height in 580..612)
+            val is18Pro = (model.contains("18 PRO") && !is18ProMax) ||
+                (width >= height && width in 896..928 && height in 580..612)
             val isKnownRear = is17ProMax || is17Pro || is18ProMax || is18Pro
             val landscape = width >= height
 
