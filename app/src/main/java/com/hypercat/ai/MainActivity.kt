@@ -2053,23 +2053,21 @@ private fun ChatPage(
                 if (drawerSection == "avatar_settings") {
                     Column(Modifier.fillMaxSize()) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { drawerSection = "pet" }) { Text("‹ 返回个人页", color = MainText) }
-                            Spacer(Modifier.weight(1f)); Text("虚拟形象设置", color = MainText, fontWeight = FontWeight.Bold)
+                            Text("虚拟形象设置", color = MainText, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
                         }
                         avatarSettingsContent(Modifier.weight(1f).fillMaxWidth())
                     }
                 } else if (drawerSection == "settings") {
                     Column(Modifier.fillMaxSize()) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { drawerSection = "pet" }) { Text("‹ 返回个人页", color = MainText) }
-                            Spacer(Modifier.weight(1f)); Text("设置", color = MainText, fontWeight = FontWeight.Bold)
+                            Text("设置", color = MainText, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
                         }
                         settingsContent(Modifier.weight(1f).fillMaxWidth())
                     }
                 } else {
                     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) { Text("我的虚拟小伙伴", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
+                            Column(Modifier.weight(1f)) { Text("我的AI小伙伴", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
                         }
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().clickable { drawerSection = "avatar_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2363,7 +2361,7 @@ private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
             key(model.id) {
                 Live2DView(
                     model = model,
-                    modifier = Modifier.size(128.dp).align(Alignment.Center).graphicsLayer { alpha = 0.01f },
+                    modifier = Modifier.size(128.dp).align(Alignment.Center),
                     halfBody = true,
                     onPortrait = { dataUrl ->
                         runCatching {
