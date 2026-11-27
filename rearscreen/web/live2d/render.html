@@ -55,7 +55,7 @@
   }
   function fail(msg) {
     console.error(msg);
-    if (NATIVE && NATIVE.onError) NATIVE.onError(String(msg));
+    if (NATIVE && NATIVE.onError) NATIVE.onError(String(msg));\n    try { if (window.parent && window.parent !== window && window.parent.__onRearLive2DError) window.parent.__onRearLive2DError(String(msg)); } catch (_) {}
   }
 
   // 由 PIXI 的 ticker 驱动，但所有可视状态都由原生侧写入，本页只做平滑。
