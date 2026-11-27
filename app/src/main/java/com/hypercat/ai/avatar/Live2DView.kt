@@ -109,8 +109,8 @@ fun Live2DView(
     LaunchedEffect(model.directory, model.entry, halfBody) {
         val dir = android.net.Uri.encode(model.directory, "/:")
         val entry = android.net.Uri.encode(model.entry, "/")
-        val offsetX = if (model.id == "rice") "-0.20" else "0"
-        webView.loadUrl("file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=${if (halfBody) 1 else 0}&ratio=0.55&fps=30&offsetX=$offsetX&portrait=1")
+        // Let the renderer center Rice by its actual model bounds; the previous manual -20% shift pushed it off-center.\n        val offsetX = "0"
+        webView.loadUrl("file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=${if (halfBody) 1 else 0}&ratio=0.55&fps=60&offsetX=$offsetX&portrait=1")
     }
     LaunchedEffect(mood, state.ready) {
         if (state.ready) controller.setEmotion(
