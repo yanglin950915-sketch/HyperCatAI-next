@@ -33,6 +33,8 @@ function applyAgentState(name,avatar,mood,reply,bgColor){
   if(mood&&mood!=="undefined")rearState.mood=String(mood);
   if(reply&&reply!=="undefined")rearState.reply=String(reply);
   if(bgColor&&/^#[0-9a-fA-F]{6}$/.test(String(bgColor)))rearState.backgroundColor=String(bgColor);
+  document.documentElement.style.backgroundColor=rearState.backgroundColor;
+  document.body.style.backgroundColor=rearState.backgroundColor;
   if(live2dFrame&&live2dFrame.contentWindow)live2dFrame.contentWindow.postMessage({type:"hypercat-agent-state",state:rearState},"*");
 }
 function applyAgentJson(json){try{var d=typeof json==="string"?JSON.parse(json):json;if(d)applyAgentState(d.avatar_name,d.avatar_id,d.mood,d.reply,d.background_color);}catch(e){}}

@@ -984,7 +984,7 @@ private fun HyperCatApp() {
             ) {
                 val interactionText = rearAvatarState.userText.trim()
                 messages.add(ChatLine(
-                    interactionText.ifBlank { "（背屏互动）用户通过背屏和虚拟形象进行了互动。" },
+                    interactionText.ifBlank { "（互动）用户通过背屏和虚拟形象进行了互动。" },
                     true
                 ))
                 messages.add(ChatLine(rearAvatarState.reply, false))
@@ -2019,7 +2019,8 @@ private fun ChatPage(
                 TextButton(onClick = { selectedMessageIndices = emptySet() }) { Text("取消") }
             }
         }
-        LazyColumn(state = chatListState, modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Bg).padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+        LazyColumn(state = chatListState, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)).background(Bg).padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("开始与 Agent 对话", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
@@ -2136,6 +2137,24 @@ private fun ChatPage(
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Cyan)
                     Spacer(Modifier.width(9.dp))
                     Text("正在思考…", color = Muted, fontSize = 12.sp)
+                }
+            }
+        }
+        }
+        if (chatListState.canScrollForward && messages.isNotEmpty()) {
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
+                    .size(42.dp).clickable {
+                        userMovedChat = false
+                        speechScope.launch { chatListState.animateScrollToItem(messages.lastIndex) }
+                    },
+                color = if (appDarkState) Color(0xFF30343A) else Color.White,
+                shape = CircleShape,
+                shadowElevation = 5.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("↓", color = MainText, fontSize = 23.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }

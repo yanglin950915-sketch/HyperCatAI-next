@@ -11,28 +11,35 @@
   canvas { display:block; background:transparent; }
   #render-error { display:none; position:fixed; inset:0; z-index:99; box-sizing:border-box; padding:24px; color:#eaf4ff; background:#080d18; font:14px/1.6 system-ui,sans-serif; align-items:center; justify-content:center; text-align:center; overflow-wrap:anywhere; }
   #render-error strong { display:block; margin-bottom:10px; color:#ffb8c2; font-size:17px; }
-  #rear-status { display:none; position:fixed; z-index:40; top:max(10px,env(safe-area-inset-top)); left:33%; right:12px; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:stretch; gap:8px; pointer-events:none; font:13px/1.25 system-ui,sans-serif; }
-  #rear-status.active { display:grid; }
-  .status-chip { box-sizing:border-box; color:#fff; background:rgba(12,18,30,.90); border:1px solid rgba(255,255,255,.30); border-radius:20px; padding:10px 8px; min-width:0; max-width:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:12px/1.25 system-ui,sans-serif; text-align:center; }
-  #status-track, #media-controls { grid-column:1 / -1; }
-  #media-controls { display:flex; align-items:stretch; justify-content:space-between; gap:8px; width:100%; pointer-events:auto; }
-  #media-controls button { flex:1 1 0; color:#fff; background:rgba(24,42,65,.98); border:1px solid rgba(255,255,255,.36); border-radius:20px; min-width:0; min-height:46px; padding:10px 8px; font:13px system-ui,sans-serif; box-shadow:0 2px 8px rgba(0,0,0,.28); }
-  #music-lyrics { display:none; position:fixed; z-index:35; left:33%; right:12px; bottom:5%; padding:10px 14px; border-radius:15px; color:#fff; background:rgba(10,15,25,.86); border:1px solid rgba(255,255,255,.26); text-align:center; font:15px/1.5 system-ui,sans-serif; text-shadow:0 1px 3px #000; pointer-events:none; }
+  /* Keep the top camera island clear; place status and media controls in side rails. */
+  #rear-status { display:none; position:fixed; z-index:40; inset:22% 12px 18%; pointer-events:none; font:13px/1.25 system-ui,sans-serif; }
+  #rear-status.active { display:block; }
+  .status-rail { position:absolute; top:0; display:flex; flex-direction:column; gap:10px; width:19%; max-width:190px; }
+  #status-left { left:0; }
+  #status-right { right:0; }
+  .status-chip { box-sizing:border-box; display:block; width:100%; color:#fff; background:rgba(12,18,30,.90); border:1px solid rgba(255,255,255,.34); border-radius:16px; padding:12px 9px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:13px/1.25 system-ui,sans-serif; text-align:center; box-shadow:0 2px 10px rgba(0,0,0,.18); }
+  #media-controls { display:flex; flex-direction:column; align-items:stretch; gap:9px; width:100%; pointer-events:auto; }
+  #media-controls button { width:100%; color:#fff; background:rgba(24,42,65,.98); border:1px solid rgba(255,255,255,.42); border-radius:16px; min-width:0; min-height:48px; padding:11px 7px; font:13px system-ui,sans-serif; box-shadow:0 2px 8px rgba(0,0,0,.30); }
+  #music-lyrics { display:none; position:fixed; z-index:35; left:23%; right:23%; bottom:4%; padding:9px 12px; border-radius:15px; color:#fff; background:rgba(10,15,25,.86); border:1px solid rgba(255,255,255,.26); text-align:center; font:14px/1.45 system-ui,sans-serif; text-shadow:0 1px 3px #000; pointer-events:none; }
   </style>
 </head>
 <body>
 <div id="stage"></div>
 <div id="render-error" role="alert"><div><strong>虚拟形象加载失败</strong><span id="render-error-detail">正在检查渲染资源…</span></div></div>
 <div id="rear-status" aria-label="设备状态">
-  <span id="status-weather" class="status-chip">天气获取中</span>
-  <span id="status-steps" class="status-chip">步数读取中</span>
-  <span id="status-battery" class="status-chip">电量读取中</span>
-  <span id="status-track" class="status-chip">暂无音乐</span>
-  <div id="media-controls">
-    <button type="button" data-action="media_previous" aria-label="上一首">上一首</button>
-    <button type="button" id="media-toggle" data-action="media_toggle" aria-label="播放或暂停">播放</button>
-    <button type="button" data-action="media_next" aria-label="下一首">下一首</button>
-    <button type="button" data-action="music_settings" aria-label="音乐同步设置">同步</button>
+  <div id="status-left" class="status-rail">
+    <span id="status-weather" class="status-chip">天气获取中</span>
+    <span id="status-steps" class="status-chip">步数读取中</span>
+  </div>
+  <div id="status-right" class="status-rail">
+    <span id="status-battery" class="status-chip">电量读取中</span>
+    <span id="status-track" class="status-chip">暂无音乐</span>
+    <div id="media-controls">
+      <button type="button" data-action="media_previous" aria-label="上一首">上一首</button>
+      <button type="button" id="media-toggle" data-action="media_toggle" aria-label="播放或暂停">播放</button>
+      <button type="button" data-action="media_next" aria-label="下一首">下一首</button>
+      <button type="button" data-action="music_settings" aria-label="音乐同步设置">同步</button>
+    </div>
   </div>
 </div>
 <div id="music-lyrics" aria-live="polite"></div>
