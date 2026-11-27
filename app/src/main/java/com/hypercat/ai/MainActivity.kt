@@ -841,7 +841,7 @@ private fun HyperCatApp() {
     }
 
     LaunchedEffect(petName, petEmoji, petMood, petReply) {
-        PetStateStore.update(context, petName, petEmoji, petMood, petReply)
+        PetStateStore.update(context, petName, petEmoji, petMood, petReply, userText = rearPetState.userText)
     }
 
     MaterialTheme(colorScheme = if (darkNow) darkColorScheme(
