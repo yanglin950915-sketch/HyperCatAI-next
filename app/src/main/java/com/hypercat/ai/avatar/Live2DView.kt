@@ -104,7 +104,7 @@ fun Live2DView(
     LaunchedEffect(model.directory, model.entry, halfBody) {
         val dir = android.net.Uri.encode(model.directory, "/:")
         val entry = android.net.Uri.encode(model.entry, "/")
-        webView.loadUrl("file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=${if (halfBody) 1 else 0}&ratio=0.55&fps=24")
+        webView.loadUrl("file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=${if (halfBody) 1 else 0}&ratio=0.55&fps=45")
     }
     LaunchedEffect(mood, state.ready) {
         if (state.ready) controller.setEmotion(
