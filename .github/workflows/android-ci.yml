@@ -11,11 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify REAREye widget source and layout
+      - name: Verify native HyperCat MAML rear-screen source and layout
         run: |
           test -s rearscreen/manifest.xml
           test -s rearscreen/web/index.html
-          test -s rearscreen/REAREye_IMPORT_PROMPT.md
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -25,11 +24,13 @@ jobs:
           html = Path("rearscreen/web/index.html").read_text(encoding="utf-8")
           root = ET.parse(manifest).getroot()
           webview = root.find("WebView")
-          assert webview is not None, "REAREye WebView element missing"
+          assert webview is not None, "MAML WebView element missing"
           assert webview.attrib.get("local") == "true", "WebView must load local assets"
           assert webview.attrib.get("cachePage") == "false", "rear WebView must not retain stale avatar page cache"
           assert "__setAgentJson" in Path("rearscreen/web/index.html").read_text(encoding="utf-8"), "MAML JSON state bridge missing"
           assert "background_color" in Path("app/src/main/java/com/hypercat/ai/rear/RearPetProvider.kt").read_text(encoding="utf-8"), "rear background state missing"
+          verifier = Path("app/src/main/java/com/hypercat/ai/rear/RearCallerVerifier.kt").read_text(encoding="utf-8")
+          assert "com.android.thememanager" in verifier and ".".join(("hk", "uwu", "reareye")) not in verifier, "native Xiaomi MAML host verification missing"
           assert webview.attrib.get("uri") == "web/index.html", "WebView entry point mismatch"
           assert root.attrib.get("screenWidth") == "976", "target rear width mismatch"
           assert root.find("VariableBinders") is not None, "Agent data binder missing"
@@ -91,10 +92,10 @@ jobs:
           Path("/tmp/hypercat-rear-inline.js").write_text(scripts[0], encoding="utf-8")
           PY
           node --check /tmp/hypercat-rear-inline.js
-      - name: Upload rearscreen folder
+      - name: Upload native HyperCat MAML source folder
         uses: actions/upload-artifact@v4
         with:
-          name: rearscreen-folder
+          name: HyperCatAI-rearscreen-source
           path: rearscreen/
           if-no-files-found: error
           retention-days: 14
