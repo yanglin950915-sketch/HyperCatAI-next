@@ -20,8 +20,8 @@ android {
         applicationId = "com.hypercat.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 41
-        versionName = "0.9.22"
+        versionCode = 42
+        versionName = "0.9.23"
     }
     signingConfigs {
         create("stable") {
@@ -41,6 +41,7 @@ android {
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
+    sourceSets.getByName("main").assets.srcDir("../rearscreen")
     buildFeatures { compose = true; aidl = false }
 }
 dependencies {
