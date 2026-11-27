@@ -201,7 +201,8 @@ function draw(t){
   ctx.fillText(petName,LAYOUT.HEADER.x,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
   ctx.fillStyle="#73dfff";ctx.font=getFont("normal",14);ctx.textAlign="right";
   ctx.fillText((moods[mood]||moods[0]).name,LAYOUT.HEADER.x+LAYOUT.HEADER.w,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
-  drawFace(t);\n  ctx.save();ctx.textAlign="center";ctx.textBaseline="middle";ctx.font="112px system-ui,sans-serif";ctx.fillText(petEmoji,LAYOUT.FACE.x+LAYOUT.FACE.w/2,LAYOUT.FACE.y+LAYOUT.FACE.h*.53);ctx.restore();
+  drawFace(t);
+  ctx.save();ctx.textAlign="center";ctx.textBaseline="middle";ctx.font="112px system-ui,sans-serif";ctx.fillText(petEmoji,LAYOUT.FACE.x+LAYOUT.FACE.w/2,LAYOUT.FACE.y+LAYOUT.FACE.h*.53);ctx.restore();
   ctx.fillStyle="#31566b";ctx.fillRect(LAYOUT.REPLY.x,LAYOUT.REPLY.y,LAYOUT.REPLY.w,LAYOUT.REPLY_RULE_HEIGHT);
   ctx.fillStyle="#a8d7e8";ctx.font=getFont("normal",14);ctx.textAlign="left";ctx.textBaseline="top";
   var replyText=String(agentReply||"").replace(/\s+/g," "),replyLines=[],current="";
