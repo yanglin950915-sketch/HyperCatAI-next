@@ -50,8 +50,8 @@
   var VIEW_RATIO = parseFloat(params.get('ratio') || '0.78');
   // The Xiaomi rear camera occupies the top-centre area. Keep the entire model
   // inside the remaining safe viewport, then centre it in that usable rectangle.
-  var SAFE_TOP_RATIO = parseFloat(params.get('safeTop') || '0.14');
-  if (!isFinite(SAFE_TOP_RATIO)) SAFE_TOP_RATIO = 0.14;
+  var SAFE_TOP_RATIO = parseFloat(params.get('safeTop') || '0.18');
+  if (!isFinite(SAFE_TOP_RATIO)) SAFE_TOP_RATIO = 0.18;
   SAFE_TOP_RATIO = Math.max(0.08, Math.min(0.24, SAFE_TOP_RATIO));
   var VIEW_OFFSET_X = 0;
   var PORTRAIT_CAPTURED = false;
@@ -506,7 +506,6 @@
     app.renderer.resize(vp.w, vp.h);
     applyCanvasSize(vp.w, vp.h);
     layout();
-    layoutLive2DInterface();
   }
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', function () { setTimeout(onResize, 250); });
@@ -581,15 +580,12 @@
   // MAML lifecycle and Agent commands now execute in this same WebView.
   // This replaces the old outer-page/inner-iframe bridge.
   function applyAgentState(name, avatar, mood, reply) {
-    if (name && name !== 'undefined') uiState.name = String(name).slice(0, 18);
-    if (reply && reply !== 'undefined') uiState.reply = String(reply).slice(0, 120);
-    if (mood && mood !== 'undefined') {
-      var key = String(mood).toLowerCase();
-      var labels = {normal:'待机中',idle:'待机中',happy:'很开心',thinking:'正在思考',curious:'好奇中',sleepy:'休息中',sad:'有点难过',surprised:'有点惊讶'};
-      uiState.mood = labels[key] || String(mood).slice(0, 12);
-      var expressions = {happy:'happy',thinking:'thinking',curious:'curious',sleepy:'sleepy',sad:'sad',surprised:'surprised'};
-      if (expressions[key] && window.__l2d) window.__l2d.setEmotion(expressions[key]);
-    }
+    // The renderer no longer draws the legacy title/status/reply overlay.
+    // Keep only the Agent-to-Live2D expression bridge.
+    if (!mood || mood === 'undefined') return;
+    var key = String(mood).toLowerCase();
+    var expressions = {happy:'happy',thinking:'thinking',curious:'curious',sleepy:'sleepy',sad:'sad',surprised:'surprised'};
+    if (expressions[key] && window.__l2d) window.__l2d.setEmotion(expressions[key]);
   }
   window.__setAgentState = applyAgentState;
   window.__setAgentJson = function (value) {
