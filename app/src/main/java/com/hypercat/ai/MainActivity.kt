@@ -772,6 +772,16 @@ private fun HyperCatApp() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val activityRecognitionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= 29 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED &&
+            !context.getSharedPreferences("hypercat_avatar_steps", Context.MODE_PRIVATE).getBoolean("permission_asked", false)
+        ) {
+            context.getSharedPreferences("hypercat_avatar_steps", Context.MODE_PRIVATE).edit().putBoolean("permission_asked", true).apply()
+            activityRecognitionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+        }
+    }
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
