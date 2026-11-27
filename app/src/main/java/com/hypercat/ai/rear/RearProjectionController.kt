@@ -16,7 +16,7 @@ import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-data class RearCard(val cardId: String, val name: String, val source: String, val path: String, val root: String)
+data class RearCard(val cardId: String, val name: String, val source: String, val path: String, val root: String, val modifiedAt: Long = 0L, val sizeBytes: Long = 0L)
 
 /** Shizuku-backed, user-selected deployment of a bundled MAML pet card. */
 object RearProjectionController {
@@ -53,7 +53,7 @@ object RearProjectionController {
         val cards = (0 until array.length()).mapNotNull { i ->
             array.optJSONObject(i)?.let { item ->
                 RearCard(item.optString("cardId"), item.optString("name"), item.optString("source"),
-                    item.optString("path"), item.optString("root"))
+                    item.optString("path"), item.optString("root"), item.optLong("modifiedAt"), item.optLong("sizeBytes"))
             }
         }
         if (cards.isEmpty()) error(response.optString("message", "没有找到可替换的背屏资源"))
