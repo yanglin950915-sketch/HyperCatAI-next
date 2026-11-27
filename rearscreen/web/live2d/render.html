@@ -214,6 +214,7 @@
       ? model.internalModel.coreModel.getDrawableCount() : '?'));
 
     if (NATIVE && NATIVE.onReady) NATIVE.onReady();
+    try { if (window.parent && window.parent.__onRearLive2DReady) window.parent.__onRearLive2DReady(); } catch (_) {}
     capturePortraitWhenReady();
   }
 
@@ -543,6 +544,20 @@
     ui.mood.text=uiState.mood;
     ui.reply.text=uiState.reply;
   }
+  window.addEventListener('message',function(event){
+    var data=event.data;
+    if(!data||data.type!=='hypercat-agent-state'||!data.state)return;
+    var st=data.state;
+    if(st.name)uiState.name=String(st.name).slice(0,18);
+    if(st.reply)uiState.reply=String(st.reply).slice(0,120);
+    if(st.mood){
+      var key=String(st.mood).toLowerCase();
+      var map={normal:'待机中',idle:'待机中',happy:'很开心',thinking:'正在思考',curious:'好奇中',sleepy:'休息中',sad:'有点难过',surprised:'有点惊讶'};
+      uiState.mood=map[key]||String(st.mood).slice(0,12);
+      var ex={happy:'happy',thinking:'thinking',curious:'curious',sleepy:'sleepy',sad:'sad',surprised:'surprised'};
+      if(ex[key]&&window.__l2d)window.__l2d.setEmotion(ex[key]);
+    }
+  });
   function syncMamlInterface() {
     var now=performance.now();
     if(now-lastMamlSync<450)return;
