@@ -32,6 +32,7 @@ fun Live2DView(
     mood: String = "normal",
     speaking: Boolean = false,
     halfBody: Boolean = true,
+    safeTopRatio: Float = 0.14f,
     showInterface: Boolean = false,
     onGesture: (String, String) -> Unit = { _, _ -> },
     onState: (Live2DRenderState) -> Unit = {},
@@ -109,14 +110,14 @@ fun Live2DView(
             webView.destroy()
         }
     }
-    LaunchedEffect(model.directory, model.entry, halfBody) {
+    LaunchedEffect(model.directory, model.entry, halfBody, safeTopRatio) {
         state = Live2DRenderState()
         val dir = android.net.Uri.encode(model.directory, "/:")
         val entry = android.net.Uri.encode(model.entry, "/")
         // Clear the previous WebView surface before loading the next model. Keeping the old
         // composited frame visible during navigation caused motion trails on fast swaps.
         val riceOffset = if (model.id == "rice") "-0.035" else "0"
-        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=" + riceOffset
+        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&safeTop=${safeTopRatio.coerceIn(0.08f, 0.24f)}&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=" + riceOffset
         webView.stopLoading()
         webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         webView.loadUrl("about:blank")
