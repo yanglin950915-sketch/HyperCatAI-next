@@ -180,11 +180,15 @@ private fun applyPlatformNightMode(context: Context, mode: String) {
         }
         else -> android.app.UiModeManager.MODE_NIGHT_AUTO
     }
-    // Avoid needlessly re-applying the same global mode on every cold start.
-    // On first install Android is already in AUTO; changing it during Activity
-    // creation can cause a one-frame resource/theme transition behind the splash.
-    if (manager.applicationNightMode != targetMode) {
+    // UiModeManager.getApplicationNightMode is not available on all supported
+    // compile SDK surfaces. Persist the last mode we applied instead, avoiding a
+    // redundant global configuration change on every subsequent cold start.
+    val prefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+    val appliedKey = "platform_night_mode_applied"
+    val appliedMode = prefs.getInt(appliedKey, Int.MIN_VALUE)
+    if (appliedMode != targetMode) {
         manager.setApplicationNightMode(targetMode)
+        prefs.edit().putInt(appliedKey, targetMode).apply()
     }
 }
 
