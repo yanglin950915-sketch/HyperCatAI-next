@@ -971,10 +971,22 @@ private fun HyperCatApp() {
                             onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                             onRearPetRestore = {
                                 rearPetEnabled = false
-                                scope.launch {
-                                    rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.restore(context) }
+
+                                val ids = RearProjectionController.listBackups(context)
+
+                                if (ids.isEmpty()) rearProjectionStatus = "没有找到可恢复的背屏备份"
+
+                                else {
+
+                                    rearPickerCards = ids.map { RearCard(it, it, "backup", "", "备份") }
+
+                                    rearPickerMode = "restore"
+
+                                    showRearPicker = true
+
                                 }
-                            },
+
+                                },
                             onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
                             onPetNameChange = { value ->
                                 val clean = value.trim().take(16).ifBlank { "小橘" }
@@ -997,10 +1009,22 @@ private fun HyperCatApp() {
                              onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                              onRearPetRestore = {
                                  rearPetEnabled = false
-                                 scope.launch {
-                                     rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.restore(context) }
+
+                                 val ids = RearProjectionController.listBackups(context)
+
+                                 if (ids.isEmpty()) rearProjectionStatus = "没有找到可恢复的背屏备份"
+
+                                 else {
+
+                                     rearPickerCards = ids.map { RearCard(it, it, "backup", "", "备份") }
+
+                                     rearPickerMode = "restore"
+
+                                     showRearPicker = true
+
                                  }
-                             },
+
+                                 },
                              onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
                              rearProjectionStatus = rearProjectionStatus,
                              onPetNameChange = { value ->
@@ -1064,10 +1088,22 @@ private fun HyperCatApp() {
                     onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                     onRearPetRestore = {
                         rearPetEnabled = false
-                        scope.launch {
-                            rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.restore(context) }
+
+                        val ids = RearProjectionController.listBackups(context)
+
+                        if (ids.isEmpty()) rearProjectionStatus = "没有找到可恢复的背屏备份"
+
+                        else {
+
+                            rearPickerCards = ids.map { RearCard(it, it, "backup", "", "备份") }
+
+                            rearPickerMode = "restore"
+
+                            showRearPicker = true
+
                         }
-                    },
+
+                        },
                     onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
                     rearProjectionStatus = rearProjectionStatus,
                     onPetNameChange = { value ->
