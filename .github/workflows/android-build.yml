@@ -61,7 +61,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: HyperCatAI-v0.9.39-debug
-          path: HyperCatAI-v0.9.38-debug.apk
+          path: HyperCatAI-v0.9.39-debug.apk
           if-no-files-found: error
           retention-days: 30
       - name: Upload REAREye HTML source artifact
