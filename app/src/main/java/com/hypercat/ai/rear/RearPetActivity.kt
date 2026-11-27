@@ -6,26 +6,21 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
+import android.webkit.JavascriptInterface
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,21 +28,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import java.util.Locale
 
-/** Rear display UI: character, reply bubble, touch actions and voice conversation. */
+/** Direct rear-display host. Reuses the same offline anime renderer as the REAREye MAML card. */
 class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var listening by mutableStateOf(false)
     private var lastSpokenReply = ""
     private var pendingPermission = false
+    private var rearWebView: WebView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,61 +51,42 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         tts = TextToSpeech(this, this)
         setContent {
             val pet by PetStateStore.state.collectAsState()
-            Box(Modifier.fillMaxSize().background(Color(0xFF090D16)), contentAlignment = Alignment.Center) {
-                Column(
-                    Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+            Box(Modifier.fillMaxSize().background(Color(0xFF05070D))) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { context ->
+                        WebView(context).apply {
+                            setBackgroundColor(android.graphics.Color.BLACK)
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.allowFileAccess = true
+                            settings.allowContentAccess = true
+                            settings.cacheMode = WebSettings.LOAD_NO_CACHE
+                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                            addJavascriptInterface(RearMamlBridge(this@RearPetActivity), "maml")
+                            webViewClient = object : WebViewClient() {
+                                override fun onPageFinished(view: WebView, url: String?) {
+                                    super.onPageFinished(view, url)
+                                    applyPetState(view, pet.petName, pet.petEmoji, pet.mood, pet.reply)
+                                }
+                            }
+                            rearWebView = this
+                            loadUrl("file:///android_asset/web/index.html")
+                        }
+                    },
+                    update = { view ->
+                        applyPetState(view, pet.petName, pet.petEmoji, pet.mood, pet.reply)
+                    }
+                )
+                Button(
+                    onClick = { startVoiceInput() },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2878F0))
                 ) {
-                    Text("HYPERCAT AI", color = Color(0xFF9BAAC0), fontSize = 10.sp, letterSpacing = 2.sp)
-                    Surface(Modifier.padding(top = 8.dp).size(172.dp), shape = CircleShape, color = Color(0xFF17243A)) {
-                        Box(contentAlignment = Alignment.Center) { Text(pet.petEmoji.ifBlank { "🌸" }, fontSize = 100.sp) }
-                    }
-                    Text(pet.petName, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-                    Surface(
-                        Modifier.fillMaxWidth().padding(top = 12.dp),
-                        shape = RoundedCornerShape(18.dp),
-                        color = Color(0xFF17243A)
-                    ) {
-                        Text(
-                            pet.reply.ifBlank { "你好！和我说说话吧。" },
-                            color = Color(0xFFEAF1FB),
-                            fontSize = 15.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                        )
-                    }
-                    Text(if (listening) "正在聆听…" else "轻触角色互动 · 长按开始对话", color = Color(0xFF8996AA), fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
-                    Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Button(
-                            onClick = { startVoiceInput() },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2878F0))
-                        ) { Text(if (listening) "聆听中…" else "🎙 说话", color = Color.White) }
-                        Button(
-                            onClick = { RearAgentInteractionDispatcher.enqueue(this@RearPetActivity, "pet_thinking") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263449))
-                        ) { Text("思考", color = Color.White) }
-                        Button(
-                            onClick = { RearAgentInteractionDispatcher.enqueue(this@RearPetActivity, "pet_rest") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263449))
-                        ) { Text("休息", color = Color.White) }
-                    }
-                    // Tap and long-press are kept separate from the action buttons.
-                    Box(Modifier.fillMaxWidth().weight(1f).pointerInput(pet.mood, pet.reply) {
-                        detectTapGestures(
-                            onTap = { RearAgentInteractionDispatcher.enqueue(this@RearPetActivity, "pet_touch") },
-                            onLongPress = { RearAgentInteractionDispatcher.enqueue(this@RearPetActivity, "pet_long_press") }
-                        )
-                    })
+                    Text(if (listening) "正在聆听…" else "🎙 说话", color = Color.White, fontSize = 13.sp)
                 }
             }
-            androidx.compose.runtime.LaunchedEffect(pet.updatedAt, pet.reply) {
+            LaunchedEffect(pet.updatedAt, pet.reply) {
                 val reply = pet.reply.trim()
                 if (reply.isNotBlank() && reply != lastSpokenReply &&
                     reply != "让我想一想……" && reply != "我准备休息啦。" &&
@@ -119,6 +94,40 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 ) {
                     lastSpokenReply = reply
                     speak(reply)
+                }
+            }
+        }
+    }
+
+    private fun applyPetState(view: WebView, name: String, avatar: String, mood: String, reply: String) {
+        val script = "window.__setAgentState && window.__setAgentState(" +
+            "${org.json.JSONObject.quote(name)}," +
+            "${org.json.JSONObject.quote(avatar)}," +
+            "${org.json.JSONObject.quote(mood)}," +
+            "${org.json.JSONObject.quote(reply)});"
+        view.evaluateJavascript(script, null)
+    }
+
+    private class RearMamlBridge(private val activity: RearPetActivity) {
+        @JavascriptInterface
+        fun getStringByName(name: String): String {
+            val state = PetStateStore.read(activity.applicationContext)
+            return when (name) {
+                "petName" -> state.petName
+                "petEmoji" -> state.petEmoji
+                "mood" -> state.mood
+                "reply" -> state.reply
+                "enabled" -> state.enabled.toString()
+                "updatedAt" -> state.updatedAt.toString()
+                else -> ""
+            }
+        }
+
+        @JavascriptInterface
+        fun doAction(action: String) {
+            activity.runOnUiThread {
+                if (action in setOf("pet_touch", "pet_happy", "pet_long_press", "pet_thinking", "pet_rest")) {
+                    RearAgentInteractionDispatcher.enqueue(activity, action)
                 }
             }
         }
@@ -135,7 +144,8 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private fun launchRecognizer() {
         if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
-            PetStateStore.update(this, PetStateStore.read(this).petName, PetStateStore.read(this).petEmoji, "sad", "当前系统没有可用的语音识别服务。")
+            val current = PetStateStore.read(this)
+            PetStateStore.update(this, current.petName, current.petEmoji, "sad", "当前系统没有可用的语音识别服务。")
             return
         }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -147,7 +157,8 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         listening = true
         runCatching { startActivityForResult(intent, REQUEST_SPEECH) }.onFailure {
             listening = false
-            PetStateStore.update(this, PetStateStore.read(this).petName, PetStateStore.read(this).petEmoji, "sad", "无法启动语音识别，请检查系统语音服务。")
+            val current = PetStateStore.read(this)
+            PetStateStore.update(this, current.petName, current.petEmoji, "sad", "无法启动语音识别，请检查系统语音服务。")
         }
     }
 
@@ -192,6 +203,13 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         if (activeActivity === this) activeActivity = null
+        rearWebView?.apply {
+            stopLoading()
+            removeJavascriptInterface("maml")
+            loadUrl("about:blank")
+            destroy()
+        }
+        rearWebView = null
         tts?.stop()
         tts?.shutdown()
         tts = null
