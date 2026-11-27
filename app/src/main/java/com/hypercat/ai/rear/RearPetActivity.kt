@@ -34,9 +34,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import java.util.Locale
 import android.speech.tts.UtteranceProgressListener
-import com.hypercat.ai.pet.Live2DModelStore
-import com.hypercat.ai.pet.Live2DView
-import com.hypercat.ai.pet.Live2DControllerHub
+import com.hypercat.ai.avatar.Live2DModelStore
+import com.hypercat.ai.avatar.Live2DView
+import com.hypercat.ai.avatar.Live2DControllerHub
 
 /** Direct rear-display host. Uses the same Live2D renderer and Agent state as the main screen. */
 class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
