@@ -101,7 +101,10 @@ jobs:
               if forbidden.lower() in body.lower():
                   line = next((i for i, value in enumerate(body.splitlines(), 1) if forbidden.lower() in value.lower()), 0)
                   raise AssertionError(f"legacy product name remains in {path}:{line}")
-          assert "versionName = \"0.9.47\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "versionName = \"0.9.48\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          main_activity = Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8")
+          assert "key(model.id)" in main_activity and "key(selected.first)" in main_activity, "Live2D preview must be recreated when the selected model changes"
+          assert "AvatarPortrait" in main_activity and "animated = false" in main_activity, "Agent chat must use the current character's static portrait"
           assert "Theme.HyperCat.Starting" in Path("app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"), "launch splash theme missing"
           styles = Path("app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           assert 'windowSplashScreenBackground">#F7F7F8' in styles and 'android:windowBackground">#F7F7F8' in styles, "light splash and Activity backgrounds must match"
