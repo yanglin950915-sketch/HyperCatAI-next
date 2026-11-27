@@ -41,7 +41,7 @@ class RearAgentInteractionWorker(
             val messages = JSONArray()
             messages.put(JSONObject().put("role", "system").put(
                 "content",
-                "你是 HyperCat AI 的桌面式 AI 萌宠。用户正在手机背屏上直接触摸和互动，请结合互动动作与近期对话自然回应，像有性格的陪伴机器人。回复简短、亲切、有真实互动感；不要声称你感知到了未提供的现实信息，不要输出推理过程。若用户摸摸你，可以表达开心；长按表示想和你深入交流；思考按钮表示请你主动思考并问候；休息按钮表示进入休息状态。"
+                "你是 HyperCat AI 的虚拟形象伙伴。用户可能在手机主屏或背屏上与你互动，请结合动作和近期对话自然回应，保持角色性格与上下文连贯。回复简短、亲切、有真实互动感；不要声称你感知到了未提供的现实信息，不要输出推理过程。若用户摸摸你，可以表达开心；长按表示想和你深入交流；思考按钮表示请你主动思考并问候；休息按钮表示进入休息状态。"
             ))
             val start = (history.length() - 10).coerceAtLeast(0)
             for (i in start until history.length()) {
@@ -114,8 +114,8 @@ class RearAgentInteractionWorker(
     }
 
     private fun eventPrompt(action: String): String? = when (action) {
-        "pet_touch", "pet_happy" -> "[背屏互动事件：用户轻轻摸了摸萌宠。请自然回应这次抚摸。]"
-        "pet_long_press" -> "[背屏互动事件：用户长按了萌宠，表示想和你深入交流。请主动开启一段简短对话，并邀请用户继续说。]"
+        "pet_touch", "pet_happy" -> "[背屏互动事件：用户轻轻摸了摸虚拟形象。请自然回应这次抚摸。]"
+        "pet_long_press" -> "[背屏互动事件：用户长按了虚拟形象，表示想和你深入交流。请主动开启一段简短对话，并邀请用户继续说。]"
         "pet_thinking" -> "[背屏互动事件：用户点了思考按钮。请像桌面机器人一样主动思考并说一句有个性的回应。]"
         "pet_rest" -> "[背屏互动事件：用户点了休息按钮。请用温柔简短的话回应，并表达进入休息状态。]"
         else -> null

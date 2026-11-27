@@ -2139,7 +2139,7 @@ private fun ChatPage(
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().clickable { drawerSection = "pet_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(104.dp).clickable { drawerSection = "pet_settings" }, contentAlignment = Alignment.Center) {
-                                    AnimeGirlAvatar(petEmoji, Modifier.fillMaxSize())
+                                    AnimeGirlAvatar(petEmoji, Modifier.fillMaxSize(), petMood)
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
@@ -2390,7 +2390,28 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 }
 
 @Composable
-private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier) {
+private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier, mood: String = "normal") {
+    val idleMotion = rememberInfiniteTransition(label = "avatarIdleMotion")
+    val bob by idleMotion.animateFloat(
+        initialValue = -2.5f, targetValue = 2.5f,
+        animationSpec = infiniteRepeatable(tween(if (mood == "thinking") 2800 else 2100), RepeatMode.Reverse),
+        label = "avatarBob"
+    )
+    val sway by idleMotion.animateFloat(
+        initialValue = -0.7f, targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(tween(3400), RepeatMode.Reverse),
+        label = "avatarSway"
+    )
+    val reactionScale by animateFloatAsState(
+        targetValue = when (mood) { "happy" -> 1.025f; "thinking" -> .99f; "sleepy" -> .985f; else -> 1f },
+        animationSpec = tween(320), label = "avatarReactionScale"
+    )
+    val animatedModifier = modifier.graphicsLayer {
+        translationY = bob.dp.toPx()
+        rotationZ = sway
+        scaleX = reactionScale
+        scaleY = reactionScale
+    }
     val palette = when (character) {
         "aoi" -> listOf(Color(0xFFBDEBFF), Color(0xFF4C80D8), Color(0xFF2CADD9), Color(0xFF193A78))
         "luna" -> listOf(Color(0xFFEDEBFF), Color(0xFF8582C8), Color(0xFFB6A7F4), Color(0xFF49446F))
@@ -2407,7 +2428,7 @@ private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier) {
         "yuna" -> Color(0xFF9B4F9C)
         else -> Color(0xFFB84F79)
     }
-    Canvas(modifier) {
+    Canvas(animatedModifier) {
         val w = size.width
         val h = size.height
         fun p(x: Float, y: Float) = Offset(w * x, h * y)
@@ -2585,10 +2606,15 @@ private fun PetSettingsPage(
                                     else if (dragTotal > 36f) selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size)
                                 }
                             )
-                        }.clickable { onPetInteraction("pet_touch") },
+                        }.pointerInput(selectedIndex) {
+                            detectTapGestures(
+                                onTap = { onPetInteraction("pet_touch") },
+                                onLongPress = { onPetInteraction("pet_long_press") }
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
-                    AnimeGirlAvatar(selected.first, Modifier.fillMaxSize())
+                    AnimeGirlAvatar(selected.first, Modifier.fillMaxSize(), petMood)
                     Text("点击角色互动", color = Color(0xFF754A67), fontSize = 11.sp,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
                 }
@@ -2604,6 +2630,28 @@ private fun PetSettingsPage(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                 Text(selected.third, color = Muted, fontSize = 12.sp, lineHeight = 19.sp,
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 14.dp))
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(onClick = { onPetInteraction("pet_touch") }) { Text("摸摸") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_happy") }) { Text("打招呼") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_long_press") }) { Text("聊一聊") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_thinking") }) { Text("思考") }
+                    OutlinedButton(onClick = { onPetInteraction("pet_rest") }) { Text("休息") }
+                }
+                Text(
+                    when (petMood) {
+                        "happy" -> "正在回应你的互动"
+                        "thinking" -> "正在思考你的请求"
+                        "sleepy" -> "正在休息，随时可以叫醒"
+                        "sad" -> "连接似乎遇到问题，稍后再试试"
+                        else -> "点击角色可互动，长按可主动开启对话"
+                    },
+                    color = Muted, fontSize = 11.sp,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)
+                )
                 OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) },
                     label = { Text("自定义名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Button(onClick = { onPetEmojiChange(selected.first); onPetNameChange(nameDraft.trim().ifBlank { selected.second }) },
