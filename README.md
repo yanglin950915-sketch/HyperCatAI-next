@@ -2,7 +2,7 @@
 
 **HyperCat AI 是面向 Android 手机的 AI Agent 智能助手。** Agent 主应用可在其他 Android 设备上使用，不要求手机具备背屏；只有背屏虚拟形象投放与互动功能，目标机型包括 Xiaomi 17 Pro / 17 Pro Max、Xiaomi 18 Pro / 18 Pro Max；具体背屏能力仍需结合机型与系统版本进行实机验证。背屏不是独立宠物程序，而是 Agent 的第二交互界面：主屏与背屏共享角色资料、情绪和交互状态。
 
-- **当前版本：** 0.9.41（versionCode 60）
+- **当前版本：** 0.9.42（versionCode 61）
 - **平台：** Android
 - **技术栈：** Kotlin、Jetpack Compose、Coroutines、Android 系统 API
 - **仓库：** [GitHub](https://github.com/yanglin950915-sketch/HyperCatAI-next)
@@ -83,6 +83,18 @@
 - 优化帧率、内存、发热和息屏/AOD 时的资源占用。
 - 不直接复制未经授权的角色模型、立绘、动作或音频；先以原创或明确许可素材验证技术方案。
 
+## Live2D 二次元虚拟形象（0.9.42 起）
+
+- 在「虚拟形象」设置中可导入用户自有的 Live2D Cubism ZIP 模型；当前渲染核心基于 Cubism 4.x，建议导入 Cubism 4 模型。压缩包需要包含 `.model3.json`、`.moc3` 和贴图目录。
+- 主屏资料卡、虚拟形象设置预览与独立背屏 Activity 共用同一模型与 Agent 情绪状态。
+- 支持眼球跟随、眨眼、呼吸/待机摆动、开心/难过/害羞/思考/好奇等表情，以及轻触、长按、拖动回传 Agent。
+- 云端 TTS 播放时，在麦克风权限已授予的情况下尝试读取播放波形驱动口型；系统 TTS 或无法读取波形时使用轻量说话口型动画。
+- 背屏资源包会将当前已导入模型一并打包，重新部署背屏卡片后即可尝试在 MAML WebView 中显示同一模型；不导入模型时仍使用原有轻量 Canvas 角色作为兼容回退。
+- 为控制发热和功耗，Live2D 默认限制主屏/背屏 WebGL 渲染帧率（背屏资源包默认 20 FPS，Android 宿主默认 24 FPS）。
+
+### 模型与 SDK 授权
+本项目不内置第三方角色模型；用户需要导入本人制作或已获得再分发/使用许可的模型。PixiJS 与 pixi-live2d-display 按各自 MIT 许可保留声明。Live2D Cubism Core 是 Live2D 专有组件，不受本项目 MIT 许可覆盖，需遵守其原始许可与发行规则；公开发布前应核对当前 SDK 发行许可，尤其是允许终端用户导入模型的可扩展应用场景。详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
 ## 权限与隐私
 - 麦克风、摄像头和位置权限按需申请。
 - 无障碍服务需用户在 Android 设置中主动启用。
@@ -93,10 +105,13 @@
 ## 构建与发布
 项目通过 GitHub Actions 执行 Android CI、APK 构建和签名校验。请从 [Releases](https://github.com/yanglin950915-sketch/HyperCatAI-next/releases) 获取正式发布包，并查看对应版本说明。开发分支上的构建产物不等同于正式发布版本。
 
-## 0.9.41 更新
-- 调整启动主题初始化时序，在 Compose 首帧前读取已保存的主题模式，并同步设置 Activity 窗口与系统栏背景，降低启动阶段短暂露出错误底色的风险。
-- 移除侧滑抽屉中虚拟形象主页、虚拟形象设置和通用设置页面右上角的关闭叉号，保留系统返回键和侧滑手势。
-- 版本号：0.9.41（versionCode 60）。
+## 0.9.42 更新
+- 引入 Live2D Cubism WebGL 渲染层和用户模型 ZIP 导入能力。
+- 主屏、独立背屏 Activity 与背屏 MAML 资源包共用 Live2D 模型；背屏部署包可携带当前模型。
+- 增加 Agent 情绪表情、眼球跟随、待机动作、直接触摸/长按/拖动互动，以及 TTS 播放波形口型驱动（权限允许时）。
+- 保留无模型时的原有二次元 Canvas 回退显示。
+- 继续保留 0.9.41 的启动主题初始化和抽屉界面优化。
+- 版本号：0.9.42（versionCode 61）。
 
 ## 开发原则
 - Agent 是核心，背屏是第二交互终端。

@@ -26,8 +26,9 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
             return@withContext Result.success()
         }
         try {
+            val activeSession = prefs.getString("current_session_title", "").orEmpty().trim().takeIf { it.isNotBlank() }
             val recent = prefs.getString("recent_chat_titles", "").orEmpty().split("||").firstOrNull { it.isNotBlank() }
-            val title = recent ?: "背屏互动"
+            val title = activeSession ?: recent ?: "背屏互动"
             val sessionKey = "chat_session_$title"
             val history = runCatching { JSONArray(prefs.getString(sessionKey, "[]") ?: "[]") }.getOrElse { JSONArray() }
             val messages = JSONArray()
@@ -95,6 +96,7 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
     private fun eventPrompt(action: String, text: String): String? = when (action) {
         "pet_touch", "pet_happy" -> "[背屏互动：用户摸了摸虚拟形象，请自然回应。]"
         "pet_long_press" -> "[背屏互动：用户长按虚拟形象，想开始聊天，请主动邀请用户交流。]"
+        "pet_drag" -> "[背屏互动：用户在背屏上拖动了虚拟形象，请用轻松可爱的语气回应这次互动。]"
         "pet_thinking" -> "[背屏互动：用户点击思考，请给出一句简短回应。]"
         "pet_rest" -> "[背屏互动：用户让你休息，请温柔回应。]"
         "pet_voice" -> text.takeIf { it.isNotBlank() }

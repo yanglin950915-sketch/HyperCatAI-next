@@ -9,8 +9,8 @@ import android.os.Binder
 import org.json.JSONObject
 
 /**
- * Read-only state bridge for the REAREye host. Only the installed REAREye package
- * may query it; arbitrary third-party apps cannot read Agent reply text.
+ * Read-only state bridge for Xiaomi's native MAML host. Only the verified system
+ * Theme Manager UID may query it; arbitrary third-party apps cannot read Agent reply text.
  */
 class RearPetProvider : ContentProvider() {
     override fun onCreate(): Boolean = true
@@ -18,7 +18,7 @@ class RearPetProvider : ContentProvider() {
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor {
         val appContext = requireNotNull(context)
         if (!RearCallerVerifier.isTrustedUid(appContext, Binder.getCallingUid())) {
-            throw SecurityException("Only REAREye may read HyperCat AI rear-pet state")
+            throw SecurityException("Only Xiaomi Theme Manager may read HyperCat AI rear-pet state")
         }
         if (uri.authority != AUTHORITY || uri.path != "/pet-state") {
             throw IllegalArgumentException("Unknown HyperCat rear-state URI")

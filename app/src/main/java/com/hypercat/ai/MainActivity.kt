@@ -5,6 +5,7 @@ import android.app.DownloadManager
 import android.media.MediaPlayer
 import android.media.AudioManager
 import android.media.AudioAttributes
+import android.media.audiofx.Visualizer
 import android.widget.Toast
 import android.Manifest
 import android.content.pm.PackageManager
@@ -141,7 +142,12 @@ import android.webkit.URLUtil
 import com.hypercat.ai.rear.PetStateStore
 import com.hypercat.ai.rear.RearAgentInteractionDispatcher
 import com.hypercat.ai.rear.RearProjectionController
+import com.hypercat.ai.rear.RearCardPackageBuilder
 import com.hypercat.ai.rear.RearCard
+import com.hypercat.ai.pet.Live2DModel
+import com.hypercat.ai.pet.Live2DModelStore
+import com.hypercat.ai.pet.Live2DView
+import com.hypercat.ai.pet.Live2DControllerHub
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
@@ -395,10 +401,44 @@ private suspend fun playSpeechAudio(context: Context, bytes: ByteArray, usage: I
                     .build()
             )
             player.setVolume(1.0f, 1.0f)
-            fun release() { runCatching { player.reset() }; runCatching { player.release() } }
-            player.setOnPreparedListener { media -> runCatching { media.start() }.onFailure {
-                release(); if (continuation.isActive) continuation.resumeWithException(it)
-            } }
+            var visualizer: Visualizer? = null
+            fun release() {
+                Live2DControllerHub.setMouth(0f)
+                Live2DControllerHub.setSpeaking(false)
+                runCatching { visualizer?.enabled = false }
+                runCatching { visualizer?.release() }
+                visualizer = null
+                runCatching { player.reset() }
+                runCatching { player.release() }
+            }
+            player.setOnPreparedListener { media ->
+                Live2DControllerHub.setSpeaking(true)
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    runCatching {
+                        Visualizer(media.audioSessionId).apply {
+                            captureSize = Visualizer.getCaptureSizeRange()[1]
+                            setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                                override fun onWaveFormDataCapture(v: Visualizer, waveform: ByteArray, samplingRate: Int) {
+                                    if (waveform.isEmpty()) return
+                                    var energy = 0.0
+                                    waveform.forEach { sample ->
+                                        val centered = (sample.toInt() and 0xFF) - 128
+                                        val normalized = centered / 128.0
+                                        energy += normalized * normalized
+                                    }
+                                    val rms = kotlin.math.sqrt(energy / waveform.size)
+                                    Live2DControllerHub.setMouth((rms * 2.8).coerceIn(0.0, 1.0).toFloat())
+                                }
+                                override fun onFftDataCapture(v: Visualizer, fft: ByteArray, samplingRate: Int) = Unit
+                            }, Visualizer.getMaxCaptureRate(), true, false)
+                            enabled = true
+                        }
+                    }.onSuccess { visualizer = it }
+                }
+                runCatching { media.start() }.onFailure {
+                    release(); if (continuation.isActive) continuation.resumeWithException(it)
+                }
+            }
             player.setOnCompletionListener {
                 release(); if (continuation.isActive) continuation.resume(Unit)
             }
@@ -480,25 +520,20 @@ private fun inferMood(reply: String): String = when {
 }
 private fun exportRearWidgetPackage(context: Context) {
     runCatching {
+        val built = RearCardPackageBuilder.build(context)
         val directory = File(context.cacheDir, "rear-widget").apply { mkdirs() }
-        val archive = File(directory, "HyperCatAI-RearWidget.zip")
-        ZipOutputStream(FileOutputStream(archive)).use { zip ->
-            listOf("manifest.xml", "web/index.html", "REAREye_IMPORT_PROMPT.md").forEach { assetPath ->
-                zip.putNextEntry(ZipEntry(assetPath))
-                context.assets.open(assetPath).use { input -> input.copyTo(zip) }
-                zip.closeEntry()
-            }
-        }
+        val archive = File(directory, "HyperCatAI-rearscreen.zip")
+        built.copyTo(archive, overwrite = true)
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context, "${context.packageName}.fileprovider", archive
         )
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "application/zip"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "HyperCat AI 背屏虚拟形象组件")
+            putExtra(Intent.EXTRA_SUBJECT, "HyperCat AI 背屏虚拟形象资源包")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(send, "将背屏组件包分享给 REAREye"))
+        context.startActivity(Intent.createChooser(send, "分享 HyperCat AI 背屏资源包"))
     }.onFailure {
         android.widget.Toast.makeText(context, "组件包导出失败：${it.message ?: "未知错误"}", android.widget.Toast.LENGTH_LONG).show()
     }
@@ -790,6 +825,14 @@ private fun HyperCatApp() {
             chatPrefs.edit().putString("chat_session_$currentSessionTitle", serializeChatHistory(messages)).apply()
         }
     }
+
+    // Keep the active conversation visible to rear-screen Agent workers.
+    LaunchedEffect(currentSessionTitle) {
+        chatPrefs.edit().apply {
+            if (currentSessionTitle.isBlank()) remove("current_session_title")
+            else putString("current_session_title", currentSessionTitle)
+        }.apply()
+    }
     LaunchedEffect(recentPrompts) {
         if (messages.isEmpty() && currentSessionTitle.isBlank()) {
             val latest = recentPrompts.firstOrNull().orEmpty()
@@ -848,7 +891,7 @@ private fun HyperCatApp() {
         if (rearPetState.updatedAt > 0L) {
             petName = rearPetState.petName
             petMood = rearPetState.mood
-            val transientRearFeedback = setOf("让我想一想……", "我准备休息啦。", "我在听，你想和我聊什么？", "嘿嘿，你摸到我啦！")
+            val transientRearFeedback = setOf("让我想一想……", "我准备休息啦。", "我在听，你想和我聊什么？", "嘿嘿，你摸到我啦！", "咦？你在带我移动吗？")
             if (rearPetState.reply.isNotBlank() &&
                 rearPetState.reply != petReply &&
                 rearPetState.reply !in transientRearFeedback
@@ -1459,6 +1502,8 @@ private fun ChatPage(
     petSettingsContent: @Composable (Modifier) -> Unit
 ) {
     val context: Context = LocalContext.current
+    val live2dModel by Live2DModelStore.state.collectAsState()
+    LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var userMovedChat by remember(currentSessionTitle) { mutableStateOf(false) }
     LaunchedEffect(chatListState) {
@@ -2170,7 +2215,7 @@ private fun ChatPage(
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().clickable { drawerSection = "pet_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(104.dp).clickable { drawerSection = "pet_settings" }, contentAlignment = Alignment.Center) {
-                                    AnimeGirlAvatar(petEmoji, Modifier.fillMaxSize(), petMood)
+                                    PetAvatarRenderer(petEmoji, Modifier.fillMaxSize(), petMood, isSpeaking, live2dModel) { action, _ -> onPetInteraction(action) }
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
@@ -2417,6 +2462,22 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
                     tint = if (isListening) Color(0xFF06202A) else MainText)
             }
         }
+    }
+}
+
+@Composable
+private fun PetAvatarRenderer(
+    character: String,
+    modifier: Modifier = Modifier,
+    mood: String = "normal",
+    speaking: Boolean = false,
+    model: Live2DModel? = Live2DModelStore.state.value,
+    onGesture: (String, String) -> Unit = { _, _ -> }
+) {
+    if (model != null) {
+        Live2DView(model = model, modifier = modifier, mood = mood, speaking = speaking, halfBody = true, onGesture = onGesture)
+    } else {
+        AnimeGirlAvatar(character, modifier, mood)
     }
 }
 
@@ -2671,6 +2732,20 @@ private fun PetSettingsPage(
     onPetInteraction: (String) -> Unit,
     onPetNameChange: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val live2dModel by Live2DModelStore.state.collectAsState()
+    var modelImporting by remember { mutableStateOf(false) }
+    val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            modelImporting = true
+            runCatching { Live2DModelStore.importZip(context, uri) }
+                .onSuccess { android.widget.Toast.makeText(context, "Live2D 模型导入成功", android.widget.Toast.LENGTH_LONG).show() }
+                .onFailure { error -> android.widget.Toast.makeText(context, "模型导入失败：" + error.message, android.widget.Toast.LENGTH_LONG).show() }
+            modelImporting = false
+        }
+    }
+    LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val characters = listOf(
         Triple("sakura", "樱花", "温柔、黏人又有一点小傲娇。喜欢樱花、甜点和被认真倾听；遇到你时总会先露出笑容。"),
         Triple("aoi", "葵", "活泼开朗的蓝发歌姬。热爱音乐与新鲜事物，擅长用元气和鼓励陪你度过忙碌的一天。"),
@@ -2684,13 +2759,13 @@ private fun PetSettingsPage(
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
         Text("虚拟形象", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Text("左右滑动选择伙伴，确认后再保存", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+        Text("左右滑动选择伙伴，也可以导入自己的 Live2D 模型", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
         Surface(color = Panel, shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
                     Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(20.dp))
                         .background(Brush.verticalGradient(listOf(Color(0xFFFFE6F0), Color(0xFFE9E8FF))))
-                        .pointerInput(selectedIndex) {
+                        .then(if (live2dModel == null) Modifier.pointerInput(selectedIndex) {
                             detectHorizontalDragGestures(
                                 onDragStart = { dragTotal = 0f },
                                 onHorizontalDrag = { change, amount -> change.consume(); dragTotal += amount },
@@ -2704,12 +2779,23 @@ private fun PetSettingsPage(
                                 onTap = { onPetInteraction("pet_touch") },
                                 onLongPress = { onPetInteraction("pet_long_press") }
                             )
-                        },
+                        } else Modifier),
                     contentAlignment = Alignment.Center
                 ) {
-                    AnimeGirlAvatar(selected.first, Modifier.fillMaxSize(), petMood)
-                    Text("点击角色互动", color = Color(0xFF754A67), fontSize = 11.sp,
+                    PetAvatarRenderer(selected.first, Modifier.fillMaxSize(), petMood, model = live2dModel) { action, _ -> onPetInteraction(action) }
+                    Text(if (live2dModel != null) "Live2D · 直接触摸互动" else "点击角色互动", color = Color(0xFF754A67), fontSize = 11.sp,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
+                }
+                Surface(color = Panel2, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text("Live2D 模型", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(live2dModel?.let { "已导入模型：" + it.displayName } ?: "尚未导入模型，当前使用内置二次元预览形象。", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { modelPicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }, enabled = !modelImporting) { Text(if (modelImporting) "正在导入…" else "导入 Live2D ZIP") }
+                            if (live2dModel != null) OutlinedButton(onClick = { Live2DModelStore.clear(context); Live2DModelStore.load(context) }) { Text("移除模型") }
+                        }
+                        Text("ZIP 内需包含 .model3.json、MOC3、Textures 等模型文件。请仅导入自己制作或获准使用的模型。", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                    }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = { selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size) }) { Text("‹ 上一个") }

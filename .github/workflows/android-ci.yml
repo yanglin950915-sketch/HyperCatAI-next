@@ -1,9 +1,9 @@
 name: Android CI
 on:
   push:
-    branches: [fix/v0.9.40-splash-rearscreen-anime, feat/rear-voice-v0.9.36,  main, feature/unified-rear-pet-toggle-v0.9.23, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29 ]
+    branches: [fix/v0.9.40-splash-rearscreen-anime, feat/rear-voice-v0.9.36,  main, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29, fix/live2d-model-zip-import ]
   pull_request:
-    branches: [ main, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29 ]
+    branches: [ main, feat/live2d-avatar-agent-integration, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29 ]
 permissions:
   contents: read
 jobs:
@@ -11,11 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify REAREye widget source and layout
+      - name: Verify native HyperCat MAML rear-screen source and layout
         run: |
           test -s rearscreen/manifest.xml
           test -s rearscreen/web/index.html
-          test -s rearscreen/REAREye_IMPORT_PROMPT.md
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -25,38 +24,40 @@ jobs:
           html = Path("rearscreen/web/index.html").read_text(encoding="utf-8")
           root = ET.parse(manifest).getroot()
           webview = root.find("WebView")
-          assert webview is not None, "REAREye WebView element missing"
+          assert webview is not None, "MAML WebView element missing"
           assert webview.attrib.get("local") == "true", "WebView must load local assets"
           assert webview.attrib.get("cachePage") == "false", "rear WebView must not retain stale avatar page cache"
           assert "__setAgentJson" in Path("rearscreen/web/index.html").read_text(encoding="utf-8"), "MAML JSON state bridge missing"
-          assert "background_color" in Path("app/src/main/java/com/hypercat/ai/rear/RearPetProvider.kt").read_text(encoding="utf-8"), "rear background state missing"
+          assert "background_color" in Path("app/src/main/java/com/hypercat/ai/rear/RearAvatarProvider.kt").read_text(encoding="utf-8"), "rear background state missing"
+          verifier = Path("app/src/main/java/com/hypercat/ai/rear/RearCallerVerifier.kt").read_text(encoding="utf-8")
+          assert "com.android.thememanager" in verifier and ".".join(("hk", "uwu", "reareye")) not in verifier, "native Xiaomi MAML host verification missing"
           assert webview.attrib.get("uri") == "web/index.html", "WebView entry point mismatch"
           assert root.attrib.get("screenWidth") == "976", "target rear width mismatch"
           assert root.find("VariableBinders") is not None, "Agent data binder missing"
-          assert "com.hypercat.ai.rear.provider/pet-state" in manifest.read_text(encoding="utf-8"), "Agent provider URI missing"
-          assert "PET_INTERACTION" in manifest.read_text(encoding="utf-8"), "rear touch receiver actions missing"
-          for action in ("pet_touch", "pet_long_press", "pet_thinking", "pet_rest"):
+          assert "com.hypercat.ai.rear.provider/avatar-state" in manifest.read_text(encoding="utf-8"), "Agent provider URI missing"
+          assert "AVATAR_INTERACTION" in manifest.read_text(encoding="utf-8"), "rear touch receiver actions missing"
+          for action in ("avatar_touch", "avatar_long_press", "avatar_thinking", "avatar_rest"):
               assert f'action="{action}"' in manifest.read_text(encoding="utf-8"), f"{action} trigger missing"
           worker = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionWorker.kt").read_text(encoding="utf-8")
-          receiver = Path("app/src/main/java/com/hypercat/ai/rear/RearPetInteractionReceiver.kt").read_text(encoding="utf-8")
+          receiver = Path("app/src/main/java/com/hypercat/ai/rear/RearAvatarInteractionReceiver.kt").read_text(encoding="utf-8")
           assert "requestModel" not in worker and "chat/completions" in worker, "rear event must call configured Agent chat API"
           dispatcher = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionDispatcher.kt").read_text(encoding="utf-8")
           assert "enqueueUniqueWork" in dispatcher and "RearAgentInteractionWorker" in dispatcher, "rear event must be queued durably"
-          assert "rear_pet_enabled" in Path("app/src/main/java/com/hypercat/ai/rear/PetStateStore.kt").read_text(encoding="utf-8"), "rear projection preference missing"
+          assert "rear_avatar_enabled" in Path("app/src/main/java/com/hypercat/ai/rear/AvatarStateStore.kt").read_text(encoding="utf-8"), "rear projection preference missing"
           assert "canvas.style.visibility=projectionEnabled" not in html, "rear canvas must not be hidden by optional provider state"
           assert "data:image/svg+xml;charset=utf-8" in html and "avatarSvg(id)" in html, "rear character art must be embedded inline"
           assert 'assets.srcDir("../rearscreen")' in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "rear widget assets must be bundled in APK"
           assert "RearAgentInteractionDispatcher.enqueue(context, action)" in receiver, "rear receiver must use shared dispatcher"
-          pet_store = Path("app/src/main/java/com/hypercat/ai/rear/PetStateStore.kt").read_text(encoding="utf-8")
+          avatar_store = Path("app/src/main/java/com/hypercat/ai/rear/AvatarStateStore.kt").read_text(encoding="utf-8")
           rear_worker = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionWorker.kt").read_text(encoding="utf-8")
-          assert "user_text" in Path("app/src/main/java/com/hypercat/ai/rear/RearPetProvider.kt").read_text(encoding="utf-8"), "rear interaction text must be exposed to the app state bridge"
-          assert "userText = if (action == \"pet_voice\") userText else eventPrompt" in rear_worker, "rear Agent turn must retain original user text"
+          assert "user_text" in Path("app/src/main/java/com/hypercat/ai/rear/RearAvatarProvider.kt").read_text(encoding="utf-8"), "rear interaction text must be exposed to the app state bridge"
+          assert "userText = if (action == \"avatar_voice\") userText else eventPrompt" in rear_worker, "rear Agent turn must retain original user text"
           assert "applyAgentState" in html and "__setAgentState=applyAgentState" in html, "rear avatar must apply synchronized Agent state"
           assert '<meta name="viewport"' in html, "viewport meta missing"
           assert "SAFE_ZONE:" in html and "AVAIL:" in html and "TOUCH:" in html, "layout audit comments missing"
           assert "BASE_W=976,BASE_H=596" in html, "target design space mismatch"
           projection = Path("app/src/main/java/com/hypercat/ai/rear/RearProjectionController.kt").read_text(encoding="utf-8")
-          rear_activity = Path("app/src/main/java/com/hypercat/ai/rear/RearPetActivity.kt").read_text(encoding="utf-8")
+          rear_activity = Path("app/src/main/java/com/hypercat/ai/rear/RearAvatarActivity.kt").read_text(encoding="utf-8")
           assert "bindUserService" in projection and "scanCarriers" in projection and "deployCarrier" in projection, "Shizuku card deployment path missing"
           assert "RearCardPackageBuilder.build(context)" in projection, "MAML package builder must be invoked"
           package_builder = Path("app/src/main/java/com/hypercat/ai/rear/RearCardPackageBuilder.kt").read_text(encoding="utf-8")
@@ -70,7 +71,18 @@ jobs:
           assert 'file:///android_asset/web/index.html' in rear_activity and 'addJavascriptInterface' in rear_activity, "direct rear display must use the shared anime renderer and Agent bridge"
           assert "aidl = true" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "Shizuku UserService AIDL support missing"
           assert "class RearShellUserService" in Path("app/src/main/java/com/hypercat/ai/rear/RearShellUserService.kt").read_text(encoding="utf-8"), "Shizuku shell service missing"
-          assert "versionName = \"0.9.41\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          live2d = Path("rearscreen/web/live2d")
+          for asset in ("render.html", "pixi.min.js", "cubism4.min.js", "live2dcubismcore.min.js"):
+              assert (live2d / asset).is_file() and (live2d / asset).stat().st_size > 1000, f"Live2D renderer asset missing: {asset}"
+          model_store = Path("app/src/main/java/com/hypercat/ai/avatar/Live2DModelStore.kt").read_text(encoding="utf-8")
+          live2d_view = Path("app/src/main/java/com/hypercat/ai/avatar/Live2DView.kt").read_text(encoding="utf-8")
+          assert "importZip" in model_store and ".model3.json" in model_store and "160L * 1024L * 1024L" in model_store, "safe user model ZIP import missing"
+          assert "Live2DView" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8") and "Live2DView" in rear_activity, "main/rear Live2D host integration missing"
+          assert "model-entry.js" in package_builder and "Live2DModelStore.current" in package_builder, "rear package must bundle imported Live2D model"
+          assert "onGesture" in (live2d / "render.html").read_text(encoding="utf-8"), "Live2D touch gesture bridge missing"
+          assert "Visualizer" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "TTS waveform mouth driver missing"
+          assert "Live2D Cubism Core" in Path("THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8"), "Live2D proprietary license notice missing"
+          assert "versionName = \"0.9.43\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           assert "Theme.HyperCat.Starting" in Path("app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"), "launch splash theme missing"
           styles = Path("app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           assert 'windowSplashScreenBackground">#F7F7F8' in styles and 'android:windowBackground">#F7F7F8' in styles, "light splash and Activity backgrounds must match"
@@ -91,10 +103,3 @@ jobs:
           Path("/tmp/hypercat-rear-inline.js").write_text(scripts[0], encoding="utf-8")
           PY
           node --check /tmp/hypercat-rear-inline.js
-      - name: Upload rearscreen folder
-        uses: actions/upload-artifact@v4
-        with:
-          name: rearscreen-folder
-          path: rearscreen/
-          if-no-files-found: error
-          retention-days: 14

@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 
-/** Converts a verified rear-screen gesture into a durable Agent interaction. */
+/** Converts a verified native MAML rear-screen gesture into a durable Agent interaction. */
 class RearPetInteractionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_PET_INTERACTION) return
@@ -25,6 +25,6 @@ class RearPetInteractionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_PET_INTERACTION = "com.hypercat.ai.rear.PET_INTERACTION"
         const val EXTRA_ACTION = "action"
-        private val SUPPORTED_ACTIONS = setOf("pet_touch", "pet_happy", "pet_long_press", "pet_thinking", "pet_rest")
+        private val SUPPORTED_ACTIONS = setOf("pet_touch", "pet_happy", "pet_long_press", "pet_drag", "pet_thinking", "pet_rest")
     }
 }
