@@ -272,17 +272,19 @@
   // Geometric mesh bounds may include transparent canvas padding (Rice is especially
   // asymmetric). Scan the first rendered alpha silhouette once and use its visible
   // center as a scale-independent correction in subsequent layouts.
-  function measureOpticalCenter() {
+  function measureOpticalCenter(attempt) {
+    attempt = attempt || 0;
     var targetModel = model;
     if (!targetModel || !app) return;
     requestAnimationFrame(function () {
       if (model !== targetModel || !app) return;
+      var measured = false;
       try {
         var extract = app.renderer && app.renderer.plugins && app.renderer.plugins.extract;
-        if (!extract || typeof extract.canvas !== 'function') return;
+        if (!extract || typeof extract.canvas !== 'function') throw new Error('extractor unavailable');
         var canvas = extract.canvas(targetModel);
         var ctx = canvas && canvas.getContext ? canvas.getContext('2d', { willReadFrequently: true }) : null;
-        if (!ctx || canvas.width < 2 || canvas.height < 2) return;
+        if (!ctx || canvas.width < 2 || canvas.height < 2) throw new Error('model canvas unavailable');
         var pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
         var minX = canvas.width, maxX = -1, minY = canvas.height, maxY = -1;
         // Sparse scan is sufficient for the silhouette center and avoids a long UI-thread pass.
@@ -299,11 +301,15 @@
         if (maxX >= minX && maxY >= minY) {
           opticalCenterRatio = ((minX + maxX) / 2) / canvas.width;
           layout();
+          measured = true;
           log('L2D optical center measured', opticalCenterRatio.toFixed(4), canvas.width + 'x' + canvas.height);
+        } else {
+          throw new Error('no visible model pixels yet');
         }
       } catch (e) {
-        log('L2D optical center unavailable', String(e));
+        log('L2D optical center attempt ' + (attempt + 1), String(e));
       }
+      if (!measured && attempt < 8) setTimeout(function () { measureOpticalCenter(attempt + 1); }, 120);
     });
   }
 
