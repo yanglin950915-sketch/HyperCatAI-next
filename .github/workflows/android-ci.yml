@@ -62,7 +62,7 @@ jobs:
           assert "RearAgentInteractionDispatcher.enqueue" in rear_activity, "rear activity must share Agent interaction pipeline"
           assert "aidl = true" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "Shizuku UserService AIDL support missing"
           assert "class RearShellUserService" in Path("app/src/main/java/com/hypercat/ai/rear/RearShellUserService.kt").read_text(encoding="utf-8"), "Shizuku shell service missing"
-          assert "versionName = \"0.9.35\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
+          assert "versionName = \"0.9.36\"" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "version bump missing"
           assert "bridge.getStringByName" in html and "window.maml.doAction" in html, "MAML bridge integration missing"
           for name in ("__fit", "__setAod", "__debugSize", "__setMoodIndex"):
               assert f"window.{name}" in html, f"{name} lifecycle API missing"

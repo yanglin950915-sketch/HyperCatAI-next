@@ -144,13 +144,13 @@ import com.hypercat.ai.rear.RearCard
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
-private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF1F5FA)
+private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFFFFFFF)
 private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFFFFFFF)
-private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFE4EDF6)
-private val Cyan get() = if (appDarkState) Color(0xFFE6E6E6) else Color(0xFF168DA6)
-private val Muted get() = if (appDarkState) Color(0xFFA0A0A0) else Color(0xFF65758A)
-private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f) else Color(0xFF8AA4BA).copy(alpha = .35f)
-private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF142235)
+private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFF5F7FA)
+private val Cyan get() = if (appDarkState) Color(0xFFE6E6E6) else Color(0xFF2563EB)
+private val Muted get() = if (appDarkState) Color(0xFFA0A0A0) else Color(0xFF6B7280)
+private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f) else Color(0xFFE5E7EB)
+private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF111827)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
