@@ -13,7 +13,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application android:allowBackup="true" android:label="HyperCat AI" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:supportsRtl="true" android:theme="@style/Theme.HyperCat">
-        <activity android:name=".rear.RearPetActivity" android:exported="true" android:excludeFromRecents="true" android:launchMode="singleTask" android:taskAffinity="" android:resizeableActivity="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity android:name=".rear.RearAvatarActivity" android:exported="true" android:excludeFromRecents="true" android:launchMode="singleTask" android:taskAffinity="" android:resizeableActivity="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <receiver android:name=".rear.RearProjectionCommandReceiver" android:exported="true">
             <intent-filter><action android:name="com.hypercat.ai.rear.ACTION_HIDE_PROJECTION" /></intent-filter>
         </receiver>
@@ -32,7 +32,7 @@
                 android:resource="@xml/hypercat_accessibility_service" />
         </service>
         <receiver
-            android:name=".rear.RearPetInteractionReceiver"
+            android:name=".rear.RearAvatarInteractionReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="com.hypercat.ai.rear.PET_INTERACTION" />
@@ -48,7 +48,7 @@
                 android:resource="@xml/rear_widget_file_paths" />
         </provider>
         <provider
-            android:name=".rear.RearPetProvider"
+            android:name=".rear.RearAvatarProvider"
             android:authorities="com.hypercat.ai.rear.provider"
             android:exported="true"
             android:grantUriPermissions="true" />
