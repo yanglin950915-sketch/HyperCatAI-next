@@ -2388,7 +2388,6 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 }
 
 @Composable
-@Composable
 private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier) {
     val palette = when (character) {
         "aoi" -> listOf(Color(0xFF73D8F7), Color(0xFF2868B8), Color(0xFFBDEFFF))
@@ -2441,6 +2440,7 @@ private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
 private fun PetSettingsPage(
     modifier: Modifier,
     petName: String,
