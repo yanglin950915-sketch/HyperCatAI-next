@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Live2D</title>
 <style>
-  html, body { margin:0; padding:0; width:100%; height:100%; background:transparent; overflow:hidden;
+  html, body { margin:0; padding:0; width:100%; height:100%; background:#05070d; overflow:hidden;
                -webkit-tap-highlight-color:transparent; }
   #stage { position:fixed; left:0; top:0; width:100%; height:100%; }
   canvas { display:block; }
@@ -37,6 +37,7 @@
   'use strict';
 
   var params = new URLSearchParams(location.search);
+  var SHOW_INTERFACE = params.get('ui') === '1';
   var DIR = params.get('dir') || '';
   if (DIR && DIR.charAt(DIR.length - 1) !== '/') DIR += '/';
 
@@ -186,7 +187,7 @@
 
   function attach(m) {
     model = m;
-    createLive2DInterface();
+    if (SHOW_INTERFACE) createLive2DInterface();
     if (ui && ui.bg) app.stage.addChild(ui.bg);
     app.stage.addChild(model);
     if (ui && ui.root) app.stage.addChild(ui.root);
@@ -354,7 +355,8 @@
     var W = vp.w, H = vp.h;
     app = new PIXI.Application({
       width: W, height: H,
-      backgroundAlpha: 0,
+      backgroundColor: 0x05070D,
+      backgroundAlpha: 1,
       antialias: true,
       autoDensity: true,
       resolution: Math.min(window.devicePixelRatio || 1, 3.0),
