@@ -70,18 +70,29 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     set(rects.first())
                     rects.drop(1).forEach { union(it) }
                 } else null
-                val leftEdge = maxOf(cutout?.safeInsetLeft ?: 0, obstruction?.right?.takeIf { obstruction.left <= width / 2 } ?: 0)
-                val rightEdge = maxOf(cutout?.safeInsetRight ?: 0, (width - (obstruction?.left?.takeIf { obstruction.right >= width / 2 } ?: width)).coerceAtLeast(0))
-                val topEdge = maxOf(cutout?.safeInsetTop ?: 0, obstruction?.bottom?.takeIf { obstruction.top <= height / 2 } ?: 0)
-                val bottomEdge = maxOf(cutout?.safeInsetBottom ?: 0, (height - (obstruction?.top?.takeIf { obstruction.bottom >= height / 2 } ?: height)).coerceAtLeast(0))
-                // Choose the largest full-height/full-width region outside the camera island.
-                val candidates = listOf(
-                    android.graphics.Rect(leftEdge, 0, width - rightEdge, height),
-                    android.graphics.Rect(0, topEdge, width, height - bottomEdge),
-                    android.graphics.Rect(0, 0, leftEdge, height),
-                    android.graphics.Rect(width - rightEdge, 0, width, height)
-                ).filter { it.width() > 0 && it.height() > 0 }
-                val safe = candidates.maxByOrNull { it.width().toLong() * it.height().toLong() }
+                val candidates = mutableListOf<android.graphics.Rect>()
+                // Camera island: keep four independent regions; do not treat its
+                // bounding rectangle as a top inset when the obstruction is off-centre.
+                if (obstruction != null) {
+                    if (obstruction.left > 0) candidates += android.graphics.Rect(0, 0, obstruction.left, height)
+                    if (obstruction.right < width) candidates += android.graphics.Rect(obstruction.right, 0, width, height)
+                    if (obstruction.top > 0) candidates += android.graphics.Rect(0, 0, width, obstruction.top)
+                    if (obstruction.bottom < height) candidates += android.graphics.Rect(0, obstruction.bottom, width, height)
+                }
+                val insetLeft = cutout?.safeInsetLeft ?: 0
+                val insetRight = cutout?.safeInsetRight ?: 0
+                val insetTop = cutout?.safeInsetTop ?: 0
+                val insetBottom = cutout?.safeInsetBottom ?: 0
+                if (insetLeft > 0) candidates += android.graphics.Rect(insetLeft, 0, width, height)
+                if (insetRight > 0) candidates += android.graphics.Rect(0, 0, width - insetRight, height)
+                if (insetTop > 0) candidates += android.graphics.Rect(0, insetTop, width, height)
+                if (insetBottom > 0) candidates += android.graphics.Rect(0, 0, width, height - insetBottom)
+                if (candidates.isEmpty()) candidates += android.graphics.Rect(0, 0, width, height)
+                val validCandidates = candidates.filter { candidate ->
+                    candidate.width() > 0 && candidate.height() > 0 &&
+                        (obstruction == null || !android.graphics.Rect.intersects(candidate, obstruction))
+                }
+                val safe = validCandidates.maxByOrNull { it.width().toLong() * it.height().toLong() }
                 rearSafeLeftRatio = safe?.left?.toFloat()?.div(width)?.coerceIn(0f, 0.95f) ?: 0f
                 rearSafeTopRatio = safe?.top?.toFloat()?.div(height)?.coerceIn(0f, 0.95f) ?: 0f
                 rearSafeRightRatio = safe?.let { (width - it.right).toFloat() / width }?.coerceIn(0f, 0.95f) ?: 0f
