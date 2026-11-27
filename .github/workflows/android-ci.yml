@@ -3,7 +3,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main, feature/rear-agent-unified-v0.9.21 ]
+    branches: [ main, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22 ]
 permissions:
   contents: read
 jobs:
@@ -38,7 +38,12 @@ jobs:
           worker = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionWorker.kt").read_text(encoding="utf-8")
           receiver = Path("app/src/main/java/com/hypercat/ai/rear/RearPetInteractionReceiver.kt").read_text(encoding="utf-8")
           assert "requestModel" not in worker and "chat/completions" in worker, "rear event must call configured Agent chat API"
-          assert "enqueueUniqueWork" in receiver and "RearAgentInteractionWorker" in receiver, "rear event must be queued durably"
+          dispatcher = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionDispatcher.kt").read_text(encoding="utf-8")
+          assert "enqueueUniqueWork" in dispatcher and "RearAgentInteractionWorker" in dispatcher, "rear event must be queued durably"
+          assert "rear_pet_enabled" in Path("app/src/main/java/com/hypercat/ai/rear/PetStateStore.kt").read_text(encoding="utf-8"), "rear projection preference missing"
+          assert "projectionEnabled" in html and 'getStringByName("enabled")' in html, "rear projection toggle bridge missing"
+          assert 'assets.srcDir("../rearscreen")' in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "rear widget assets must be bundled in APK"
+          assert "RearAgentInteractionDispatcher.enqueue(context, action)" in receiver, "rear receiver must use shared dispatcher"
           assert '<meta name="viewport"' in html, "viewport meta missing"
           assert "SAFE_ZONE:" in html and "AVAIL:" in html and "TOUCH:" in html, "layout audit comments missing"
           assert "BASE_W=904,BASE_H=572" in html, "target design space mismatch"
