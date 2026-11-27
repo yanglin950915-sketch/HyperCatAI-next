@@ -2722,17 +2722,13 @@ private fun AvatarSettingsPage(
                             if (avatarInteractionReplyId == expectedId) visibleBubble = ""
                         }
                     }
-                    AnimatedVisibility(
-                        visible = visibleBubble.isNotBlank(),
-                        enter = fadeIn(tween(160)) + androidx.compose.animation.scaleIn(initialScale = 0.92f),
-                        exit = fadeOut(tween(220)),
-                        modifier = Modifier.align(Alignment.TopCenter).padding(10.dp).widthIn(max = 270.dp)
-                    ) {
+                    if (visibleBubble.isNotBlank()) {
                         Surface(
                             color = if (appDarkState) Color(0xF0221F2B) else Color(0xFDF8F4FF),
                             shape = RoundedCornerShape(16.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x667B68B8)),
-                            shadowElevation = 8.dp
+                            shadowElevation = 8.dp,
+                            modifier = Modifier.align(Alignment.TopCenter).padding(10.dp).widthIn(max = 270.dp)
                         ) {
                             Text(visibleBubble.take(240), color = MainText, fontSize = 12.sp,
                                 lineHeight = 17.sp, maxLines = 5, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
