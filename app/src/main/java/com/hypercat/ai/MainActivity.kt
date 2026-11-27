@@ -1741,8 +1741,14 @@ private fun ChatPage(
     }
     var lastAutoReadText by remember { mutableStateOf("") }
     var autoReadPendingReply by remember { mutableStateOf(false) }
-    LaunchedEffect(autoReadReplies, callActive, messages.size, isThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate) {
-        // Only auto-read a reply produced by a request in the active session.
+    LaunchedEffect(autoReadReplies, callActive, messages.size, isThinking, drawerSection, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate) {
+        // Avatar/settings pages are passive surfaces: entering them must never
+        // trigger playback of the last historical assistant message.
+        if (drawerSection == "avatar_settings" || drawerSection == "settings") {
+            autoReadPendingReply = false
+            return@LaunchedEffect
+        }
+        // Only auto-read a reply produced by a request in the active chat.
         // Opening/restoring a conversation must never replay its historical last message.
         if (isThinking) {
             if (autoReadReplies && !callActive) autoReadPendingReply = true
