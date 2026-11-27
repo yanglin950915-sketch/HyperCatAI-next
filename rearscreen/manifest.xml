@@ -6,6 +6,7 @@
     <Var name="petEmoji" type="string" expression="'🐱'"/>
     <Var name="mood" type="string" expression="'normal'"/>
     <Var name="reply" type="string" expression="'你好！我是你的 AI 虚拟形象。'"/>
+    <Var name="backgroundColor" type="string" expression="'#080B12'"/>
     <Var name="updatedAt" type="string" expression="'0'"/>
     <Var name="enabled" type="string" expression="'false'"/>
     <Var name="refreshTick" expression="#second">
@@ -26,6 +27,7 @@
         <VariableCommand name="petEmoji" expression="jsonGetString(strToJson(@resultJson), 'pet_emoji')" type="string"/>
         <VariableCommand name="mood" expression="jsonGetString(strToJson(@resultJson), 'mood')" type="string"/>
         <VariableCommand name="reply" expression="jsonGetString(strToJson(@resultJson), 'reply')" type="string"/>
+        <VariableCommand name="backgroundColor" expression="jsonGetString(strToJson(@resultJson), 'background_color')" type="string"/>
         <VariableCommand name="updatedAt" expression="jsonGetString(strToJson(@resultJson), 'updated_at')" type="string"/>
         <VariableCommand name="enabled" expression="jsonGetString(strToJson(@resultJson), 'enabled')" type="string"/>
     </Function>
