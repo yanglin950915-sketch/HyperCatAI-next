@@ -30,8 +30,18 @@ class RearShellUserService : IRearShellService.Stub() {
 
     @Synchronized override fun scanCarriers(): String = try {
         val root = carrierRoot()
-        if (!root.isDirectory) result(false, "CARRIER_ROOT_MISSING", "未找到小米主题管理器本地卡片目录。")
-        else {
+        if (!root.isDirectory) {
+            val parent = root.parentFile
+            val parentState = when {
+                parent == null -> "路径无效"
+                !parent.exists() -> "主题管理器数据目录不存在或尚未初始化"
+                !parent.isDirectory -> "主题管理器数据路径不是目录"
+                else -> "主题管理器目录可访问，但 .ai_app 尚未创建"
+            }
+            JSONObject().put("success", true).put("code", "CARRIER_NOT_READY")
+                .put("message", "尚未发现可替换的背屏卡片载体（" + root.path + "）。" + parentState + "。请先在系统背屏/主题管理器中下载并添加一张应用卡，再返回这里重新扫描。")
+                .put("cards", JSONArray()).toString()
+        } else {
             val cards = JSONArray()
             root.listFiles()?.asSequence()?.filter { it.isDirectory && it.name.endsWith("_extracted") }
                 ?.sortedBy { it.name }?.forEach { dir ->
@@ -80,7 +90,14 @@ class RearShellUserService : IRearShellService.Stub() {
 
     override fun destroy() { System.exit(0) }
 
-    private fun carrierRoot() = File("/storage/emulated/0/Android/data/com.android.thememanager/files/MIUI/.ai_app")
+    private fun carrierRoot(): File {
+        val candidates = listOf(
+            File("/storage/emulated/0/Android/data/com.android.thememanager/files/MIUI/.ai_app"),
+            File("/sdcard/Android/data/com.android.thememanager/files/MIUI/.ai_app"),
+            File("/mnt/user/0/primary/Android/data/com.android.thememanager/files/MIUI/.ai_app")
+        )
+        return candidates.firstOrNull { it.isDirectory } ?: candidates.first()
+    }
     private fun requireValidCardId(cardId: String) { require(CARD_ID.matches(cardId) && cardId != "." && cardId != "..") { "无效卡片 ID。" } }
 
     private fun checkedAppFile(path: String, child: String): File {
