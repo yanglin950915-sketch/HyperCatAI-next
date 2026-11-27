@@ -130,7 +130,7 @@
     var fr = json.FileReferences;
 
     // 相对路径改成绝对，否则会相对 render.html 解析。
-    function abs(p) { return (p && p.indexOf('://') < 0 && p.charAt(0) !== '/') ? dir + p : p; }
+    function abs(p) { if (!p) return p; var normalized = String(p).replace(/\\\\/g, '/'); if (normalized.indexOf('://') >= 0 || normalized.charAt(0) === '/' || normalized.split('/').indexOf('..') >= 0) throw new Error('model asset path escapes its imported directory'); return dir + normalized.replace(/^\\.\\//, ''); }
     if (fr.Moc) fr.Moc = abs(fr.Moc);
     if (fr.Physics) fr.Physics = abs(fr.Physics);
     if (fr.DisplayInfo) fr.DisplayInfo = abs(fr.DisplayInfo);
