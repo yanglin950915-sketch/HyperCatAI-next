@@ -2,6 +2,8 @@ package com.hypercat.ai.pet
 
 import android.annotation.SuppressLint
 import android.util.Log
+import android.os.Handler
+import android.os.Looper
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -41,20 +43,17 @@ fun Live2DView(
     val bridge = remember(controller) {
         object {
             @JavascriptInterface fun onReady() {
-                state = state.copy(ready = true, error = null)
-                latestState(state)
+                Handler(Looper.getMainLooper()).post { state = state.copy(ready = true, error = null); latestState(state) }
             }
             @JavascriptInterface fun onError(message: String) {
                 Log.e(TAG, "Live2D: $message")
-                state = state.copy(error = message)
-                latestState(state)
+                Handler(Looper.getMainLooper()).post { state = state.copy(error = message); latestState(state) }
             }
             @JavascriptInterface fun onGesture(action: String, part: String) {
-                if (action in setOf("pet_touch", "pet_long_press", "pet_drag")) latestGesture(action, part)
+                if (action in setOf("pet_touch", "pet_long_press", "pet_drag")) Handler(Looper.getMainLooper()).post { latestGesture(action, part) }
             }
             @JavascriptInterface fun onFps(fps: Int) {
-                state = state.copy(fps = fps)
-                latestState(state)
+                Handler(Looper.getMainLooper()).post { state = state.copy(fps = fps); latestState(state) }
             }
             @JavascriptInterface fun onPoke(part: String) { latestGesture("pet_touch", part) }
         }
