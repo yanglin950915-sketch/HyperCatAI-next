@@ -20,6 +20,10 @@ import android.os.Bundle
 import android.os.Environment
 import android.content.Intent
 import android.net.Uri
+import java.io.File
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.RecognitionListener
@@ -122,7 +126,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import java.io.File
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.Dispatchers
@@ -132,6 +135,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import android.webkit.URLUtil
 import com.hypercat.ai.rear.PetStateStore
+import com.hypercat.ai.rear.RearAgentInteractionDispatcher
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
@@ -442,6 +446,32 @@ private fun inferMood(reply: String): String = when {
     listOf("思考", "考虑", "分析", "让我想想").any { reply.contains(it) } -> "thinking"
     else -> "normal"
 }
+private fun exportRearWidgetPackage(context: Context) {
+    runCatching {
+        val directory = File(context.cacheDir, "rear-widget").apply { mkdirs() }
+        val archive = File(directory, "HyperCatAI-RearWidget.zip")
+        ZipOutputStream(FileOutputStream(archive)).use { zip ->
+            listOf("manifest.xml", "web/index.html", "REAREye_IMPORT_PROMPT.md").forEach { assetPath ->
+                zip.putNextEntry(ZipEntry(assetPath))
+                context.assets.open(assetPath).use { input -> input.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context, "${context.packageName}.fileprovider", archive
+        )
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "HyperCat AI 背屏萌宠组件")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(send, "将背屏组件包分享给 REAREye"))
+    }.onFailure {
+        android.widget.Toast.makeText(context, "组件包导出失败：${it.message ?: "未知错误"}", android.widget.Toast.LENGTH_LONG).show()
+    }
+}
+
 private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "")
 
 private fun serializeChatHistory(messages: List<ChatLine>): String = org.json.JSONArray().apply {
@@ -635,6 +665,7 @@ private fun HyperCatApp() {
     var petName by remember { mutableStateOf(initialRearState.petName) }
     var petMood by remember { mutableStateOf(initialRearState.mood) }
     var petReply by remember { mutableStateOf(initialRearState.reply) }
+    var rearPetEnabled by remember { mutableStateOf(initialRearState.enabled) }
     var themeMode by remember { mutableStateOf("system") }
     var timeRefresh by remember { mutableIntStateOf(0) }
     var updateStatus by remember { mutableStateOf("尚未检查") }
@@ -907,6 +938,10 @@ private fun HyperCatApp() {
                             onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
                              petName = petName,
                              petMood = petMood,
+                             rearPetEnabled = rearPetEnabled,
+                             onRearPetEnabledChange = { enabled -> rearPetEnabled = enabled; chatPrefs.edit().putBoolean("rear_pet_enabled", enabled).apply(); PetStateStore.setEnabled(context, enabled) },
+                             onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                             onExportRearWidget = { exportRearWidgetPackage(context) },
                              onPetNameChange = { value ->
                                  val clean = value.trim().take(16).ifBlank { "小橘" }
                                  petName = clean
@@ -964,6 +999,10 @@ private fun HyperCatApp() {
                             onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
                     petName = petName,
                     petMood = petMood,
+                    rearPetEnabled = rearPetEnabled,
+                    onRearPetEnabledChange = { enabled -> rearPetEnabled = enabled; chatPrefs.edit().putBoolean("rear_pet_enabled", enabled).apply(); PetStateStore.setEnabled(context, enabled) },
+                    onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                    onExportRearWidget = { exportRearWidgetPackage(context) },
                     onPetNameChange = { value ->
                         val clean = value.trim().take(16).ifBlank { "小橘" }
                         petName = clean
@@ -2174,7 +2213,7 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 
 @Composable
 private fun SettingsPage(
-    modifier: Modifier, petName: String, petMood: String, onPetNameChange: (String) -> Unit,
+    modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, onRearPetEnabledChange: (Boolean) -> Unit, onPetInteraction: (String) -> Unit, onExportRearWidget: () -> Unit, onPetNameChange: (String) -> Unit,
     provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit, onDeleteProfile: (ModelProfile) -> Unit,
     ttsProfiles: List<TtsProfile>, onAddTtsProfile: (TtsProfile) -> Unit, onSelectTtsProfile: (TtsProfile) -> Unit, onDeleteTtsProfile: (TtsProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
@@ -2306,14 +2345,26 @@ private fun SettingsPage(
         ) {
             Column(Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.fillMaxWidth().height(168.dp), contentAlignment = Alignment.Center) {
-                    CatFace(Modifier.fillMaxWidth(.78f).fillMaxHeight(.96f), petMood)
+                    CatFace(Modifier.fillMaxWidth(.78f).fillMaxHeight(.96f).pointerInput(petMood) {
+                        detectTapGestures(onTap = { onPetInteraction("pet_touch") }, onLongPress = { onPetInteraction("pet_long_press") })
+                    }, petMood)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(petName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.width(8.dp))
                     TextButton(onClick = { petNameDraft = petName; showPetNameDialog = true }) { Text("修改名称") }
                 }
-                Text("轻触萌宠可查看互动反应；Agent 对话会影响萌宠情绪。", color = Muted, fontSize = 10.sp)
+                Text("轻触萌宠可摸摸互动，长按可主动开启交流；Agent 对话会同步改变萌宠情绪。", color = Muted, fontSize = 10.sp)
+                Divider(color = GlassBorder, modifier = Modifier.padding(vertical = 10.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("萌宠投放到背屏", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (rearPetEnabled) "已开启背屏状态同步" else "关闭后背屏萌宠将隐藏", color = Muted, fontSize = 10.sp)
+                    }
+                    Switch(checked = rearPetEnabled, onCheckedChange = onRearPetEnabledChange)
+                }
+                Text("仅支持具备背屏的 Xiaomi 17 Pro 系列和 Xiaomi 18 Pro 系列机型。首次使用需先导出 ZIP，解压后按包内 REAREye_IMPORT_PROMPT.md 的步骤创建卡片；此开关控制已安装组件的显示。", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                OutlinedButton(onClick = onExportRearWidget, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("导出背屏组件包（含 REAREye 导入说明）") }
             }
         }
         Spacer(Modifier.height(18.dp))

@@ -34,6 +34,7 @@ class RearPetProvider : ContentProvider() {
             .put("mood", prefs.getString("mood", "IDLE") ?: "IDLE")
             .put("reply", prefs.getString("reply", "你好！我是你的机器人萌宠。") ?: "")
             .put("updated_at", prefs.getLong("updated_at", 0L).toString())
+            .put("enabled", prefs.getBoolean("rear_pet_enabled", false))
             .toString()
     }
 
