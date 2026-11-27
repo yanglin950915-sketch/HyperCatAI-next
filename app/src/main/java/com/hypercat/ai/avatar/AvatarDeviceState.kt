@@ -10,6 +10,12 @@ import android.Manifest
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -22,13 +28,15 @@ import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.*
 
-data class AvatarDeviceState(val battery: Int = -1, val charging: Boolean = false, val steps: Int = -1, val music: Boolean = false, val track: String = "")
+data class AvatarDeviceState(val battery: Int = -1, val charging: Boolean = false, val steps: Int = -1, val weather: String = "", val temperature: String = "", val music: Boolean = false, val track: String = "")
 object AvatarDeviceStateStore : SensorEventListener {
     private val mutable = MutableStateFlow(AvatarDeviceState())
     val state = mutable.asStateFlow()
     private var app: Context? = null
     private var sensorManager: SensorManager? = null
     private var sensor: Sensor? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var weatherStarted = false
     fun start(context: Context) {
         if (app != null) return
         app = context.applicationContext
@@ -44,6 +52,7 @@ object AvatarDeviceStateStore : SensorEventListener {
         }
         @Suppress("DEPRECATION")
         app!!.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        refreshWeather()
     }
     fun resume(context: Context) {
         start(context)
@@ -51,6 +60,25 @@ object AvatarDeviceStateStore : SensorEventListener {
             sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
     }
     fun pause() { sensorManager?.unregisterListener(this) }
+    private fun refreshWeather() {
+        if (weatherStarted) return
+        weatherStarted = true
+        scope.launch {
+            while (isActive) {
+                val ctx = app
+                if (ctx != null && com.hypercat.ai.AgentDeviceTools.hasLocationPermission(ctx)) {
+                    val result = runCatching { com.hypercat.ai.AgentDeviceTools.currentWeather(ctx) }.getOrNull().orEmpty()
+                    val line = result.lineSequence().firstOrNull { it.startsWith("当前天气：") }.orEmpty()
+                    if (line.isNotBlank()) {
+                        val description = line.substringAfter("当前天气：").substringBefore("，").trim()
+                        val temp = Regex("气温\\s*[:：]?\\s*([0-9.]+)").find(line)?.groupValues?.getOrNull(1).orEmpty()
+                        mutable.value = mutable.value.copy(weather = description, temperature = temp)
+                    }
+                }
+                delay(30 * 60 * 1000L)
+            }
+        }
+    }
     override fun onSensorChanged(e: SensorEvent) {
         if (e.sensor.type != Sensor.TYPE_STEP_COUNTER || e.values.isEmpty()) return
         val total = e.values[0].toInt()
@@ -80,6 +108,7 @@ fun AvatarStatusBadges(modifier: Modifier = Modifier) {
     val s by AvatarDeviceStateStore.state.collectAsState()
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         if (s.battery >= 0) Badge(if (s.charging) "⚡${s.battery}%" else "电量 ${s.battery}%")
+        if (s.weather.isNotBlank()) Badge("☀ ${s.weather} ${s.temperature}°")
         if (s.steps >= 0) Badge("👣 ${s.steps} 步")
         if (s.music) Badge("♫ ${s.track.ifBlank { "正在播放" }}")
     }
