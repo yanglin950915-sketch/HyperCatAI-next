@@ -867,8 +867,8 @@ private fun HyperCatApp() {
         if (ttsProfiles.isEmpty()) modelProfiles.firstOrNull { it.name == ttsProfileName }?.let { old -> val p=TtsProfile(old.name,old.endpoint,old.apiKey); ttsProfiles.add(p); ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; prefs.edit().putString("tts_profiles",org.json.JSONArray().put(JSONObject().put("name",p.name).put("endpoint",p.endpoint).put("apiKey",p.apiKey)).toString()).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() }
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
         autoReadReplies = prefs.getBoolean("auto_read_replies", false)
-        avatarName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
-        avatarId = (prefs.getString("pet_emoji", "sakura") ?: "sakura").let { if (it in setOf("sakura", "aoi", "luna", "yuna")) it else "sakura" }
+        avatarName = prefs.getString("avatar_name", prefs.getString("pet_name", "小橘"))?.takeIf { it.isNotBlank() } ?: "小橘"
+        avatarId = (prefs.getString("avatar_id", prefs.getString("pet_emoji", "sakura")) ?: "sakura").let { if (it in setOf("sakura", "aoi", "luna", "yuna")) it else "sakura" }
         themeMode = prefs.getString("theme_mode", "system") ?: "system"
     }
 
@@ -938,7 +938,7 @@ private fun HyperCatApp() {
                     onClearCurrentSession = { currentSessionTitle = "" },
                     currentSessionTitle = currentSessionTitle,
                     onAvatarInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
-                    onAvatarNameChange = { value -> val clean = value.trim().take(16).ifBlank { "小橘" }; avatarName = clean; chatPrefs.edit().putString("pet_name", clean).apply() },
+                    onAvatarNameChange = { value -> val clean = value.trim().take(16).ifBlank { "小橘" }; avatarName = clean; chatPrefs.edit().putString("avatar_name", clean).apply() },
                     modelProfiles = modelProfiles.toList(), ttsProfiles = ttsProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
                     onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
                     savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
@@ -1046,7 +1046,7 @@ private fun HyperCatApp() {
                             modifier = drawerModifier,
                             avatarName = avatarName,
                             avatarId = avatarId,
-                            onAvatarIdChange = { value -> avatarId = value; chatPrefs.edit().putString("pet_emoji", value).apply() },
+                            onAvatarIdChange = { value -> avatarId = value; chatPrefs.edit().putString("avatar_id", value).apply() },
                             avatarMood = avatarMood,
                             rearAvatarEnabled = rearAvatarEnabled,
                             rearBackgroundColor = rearBackgroundColor,
@@ -1075,7 +1075,7 @@ private fun HyperCatApp() {
                             onAvatarNameChange = { value ->
                                 val clean = value.trim().take(16).ifBlank { "小橘" }
                                 avatarName = clean
-                                chatPrefs.edit().putString("pet_name", clean).apply()
+                                chatPrefs.edit().putString("avatar_name", clean).apply()
                             }
                         )
                     },
@@ -1114,7 +1114,7 @@ private fun HyperCatApp() {
                              onAvatarNameChange = { value ->
                                  val clean = value.trim().take(16).ifBlank { "小橘" }
                                  avatarName = clean
-                                 chatPrefs.edit().putString("pet_name", clean).apply()
+                                 chatPrefs.edit().putString("avatar_name", clean).apply()
                              },
                             provider = provider, onProvider = { provider = it },
                             modelProfiles = modelProfiles.toList(),
@@ -1193,7 +1193,7 @@ private fun HyperCatApp() {
                     onAvatarNameChange = { value ->
                         val clean = value.trim().take(16).ifBlank { "小橘" }
                         avatarName = clean
-                        chatPrefs.edit().putString("pet_name", clean).apply()
+                        chatPrefs.edit().putString("avatar_name", clean).apply()
                     },
                     provider = provider, onProvider = { provider = it },
                     modelProfiles = modelProfiles.toList(),
@@ -1761,7 +1761,7 @@ private fun ChatPage(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
     BackHandler(enabled = drawerState.isOpen) {
-        if (drawerSection == "settings" || drawerSection == "pet_settings") {
+        if (drawerSection == "settings" || drawerSection == "avatar_settings") {
             drawerSection = "pet"
         } else {
             drawerScope.launch { drawerState.close() }
@@ -2049,7 +2049,7 @@ private fun ChatPage(
         AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(), exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()) {
             Surface(modifier = Modifier.fillMaxSize(), color = Panel) {
-                if (drawerSection == "pet_settings") {
+                if (drawerSection == "avatar_settings") {
                     Column(Modifier.fillMaxSize()) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { drawerSection = "pet" }) { Text("‹ 返回个人页", color = MainText) }
@@ -2071,8 +2071,8 @@ private fun ChatPage(
                             Column(Modifier.weight(1f)) { Text("我的虚拟形象", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
                         }
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
-                            Row(Modifier.fillMaxWidth().clickable { drawerSection = "pet_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(104.dp).clickable { drawerSection = "pet_settings" }, contentAlignment = Alignment.Center) {
+                            Row(Modifier.fillMaxWidth().clickable { drawerSection = "avatar_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(104.dp).clickable { drawerSection = "avatar_settings" }, contentAlignment = Alignment.Center) {
                                     AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel) { action, _ -> onAvatarInteraction(action) }
                                 }
                                 Spacer(Modifier.width(12.dp))
@@ -2634,8 +2634,8 @@ private fun AvatarSettingsPage(
                             )
                         }.pointerInput(selectedIndex) {
                             detectTapGestures(
-                                onTap = { onAvatarInteraction("pet_touch") },
-                                onLongPress = { onAvatarInteraction("pet_long_press") }
+                                onTap = { onAvatarInteraction("avatar_touch") },
+                                onLongPress = { onAvatarInteraction("avatar_long_press") }
                             )
                         } else Modifier),
                     contentAlignment = Alignment.Center
@@ -2672,11 +2672,11 @@ private fun AvatarSettingsPage(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(onClick = { onAvatarInteraction("pet_touch") }) { Text("摸摸") }
-                    OutlinedButton(onClick = { onAvatarInteraction("pet_happy") }) { Text("打招呼") }
-                    OutlinedButton(onClick = { onAvatarInteraction("pet_long_press") }) { Text("聊一聊") }
-                    OutlinedButton(onClick = { onAvatarInteraction("pet_thinking") }) { Text("思考") }
-                    OutlinedButton(onClick = { onAvatarInteraction("pet_rest") }) { Text("休息") }
+                    OutlinedButton(onClick = { onAvatarInteraction("avatar_touch") }) { Text("轻触互动") }
+                    OutlinedButton(onClick = { onAvatarInteraction("avatar_happy") }) { Text("发送问候") }
+                    OutlinedButton(onClick = { onAvatarInteraction("avatar_long_press") }) { Text("开始对话") }
+                    OutlinedButton(onClick = { onAvatarInteraction("avatar_thinking") }) { Text("思考反馈") }
+                    OutlinedButton(onClick = { onAvatarInteraction("avatar_rest") }) { Text("休息状态") }
                 }
                 Text(
                     when (avatarMood) {
