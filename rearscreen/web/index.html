@@ -192,7 +192,7 @@ function draw(t){
   drawFace(t);
   ctx.fillStyle="#31566b";ctx.fillRect(LAYOUT.REPLY.x,LAYOUT.REPLY.y,LAYOUT.REPLY.w,1);
   ctx.fillStyle="#a8d7e8";ctx.font="14px system-ui,sans-serif";ctx.textAlign="left";ctx.textBaseline="top";
-  var replyText=String(agentReply||"").replace(/\\s+/g," "),replyLines=[],current="";
+  var replyText=String(agentReply||"").replace(/\s+/g," "),replyLines=[],current="";
   Array.from(replyText).forEach(function(ch){var candidate=current+ch;if(ctx.measureText(candidate).width>LAYOUT.REPLY.w&&current){replyLines.push(current);current=ch;}else current=candidate;});
   if(current)replyLines.push(current);
   if(replyLines.length>2){replyLines=replyLines.slice(0,2);replyLines[1]=replyLines[1].slice(0,Math.max(0,replyLines[1].length-1))+"…";}
