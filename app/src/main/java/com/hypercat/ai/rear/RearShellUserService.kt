@@ -1,6 +1,5 @@
 package com.hypercat.ai.rear
 
-import android.os.RemoteException
 import androidx.annotation.Keep
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -8,9 +7,6 @@ import java.io.InputStreamReader
 /** Runs the narrowly-scoped display inspection and Activity commands as Shizuku shell. */
 @Keep
 class RearShellUserService : IRearShellService.Stub() {
-    @Keep
-    constructor()
-
     override fun exec(command: String): String {
         val allowed = command == "dumpsys display" ||
             command == "am start --display " + command.substringAfter("--display ", "").substringBefore(" ") +
