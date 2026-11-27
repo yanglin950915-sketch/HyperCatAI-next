@@ -62,7 +62,7 @@ var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:fal
 var W=0,H=0,dpr=1,CAM=0,FIT=1,DX=0,DY=0;
 var rafPend=false,paused=false,lastDraw=-1e9,lastFrame=0,animTime=0,dead=false;
 var mood=0,localMoodUntil=0,blink=0,blinkAt=0,nextBlink=1900,gazeX=0,gazeY=0;
-var pointerId=null,pressStartedAt=0,pressAction="",DEMO_T=1200,petName=T.petDefault,agentReply=T.replyDefault,projectionEnabled=true;
+var pointerId=null,pressStartedAt=0,pressAction="",DEMO_T=1200,petName=T.petDefault,agentReply=T.replyDefault,projectionEnabled=false;
 var fontCache=Object.create(null);
 var moods=[
   {name:T.idle,eye:1,pupil:1,mouth:0},
