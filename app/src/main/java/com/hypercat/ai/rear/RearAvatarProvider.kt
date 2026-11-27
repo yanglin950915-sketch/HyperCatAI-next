@@ -25,6 +25,7 @@ class RearAvatarProvider : ContentProvider() {
 
     private fun readAvatarJson(): String {
         val appContext = requireNotNull(context)
+        com.hypercat.ai.avatar.AvatarDeviceStateStore.resume(appContext)
         val state = AvatarStateStore.read(appContext)
         val device = com.hypercat.ai.avatar.AvatarDeviceStateStore.state.value
         return JSONObject()

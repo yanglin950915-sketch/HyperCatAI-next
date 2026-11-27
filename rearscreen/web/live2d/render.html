@@ -11,12 +11,14 @@
   canvas { display:block; background:transparent; }
   #render-error { display:none; position:fixed; inset:0; z-index:99; box-sizing:border-box; padding:24px; color:#eaf4ff; background:#080d18; font:14px/1.6 system-ui,sans-serif; align-items:center; justify-content:center; text-align:center; overflow-wrap:anywhere; }
   #render-error strong { display:block; margin-bottom:10px; color:#ffb8c2; font-size:17px; }
-  #rear-status { display:none; position:fixed; z-index:40; top:9px; left:33%; right:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:6px; pointer-events:none; font:11px/1.2 system-ui,sans-serif; }
-  .status-chip { color:#fff; background:rgba(12,18,30,.78); border:1px solid rgba(255,255,255,.20); border-radius:18px; padding:7px 10px; max-width:45%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #media-controls { display:flex; align-items:center; gap:5px; pointer-events:auto; }
-  #media-controls button { color:#fff; background:rgba(24,42,65,.88); border:1px solid rgba(255,255,255,.24); border-radius:18px; min-width:34px; min-height:30px; padding:5px 9px; font:11px system-ui,sans-serif; }
-  #music-lyrics { display:none; position:fixed; z-index:35; left:33%; right:10px; bottom:5%; padding:8px 12px; border-radius:13px; color:#fff; background:rgba(10,15,25,.68); border:1px solid rgba(255,255,255,.16); text-align:center; font:14px/1.45 system-ui,sans-serif; text-shadow:0 1px 3px #000; pointer-events:none; }
-</style>
+  #rear-status { display:none; position:fixed; z-index:40; top:max(10px,env(safe-area-inset-top)); left:33%; right:12px; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:stretch; gap:8px; pointer-events:none; font:13px/1.25 system-ui,sans-serif; }
+  #rear-status.active { display:grid; }
+  .status-chip { box-sizing:border-box; color:#fff; background:rgba(12,18,30,.90); border:1px solid rgba(255,255,255,.30); border-radius:20px; padding:10px 8px; min-width:0; max-width:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:12px/1.25 system-ui,sans-serif; text-align:center; }
+  #status-track, #media-controls { grid-column:1 / -1; }
+  #media-controls { display:flex; align-items:stretch; justify-content:space-between; gap:8px; width:100%; pointer-events:auto; }
+  #media-controls button { flex:1 1 0; color:#fff; background:rgba(24,42,65,.98); border:1px solid rgba(255,255,255,.36); border-radius:20px; min-width:0; min-height:46px; padding:10px 8px; font:13px system-ui,sans-serif; box-shadow:0 2px 8px rgba(0,0,0,.28); }
+  #music-lyrics { display:none; position:fixed; z-index:35; left:33%; right:12px; bottom:5%; padding:10px 14px; border-radius:15px; color:#fff; background:rgba(10,15,25,.86); border:1px solid rgba(255,255,255,.26); text-align:center; font:15px/1.5 system-ui,sans-serif; text-shadow:0 1px 3px #000; pointer-events:none; }
+  </style>
 </head>
 <body>
 <div id="stage"></div>
@@ -90,7 +92,7 @@
   var SHOW_LYRICS = params.get('lyrics') === '1' || !!window.maml || params.get('rear') === '1';
   if (window.maml) {
     var rearStatusPanel = document.getElementById('rear-status');
-    if (rearStatusPanel) rearStatusPanel.style.display = 'flex';
+    if (rearStatusPanel) rearStatusPanel.classList.add('active');
   }
   var initialDeviceState = {};
   var VIEW_OFFSET_X = IS_REAR_DISPLAY ? -0.07 : 0;

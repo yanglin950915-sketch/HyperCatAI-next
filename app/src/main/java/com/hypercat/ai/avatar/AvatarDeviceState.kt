@@ -60,26 +60,36 @@ object AvatarDeviceStateStore : SensorEventListener {
         sensorManager = app!!.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         sensor = sensorManager?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
         val receiver = object : BroadcastReceiver() {
-            override fun onReceive(c: Context?, i: Intent?) {
-                val level = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-                val scale = i?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
-                val status = i?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-                if (level >= 0 && scale > 0) mutable.value = mutable.value.copy(
-                    battery = level * 100 / scale,
-                    charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-                )
-            }
+            override fun onReceive(c: Context?, i: Intent?) { updateBattery(i) }
         }
         @Suppress("DEPRECATION")
-        app!!.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val stickyBattery = app!!.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        updateBattery(stickyBattery)
         refreshWeather()
     }
 
     fun resume(context: Context) {
         start(context)
+        refreshWeather()
+        refreshBattery(context)
         if (!sensorRegistered && sensor != null && ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED) {
             sensorRegistered = sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL) == true
         }
+    }
+
+    private fun refreshBattery(context: Context) {
+        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        updateBattery(intent)
+    }
+
+    private fun updateBattery(intent: Intent?) {
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        if (level >= 0 && scale > 0) mutable.value = mutable.value.copy(
+            battery = level * 100 / scale,
+            charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        )
     }
     fun pause() {
         if (sensorRegistered) sensorManager?.unregisterListener(this)
@@ -316,5 +326,5 @@ fun AvatarStatusBadges(modifier: Modifier = Modifier, rearControls: Boolean = fa
 @Composable
 private fun AvatarStatusBadge(t: String, modifier: Modifier = Modifier) {
     Text(t, color = Color.White, fontSize = 9.sp, maxLines = 1,
-        modifier = modifier.background(Color(0xB8222B3B), RoundedCornerShape(20.dp)).padding(horizontal = 8.dp, vertical = 6.dp))
+        modifier = modifier.background(Color(0xB8222B3B), RoundedCornerShape(20.dp)).padding(horizontal = 7.dp, vertical = 4.dp))
 }

@@ -153,7 +153,9 @@ fun Live2DView(
         )
     }
     LaunchedEffect(speaking, state.ready) { if (state.ready) controller.setSpeaking(speaking) }
-    LaunchedEffect(musicPlaying, state.ready) { if (state.ready) controller.setMusicPlaying(musicPlaying) }
+    LaunchedEffect(musicPlaying, deviceState.music, state.ready) {
+        if (state.ready) controller.setMusicPlaying(musicPlaying || deviceState.music)
+    }
     LaunchedEffect(deviceState.musicBeat, state.ready) {
         if (state.ready) controller.setMusicBeat(deviceState.musicBeat)
     }

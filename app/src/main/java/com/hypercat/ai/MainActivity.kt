@@ -1529,8 +1529,6 @@ private fun ChatPage(
     var previewPhoto by remember { mutableStateOf<Bitmap?>(null) }
     val clipboardManager = LocalClipboardManager.current
     val cameraCapture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap -> if (bitmap != null) selectedPhotos = selectedPhotos + bitmap }
-    var searchQuery by remember { mutableStateOf("") }
-    var showSearch by remember { mutableStateOf(false) }
     var showRecent by remember { mutableStateOf(false) }
     var showClear by remember { mutableStateOf(false) }
     var selectedMessageIndices by remember { mutableStateOf<Set<Int>>(emptySet()) }
@@ -2028,7 +2026,7 @@ private fun ChatPage(
                     Text("输入消息，或使用语音与 Agent 交流。", color = Muted, fontSize = 13.sp)
                 }
             }
-            items(messages.mapIndexed { index, message -> index to message }.filter { searchQuery.isBlank() || it.second.text.contains(searchQuery, ignoreCase = true) }) { (messageIndex, line) ->
+            items(messages.mapIndexed { index, message -> index to message }) { (messageIndex, line) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
                     if (selectedMessageIndices.isNotEmpty()) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
                     Surface(modifier = (if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices) Cyan else GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
@@ -2133,7 +2131,7 @@ private fun ChatPage(
                     }
                 }
             }
-            if (isThinking && searchQuery.isBlank()) item {
+            if (isThinking) item {
                 Row(Modifier.fillMaxWidth().padding(start = 42.dp, top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Cyan)
                     Spacer(Modifier.width(9.dp))
@@ -2209,12 +2207,15 @@ private fun ChatPage(
                     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) { Text("我的AI小伙伴", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
+                            IconButton(onClick = { drawerSection = "settings" }, modifier = Modifier.size(38.dp)) {
+                                Icon(Icons.Outlined.Settings, contentDescription = "设置", tint = Cyan, modifier = Modifier.size(21.dp))
+                            }
                         }
-                        Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
-                            Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                        Surface(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 9.dp), color = Panel2, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 9.dp)) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(96.dp).clickable { drawerSection = "avatar_settings" }, contentAlignment = Alignment.Center) {
-                                        AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel, halfBody = false) { action, _ -> onAvatarInteraction(action) }
+                                    Box(Modifier.size(76.dp).clickable(interactionSource = null, indication = null) { drawerSection = "avatar_settings" }, contentAlignment = Alignment.Center) {
+                                        AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel, halfBody = false) { _, _ -> }
                                     }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f).clickable { drawerSection = "avatar_settings" }) {
@@ -2223,7 +2224,7 @@ private fun ChatPage(
                                         Text("点击头像管理虚拟形象与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                                     }
                                 }
-                                AvatarStatusBadges(Modifier.fillMaxWidth().padding(top = 12.dp))
+                                AvatarStatusBadges(Modifier.fillMaxWidth().padding(top = 8.dp))
                             }
                         }
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -2243,15 +2244,7 @@ private fun ChatPage(
                                 Divider(color = GlassBorder.copy(alpha = .4f))
                             }
                         }
-                        Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp), color = Panel2, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                listOf("⌕" to "找一下", "✎" to "记一下", "⚙" to "设置").forEachIndexed { index, item ->
-                                    Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable {
-                                        when (index) { 0 -> { showSearch = true; drawerScope.launch { drawerState.close() } }; 1 -> { noteDraft = draft; showRemember = true; drawerScope.launch { drawerState.close() } }; else -> drawerSection = "settings" }
-                                    }.padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(item.first, color = Cyan, fontSize = 20.sp); Text(item.second, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium) }
-                                }
-                            }
-                        }
+
                     }
                 }
             }
@@ -2283,9 +2276,6 @@ private fun ChatPage(
         confirmButton = { TextButton(onClick = { onAvatarNameChange(avatarNameDraft); showPetNameDialog = false }) { Text("保存") } },
         dismissButton = { TextButton(onClick = { showPetNameDialog = false }) { Text("取消") } }
     )
-    if (showSearch) AlertDialog(onDismissRequest = { showSearch = false; searchQuery = "" }, title = { Text("查找对话内容") },
-        text = { Column { OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("输入关键词，聊天列表即时筛选") }, singleLine = true); Text("${messages.count { it.text.contains(searchQuery, true) }} 条匹配消息", color = Muted, fontSize = 12.sp) } },
-        confirmButton = { TextButton(onClick = { showSearch = false; searchQuery = "" }) { Text("完成") } })
     if (showRemember) AlertDialog(
         onDismissRequest = { showRemember = false },
         title = { Text("Agent 长期记忆") },
