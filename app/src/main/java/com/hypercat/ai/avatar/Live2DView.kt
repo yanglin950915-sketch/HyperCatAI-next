@@ -32,7 +32,8 @@ fun Live2DView(
     mood: String = "normal",
     speaking: Boolean = false,
     halfBody: Boolean = true,
-    safeTopRatio: Float = 0.14f,
+    safeTopRatio: Float = 0f,
+    rearDisplay: Boolean = false,
     showInterface: Boolean = false,
     onGesture: (String, String) -> Unit = { _, _ -> },
     onState: (Live2DRenderState) -> Unit = {},
@@ -110,14 +111,16 @@ fun Live2DView(
             webView.destroy()
         }
     }
-    LaunchedEffect(model.directory, model.entry, halfBody, safeTopRatio) {
+    LaunchedEffect(model.directory, model.entry, halfBody, safeTopRatio, rearDisplay) {
         state = Live2DRenderState()
         val dir = android.net.Uri.encode(model.directory, "/:")
         val entry = android.net.Uri.encode(model.entry, "/")
         // Clear the previous WebView surface before loading the next model. Keeping the old
         // composited frame visible during navigation caused motion trails on fast swaps.
-        val riceOffset = if (model.id == "rice") "-0.035" else "0"
-        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&safeTop=${safeTopRatio.coerceIn(0.08f, 0.24f)}&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=" + riceOffset
+        // Main-screen rendering remains centred in the full viewport. Only the
+        // rear-display host receives the measured camera/cutout safe-area inset.
+        val rearSafeTop = if (rearDisplay) safeTopRatio.coerceIn(0f, 0.30f) else 0f
+        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&safeTop=$rearSafeTop&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=0"
         webView.stopLoading()
         webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         webView.loadUrl("about:blank")
