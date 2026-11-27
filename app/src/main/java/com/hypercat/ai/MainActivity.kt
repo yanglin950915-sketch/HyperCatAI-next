@@ -167,23 +167,24 @@ private fun resolveInitialDarkMode(context: Context): Boolean {
 private fun applyPlatformNightMode(context: Context, mode: String) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
     val manager = context.getSystemService(android.app.UiModeManager::class.java) ?: return
-    when (mode) {
-        "dark" -> manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_YES)
-        "light" -> manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_NO)
-        "time" -> {
-            if (Build.VERSION.SDK_INT >= 34) {
-                manager.setCustomNightModeStart(java.time.LocalTime.of(19, 0))
-                manager.setCustomNightModeEnd(java.time.LocalTime.of(7, 0))
-                manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_CUSTOM)
-            } else {
-                val darkNow = java.time.LocalTime.now().let { it.hour < 7 || it.hour >= 19 }
-                manager.setApplicationNightMode(
-                    if (darkNow) android.app.UiModeManager.MODE_NIGHT_YES
-                    else android.app.UiModeManager.MODE_NIGHT_NO
-                )
-            }
+    val targetMode = when (mode) {
+        "dark" -> android.app.UiModeManager.MODE_NIGHT_YES
+        "light" -> android.app.UiModeManager.MODE_NIGHT_NO
+        "time" -> if (Build.VERSION.SDK_INT >= 34) {
+            manager.setCustomNightModeStart(java.time.LocalTime.of(19, 0))
+            manager.setCustomNightModeEnd(java.time.LocalTime.of(7, 0))
+            android.app.UiModeManager.MODE_NIGHT_CUSTOM
+        } else {
+            val darkNow = java.time.LocalTime.now().let { it.hour < 7 || it.hour >= 19 }
+            if (darkNow) android.app.UiModeManager.MODE_NIGHT_YES else android.app.UiModeManager.MODE_NIGHT_NO
         }
-        else -> manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_AUTO)
+        else -> android.app.UiModeManager.MODE_NIGHT_AUTO
+    }
+    // Avoid needlessly re-applying the same global mode on every cold start.
+    // On first install Android is already in AUTO; changing it during Activity
+    // creation can cause a one-frame resource/theme transition behind the splash.
+    if (manager.applicationNightMode != targetMode) {
+        manager.setApplicationNightMode(targetMode)
     }
 }
 
@@ -236,12 +237,9 @@ class MainActivity : ComponentActivity() {
             }
             window.decorView.systemUiVisibility = systemUi
         }
-        // The Activity window already has the saved app-preference color. Release the
-        // system splash immediately so an app-dark preference does not sit behind a
-        // prolonged light splash while WorkManager/Compose initialize.
-        splashThemeReady = true
-        // Keep the platform splash visible until the saved app theme has been applied
-        // to both the Activity window behind it and the outgoing splash surface.
+        // Register the exit callback before content creation. Keep the splash until
+        // Compose has produced its first frame; releasing it from onCreate allowed the
+        // initially empty Activity surface to flash through on first install.
         splashScreen.setOnExitAnimationListener { provider ->
             provider.view.setBackgroundColor(initialWindowColor)
             provider.remove()
@@ -251,6 +249,15 @@ class MainActivity : ComponentActivity() {
             "hypercat-release-check", ExistingPeriodicWorkPolicy.KEEP, updateCheck
         )
         setContent { HyperCatApp() }
+        window.decorView.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (window.decorView.viewTreeObserver.isAlive) {
+                    window.decorView.viewTreeObserver.removeOnPreDrawListener(this)
+                }
+                splashThemeReady = true
+                return true
+            }
+        })
     }
 }
 
