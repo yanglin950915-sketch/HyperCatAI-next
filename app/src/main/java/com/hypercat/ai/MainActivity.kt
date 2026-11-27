@@ -139,7 +139,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import android.webkit.URLUtil
-import com.hypercat.ai.rear.PetStateStore
+import com.hypercat.ai.rear.AvatarStateStore
 import com.hypercat.ai.rear.RearAgentInteractionDispatcher
 import com.hypercat.ai.rear.RearProjectionController
 import com.hypercat.ai.rear.RearCardPackageBuilder
@@ -709,8 +709,8 @@ private fun HyperCatApp() {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
-    val initialRearState = remember { PetStateStore.read(context) }
-    val rearPetState by PetStateStore.state.collectAsState()
+    val initialRearState = remember { AvatarStateStore.read(context) }
+    val rearAvatarState by AvatarStateStore.state.collectAsState()
     var page by remember { mutableStateOf(Page.CHAT) }
     var openSettingsDrawer by remember { mutableStateOf(false) }
     var chatDrawerExpanded by remember { mutableStateOf(false) }
@@ -729,11 +729,11 @@ private fun HyperCatApp() {
     var ttsVoice by remember { mutableStateOf("alloy") }
     var saved by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
-    var petName by remember { mutableStateOf(initialRearState.petName) }
-    var petEmoji by remember { mutableStateOf(initialRearState.petEmoji.takeIf { it in setOf("sakura", "aoi", "luna", "yuna") } ?: "sakura") }
-    var petMood by remember { mutableStateOf(initialRearState.mood) }
-    var petReply by remember { mutableStateOf(initialRearState.reply) }
-    var rearPetEnabled by remember { mutableStateOf(initialRearState.enabled) }
+    var avatarName by remember { mutableStateOf(initialRearState.avatarName) }
+    var avatarId by remember { mutableStateOf(initialRearState.avatarId.takeIf { it in setOf("sakura", "aoi", "luna", "yuna") } ?: "sakura") }
+    var avatarMood by remember { mutableStateOf(initialRearState.mood) }
+    var avatarReply by remember { mutableStateOf(initialRearState.reply) }
+    var rearAvatarEnabled by remember { mutableStateOf(initialRearState.enabled) }
     var rearBackgroundColor by remember { mutableStateOf(initialRearState.backgroundColor) }
     var rearProjectionStatus by remember { mutableStateOf("尚未连接背屏") }
     var rearPickerCards by remember { mutableStateOf<List<RearCard>>(emptyList()) }
@@ -768,8 +768,8 @@ private fun HyperCatApp() {
     SideEffect { appDarkState = darkNow }
     fun setRearProjectionEnabled(enabled: Boolean) {
         if (!enabled) {
-            rearPetEnabled = false
-            PetStateStore.setEnabled(context, false)
+            rearAvatarEnabled = false
+            AvatarStateStore.setEnabled(context, false)
             rearProjectionStatus = "正在关闭背屏虚拟形象…"
             scope.launch { rearProjectionStatus = withContext(Dispatchers.IO) { RearProjectionController.hide(context) } }
             return
@@ -785,7 +785,7 @@ private fun HyperCatApp() {
                     rearPickerMode = "deploy"
                     showRearPicker = true
                     rearProjectionStatus = "发现 " + rearPickerCards.size + " 个可替换背屏资源，请选择目标"
-                } catch (error: Exception) { rearProjectionStatus = error.message ?: "扫描背屏资源失败"; rearPetEnabled = false }
+                } catch (error: Exception) { rearProjectionStatus = error.message ?: "扫描背屏资源失败"; rearAvatarEnabled = false }
             }
         }
     }
@@ -801,13 +801,13 @@ private fun HyperCatApp() {
                     else "未授予位置权限，无法获取当地天气。请在系统权限弹窗中允许位置访问，或直接告诉我城市名称。"
                 val display = if (hasLocation && !precise) "提示：目前只获得大致位置权限，天气区域可能不够准确。请在应用权限中开启“精确位置”。\\n$result" else result
                 appendAgentReply(context, messages, display)
-                petReply = display
-                petMood = "happy"
+                avatarReply = display
+                avatarMood = "happy"
             } catch (error: Exception) {
                 val failure = "天气查询失败：${error.message ?: "请稍后重试"}"
                 appendAgentReply(context, messages, failure)
-                petReply = failure
-                petMood = "sad"
+                avatarReply = failure
+                avatarMood = "sad"
             } finally { isThinking = false }
         }
     }
@@ -867,8 +867,8 @@ private fun HyperCatApp() {
         if (ttsProfiles.isEmpty()) modelProfiles.firstOrNull { it.name == ttsProfileName }?.let { old -> val p=TtsProfile(old.name,old.endpoint,old.apiKey); ttsProfiles.add(p); ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; prefs.edit().putString("tts_profiles",org.json.JSONArray().put(JSONObject().put("name",p.name).put("endpoint",p.endpoint).put("apiKey",p.apiKey)).toString()).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() }
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
         autoReadReplies = prefs.getBoolean("auto_read_replies", false)
-        petName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
-        petEmoji = (prefs.getString("pet_emoji", "sakura") ?: "sakura").let { if (it in setOf("sakura", "aoi", "luna", "yuna")) it else "sakura" }
+        avatarName = prefs.getString("pet_name", "小橘")?.takeIf { it.isNotBlank() } ?: "小橘"
+        avatarId = (prefs.getString("pet_emoji", "sakura") ?: "sakura").let { if (it in setOf("sakura", "aoi", "luna", "yuna")) it else "sakura" }
         themeMode = prefs.getString("theme_mode", "system") ?: "system"
     }
 
@@ -887,32 +887,32 @@ private fun HyperCatApp() {
         }
     }
 
-    LaunchedEffect(rearPetState.updatedAt) {
-        if (rearPetState.updatedAt > 0L) {
-            petName = rearPetState.petName
-            petMood = rearPetState.mood
+    LaunchedEffect(rearAvatarState.updatedAt) {
+        if (rearAvatarState.updatedAt > 0L) {
+            avatarName = rearAvatarState.avatarName
+            avatarMood = rearAvatarState.mood
             val transientRearFeedback = setOf("让我想一想……", "我准备休息啦。", "我在听，你想和我聊什么？", "嘿嘿，你摸到我啦！", "咦？你在带我移动吗？")
-            if (rearPetState.reply.isNotBlank() &&
-                rearPetState.reply != petReply &&
-                rearPetState.reply !in transientRearFeedback
+            if (rearAvatarState.reply.isNotBlank() &&
+                rearAvatarState.reply != avatarReply &&
+                rearAvatarState.reply !in transientRearFeedback
             ) {
-                val interactionText = rearPetState.userText.trim()
+                val interactionText = rearAvatarState.userText.trim()
                 messages.add(ChatLine(
                     interactionText.ifBlank { "（背屏互动）用户通过背屏和虚拟形象进行了互动。" },
                     true
                 ))
-                messages.add(ChatLine(rearPetState.reply, false))
+                messages.add(ChatLine(rearAvatarState.reply, false))
             }
-            petReply = rearPetState.reply
+            avatarReply = rearAvatarState.reply
         }
     }
 
     LaunchedEffect(isThinking) {
-        if (isThinking) petMood = "thinking"
+        if (isThinking) avatarMood = "thinking"
     }
 
-    LaunchedEffect(petName, petEmoji, petMood, petReply) {
-        PetStateStore.update(context, petName, petEmoji, petMood, petReply, userText = rearPetState.userText)
+    LaunchedEffect(avatarName, avatarId, avatarMood, avatarReply) {
+        AvatarStateStore.update(context, avatarName, avatarId, avatarMood, avatarReply, userText = rearAvatarState.userText)
     }
 
     MaterialTheme(colorScheme = if (darkNow) darkColorScheme(
@@ -937,8 +937,8 @@ private fun HyperCatApp() {
                     onShareCurrentSession = { shareChatText(context, formatChatForSharing(currentSessionTitle, messages)) },
                     onClearCurrentSession = { currentSessionTitle = "" },
                     currentSessionTitle = currentSessionTitle,
-                    onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
-                    onPetNameChange = { value -> val clean = value.trim().take(16).ifBlank { "小橘" }; petName = clean; chatPrefs.edit().putString("pet_name", clean).apply() },
+                    onAvatarInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                    onAvatarNameChange = { value -> val clean = value.trim().take(16).ifBlank { "小橘" }; avatarName = clean; chatPrefs.edit().putString("pet_name", clean).apply() },
                     modelProfiles = modelProfiles.toList(), ttsProfiles = ttsProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
                     onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
                     savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
@@ -968,13 +968,13 @@ private fun HyperCatApp() {
                                         try {
                                             val weatherReply = withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context, requestedPlace.ifBlank { null }) }
                                             appendAgentReply(context, messages, weatherReply)
-                                            petReply = weatherReply
-                                            petMood = "happy"
+                                            avatarReply = weatherReply
+                                            avatarMood = "happy"
                                         } catch (error: Exception) {
                                             val failure = "天气查询失败：${error.message ?: "请稍后重试"}"
                                             appendAgentReply(context, messages, failure)
-                                            petReply = failure
-                                            petMood = "sad"
+                                            avatarReply = failure
+                                            avatarMood = "sad"
                                         }
                                         finally { isThinking = false }
                                     }
@@ -983,13 +983,13 @@ private fun HyperCatApp() {
                                 val localAction = AgentDeviceTools.handleSystemAction(context, value)
                                 if (localAction != null) {
                                     appendAgentReply(context, messages, localAction)
-                                    petReply = localAction
-                                    petMood = "happy"
+                                    avatarReply = localAction
+                                    avatarMood = "happy"
                                 } else if (!saved || endpoint.isBlank() || model.isBlank()) {
                                     val setupHint = "请先在设置中完成模型配置，再发送消息。"
                                     messages.add(ChatLine(setupHint, false))
-                                    petReply = setupHint
-                                    petMood = "sad"
+                                    avatarReply = setupHint
+                                    avatarMood = "sad"
                                 }
                                 else {
                                     val requestHistory = messages.toList()
@@ -998,13 +998,13 @@ private fun HyperCatApp() {
                                         try {
                                             val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
                                             appendAgentReply(context, messages, reply.text, reply.reasoning)
-                                            petReply = reply.text
-                                            petMood = inferMood(reply.text)
+                                            avatarReply = reply.text
+                                            avatarMood = inferMood(reply.text)
                                         } catch (error: Exception) {
                                             val failure = "模型请求未成功：${error.message ?: "网络或服务异常"}"
                                             appendAgentReply(context, messages, failure)
-                                            petReply = failure
-                                            petMood = "sad"
+                                            avatarReply = failure
+                                            avatarMood = "sad"
                                         } finally { isThinking = false }
                                     }
                                 }
@@ -1019,42 +1019,42 @@ private fun HyperCatApp() {
                                 try {
                                     val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
                                     appendAgentReply(context, messages, reply.text, reply.reasoning)
-                                    petReply = reply.text
-                                    petMood = inferMood(reply.text)
+                                    avatarReply = reply.text
+                                    avatarMood = inferMood(reply.text)
                                 } catch (error: Exception) {
                                     val failure = "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}"
                                     appendAgentReply(context, messages, failure)
-                                    petReply = failure
-                                    petMood = "sad"
+                                    avatarReply = failure
+                                    avatarMood = "sad"
                                 } finally { isThinking = false }
                             }
                         }
                     },
                     openSettings = { page = Page.CHAT; openSettingsDrawer = true },
                     configured = saved,
-                    petName = petName,
-                    petEmoji = petEmoji,
-                    petMood = petMood,
+                    avatarName = avatarName,
+                    avatarId = avatarId,
+                    avatarMood = avatarMood,
                     ttsLanguage = ttsLanguage, ttsRate = ttsRate, ttsPitch = ttsPitch,
                     ttsMode = ttsMode, ttsProfileName = ttsProfileName, ttsModel = ttsModel, ttsVoice = ttsVoice,
                     autoReadReplies = autoReadReplies, onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
-                    onMood = { mood -> petMood = mood },
+                    onMood = { mood -> avatarMood = mood },
                     showSettingsOnEnter = openSettingsDrawer,
                     onSettingsDrawerShown = { openSettingsDrawer = false },
                     avatarSettingsContent = { drawerModifier ->
                         AvatarSettingsPage(
                             modifier = drawerModifier,
-                            petName = petName,
-                            petEmoji = petEmoji,
-                            onPetEmojiChange = { value -> petEmoji = value; chatPrefs.edit().putString("pet_emoji", value).apply() },
-                            petMood = petMood,
-                            rearPetEnabled = rearPetEnabled,
+                            avatarName = avatarName,
+                            avatarId = avatarId,
+                            onAvatarIdChange = { value -> avatarId = value; chatPrefs.edit().putString("pet_emoji", value).apply() },
+                            avatarMood = avatarMood,
+                            rearAvatarEnabled = rearAvatarEnabled,
                             rearBackgroundColor = rearBackgroundColor,
-                            onRearBackgroundColorChange = { color -> rearBackgroundColor = color; PetStateStore.setBackgroundColor(context, color) },
+                            onRearBackgroundColorChange = { color -> rearBackgroundColor = color; AvatarStateStore.setBackgroundColor(context, color) },
                             rearProjectionStatus = rearProjectionStatus,
                             onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                             onRearPetRestore = {
-                                rearPetEnabled = false
+                                rearAvatarEnabled = false
 
                                 val ids = RearProjectionController.listBackups(context)
 
@@ -1071,10 +1071,10 @@ private fun HyperCatApp() {
                                 }
 
                                 },
-                            onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
-                            onPetNameChange = { value ->
+                            onAvatarInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                            onAvatarNameChange = { value ->
                                 val clean = value.trim().take(16).ifBlank { "小橘" }
-                                petName = clean
+                                avatarName = clean
                                 chatPrefs.edit().putString("pet_name", clean).apply()
                             }
                         )
@@ -1087,12 +1087,12 @@ private fun HyperCatApp() {
                             onDeleteNote = { note -> savedNotes = savedNotes.filterNot { it == note }; chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
                             autoReadReplies = autoReadReplies,
                             onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
-                             petName = petName,
-                             petMood = petMood,
-                             rearPetEnabled = rearPetEnabled,
+                             avatarName = avatarName,
+                             avatarMood = avatarMood,
+                             rearAvatarEnabled = rearAvatarEnabled,
                              onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                              onRearPetRestore = {
-                                 rearPetEnabled = false
+                                 rearAvatarEnabled = false
 
                                  val ids = RearProjectionController.listBackups(context)
 
@@ -1109,11 +1109,11 @@ private fun HyperCatApp() {
                                  }
 
                                  },
-                             onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                             onAvatarInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
                              rearProjectionStatus = rearProjectionStatus,
-                             onPetNameChange = { value ->
+                             onAvatarNameChange = { value ->
                                  val clean = value.trim().take(16).ifBlank { "小橘" }
-                                 petName = clean
+                                 avatarName = clean
                                  chatPrefs.edit().putString("pet_name", clean).apply()
                              },
                             provider = provider, onProvider = { provider = it },
@@ -1166,12 +1166,12 @@ private fun HyperCatApp() {
                             onDeleteNote = { note -> savedNotes = savedNotes.filterNot { it == note }; chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
                             autoReadReplies = autoReadReplies,
                             onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
-                    petName = petName,
-                    petMood = petMood,
-                    rearPetEnabled = rearPetEnabled,
+                    avatarName = avatarName,
+                    avatarMood = avatarMood,
+                    rearAvatarEnabled = rearAvatarEnabled,
                     onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                     onRearPetRestore = {
-                        rearPetEnabled = false
+                        rearAvatarEnabled = false
 
                         val ids = RearProjectionController.listBackups(context)
 
@@ -1188,11 +1188,11 @@ private fun HyperCatApp() {
                         }
 
                         },
-                    onPetInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                    onAvatarInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
                     rearProjectionStatus = rearProjectionStatus,
-                    onPetNameChange = { value ->
+                    onAvatarNameChange = { value ->
                         val clean = value.trim().take(16).ifBlank { "小橘" }
-                        petName = clean
+                        avatarName = clean
                         chatPrefs.edit().putString("pet_name", clean).apply()
                     },
                     provider = provider, onProvider = { provider = it },
@@ -1287,8 +1287,8 @@ private fun HyperCatApp() {
                                     scope.launch {
                                         try {
                                             rearProjectionStatus = if (rearPickerMode == "deploy") RearProjectionController.deploy(context, card) else RearProjectionController.restore(context, card.cardId)
-                                            rearPetEnabled = rearPickerMode == "deploy"
-                                            PetStateStore.setEnabled(context, rearPetEnabled)
+                                            rearAvatarEnabled = rearPickerMode == "deploy"
+                                            AvatarStateStore.setEnabled(context, rearAvatarEnabled)
                                             showRearPicker = false
                                             android.widget.Toast.makeText(context, rearProjectionStatus, android.widget.Toast.LENGTH_LONG).show()
                                         } catch (error: Exception) {
@@ -1351,9 +1351,9 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @Composable
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
-    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, petName: String, petEmoji: String,
-    petMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
-    ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
+    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
+    avatarMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
+    ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit, onAvatarInteraction: (String) -> Unit, onAvatarNameChange: (String) -> Unit,
     showSettingsOnEnter: Boolean,
     onSettingsDrawerShown: () -> Unit,
     settingsContent: @Composable (Modifier) -> Unit,
@@ -1378,7 +1378,7 @@ private fun ChatPage(
     }
     var drawerSection by remember { mutableStateOf("pet") }
     var showPetNameDialog by remember { mutableStateOf(false) }
-    var petNameDraft by remember(petName) { mutableStateOf(petName) }
+    var avatarNameDraft by remember(avatarName) { mutableStateOf(avatarName) }
     var selectedFiles by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var selectedPhotos by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
     var previewPhoto by remember { mutableStateOf<Bitmap?>(null) }
@@ -1880,7 +1880,7 @@ private fun ChatPage(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
                     if (!line.fromUser) {
                         Box(Modifier.padding(end = 8.dp).size(34.dp).clip(RoundedCornerShape(11.dp)).background(Brush.linearGradient(listOf(Cyan, Color(0xFF8C7BFF)))), contentAlignment = Alignment.Center) {
-                            Text(petName.take(1), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text(avatarName.take(1), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                     if (selectedMessageIndices.isNotEmpty()) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
@@ -2022,7 +2022,7 @@ private fun ChatPage(
                     BasicTextField(value = draft, onValueChange = onDraft,
                         modifier = Modifier.weight(1f).heightIn(min = 42.dp, max = 132.dp).padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
-                        decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$petName…", color = Muted, fontSize = 14.sp); inner() })
+                        decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$avatarName…", color = Muted, fontSize = 14.sp); inner() })
                     VoiceInputButton(isListening = isListening, onPressStart = { startInAppRecognition() }, onPressEnd = { stopInAppRecognition() })
                 }
             }
@@ -2073,12 +2073,12 @@ private fun ChatPage(
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().clickable { drawerSection = "pet_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(104.dp).clickable { drawerSection = "pet_settings" }, contentAlignment = Alignment.Center) {
-                                    AvatarRenderer(petEmoji, Modifier.fillMaxSize(), petMood, isSpeaking, live2dModel) { action, _ -> onPetInteraction(action) }
+                                    AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel) { action, _ -> onAvatarInteraction(action) }
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text(petName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                    Text(when (petMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
+                                    Text(avatarName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    Text(when (avatarMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
                                     Text("点击头像管理虚拟形象与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                                 }
                             }
@@ -2093,7 +2093,7 @@ private fun ChatPage(
                             if (orderedRecent.isEmpty()) item { Column(Modifier.fillMaxWidth().padding(top = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("暂无历史对话", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold); Text("开始聊天后，记录会显示在这里", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp)) } }
                             items(orderedRecent) { prompt ->
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(vertical = 6.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f).clickable { onOpenRecentSession(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 5.dp)) { Text(prompt, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 2); Text("与 " + petName + " 的对话", color = Muted, fontSize = 10.sp) }
+                                    Column(Modifier.weight(1f).clickable { onOpenRecentSession(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 5.dp)) { Text(prompt, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 2); Text("与 " + avatarName + " 的对话", color = Muted, fontSize = 10.sp) }
                                     IconButton(onClick = { onShareRecentSession(prompt) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Share, contentDescription = "分享完整对话", tint = Cyan, modifier = Modifier.size(17.dp)) }
                                     IconButton(onClick = { onDeleteRecentPrompt(prompt) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Delete, contentDescription = "删除对话", tint = Color(0xFFE07878), modifier = Modifier.size(17.dp)) }
                                 }
@@ -2136,8 +2136,8 @@ private fun ChatPage(
     if (showPetNameDialog) AlertDialog(
         onDismissRequest = { showPetNameDialog = false },
         title = { Text("编辑虚拟形象资料") },
-        text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("虚拟形象名称") }) },
-        confirmButton = { TextButton(onClick = { onPetNameChange(petNameDraft); showPetNameDialog = false }) { Text("保存") } },
+        text = { OutlinedTextField(value = avatarNameDraft, onValueChange = { avatarNameDraft = it.take(16) }, singleLine = true, label = { Text("虚拟形象名称") }) },
+        confirmButton = { TextButton(onClick = { onAvatarNameChange(avatarNameDraft); showPetNameDialog = false }) { Text("保存") } },
         dismissButton = { TextButton(onClick = { showPetNameDialog = false }) { Text("取消") } }
     )
     if (showSearch) AlertDialog(onDismissRequest = { showSearch = false; searchQuery = "" }, title = { Text("查找对话内容") },
@@ -2577,18 +2577,18 @@ private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier, mo
 @Composable
 private fun AvatarSettingsPage(
     modifier: Modifier,
-    petName: String,
-    petEmoji: String,
-    onPetEmojiChange: (String) -> Unit,
-    petMood: String,
-    rearPetEnabled: Boolean,
+    avatarName: String,
+    avatarId: String,
+    onAvatarIdChange: (String) -> Unit,
+    avatarMood: String,
+    rearAvatarEnabled: Boolean,
     rearBackgroundColor: String,
     onRearBackgroundColorChange: (String) -> Unit,
     rearProjectionStatus: String,
     onRearPetEnabledChange: (Boolean) -> Unit,
     onRearPetRestore: () -> Unit,
-    onPetInteraction: (String) -> Unit,
-    onPetNameChange: (String) -> Unit
+    onAvatarInteraction: (String) -> Unit,
+    onAvatarNameChange: (String) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -2610,8 +2610,8 @@ private fun AvatarSettingsPage(
         Triple("luna", "露娜", "安静细腻的银发魔法师。好奇心强，喜欢探索知识；说话温柔，关键时刻十分可靠。"),
         Triple("yuna", "优奈", "俏皮可爱的双马尾少女。喜欢恶作剧和分享日常，情绪表达直接，是个热情的小伙伴。")
     )
-    var selectedIndex by remember(petEmoji) { mutableIntStateOf(characters.indexOfFirst { it.first == petEmoji }.coerceAtLeast(0)) }
-    var nameDraft by remember(petName) { mutableStateOf(petName) }
+    var selectedIndex by remember(avatarId) { mutableIntStateOf(characters.indexOfFirst { it.first == avatarId }.coerceAtLeast(0)) }
+    var nameDraft by remember(avatarName) { mutableStateOf(avatarName) }
     var dragTotal by remember { mutableFloatStateOf(0f) }
     val selected = characters[selectedIndex]
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
@@ -2634,13 +2634,13 @@ private fun AvatarSettingsPage(
                             )
                         }.pointerInput(selectedIndex) {
                             detectTapGestures(
-                                onTap = { onPetInteraction("pet_touch") },
-                                onLongPress = { onPetInteraction("pet_long_press") }
+                                onTap = { onAvatarInteraction("pet_touch") },
+                                onLongPress = { onAvatarInteraction("pet_long_press") }
                             )
                         } else Modifier),
                     contentAlignment = Alignment.Center
                 ) {
-                    AvatarRenderer(selected.first, Modifier.fillMaxSize(), petMood, model = live2dModel) { action, _ -> onPetInteraction(action) }
+                    AvatarRenderer(selected.first, Modifier.fillMaxSize(), avatarMood, model = live2dModel) { action, _ -> onAvatarInteraction(action) }
                     Text(if (live2dModel != null) "Live2D · 直接触摸互动" else "点击角色互动", color = Color(0xFF754A67), fontSize = 11.sp,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
                 }
@@ -2672,14 +2672,14 @@ private fun AvatarSettingsPage(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(onClick = { onPetInteraction("pet_touch") }) { Text("摸摸") }
-                    OutlinedButton(onClick = { onPetInteraction("pet_happy") }) { Text("打招呼") }
-                    OutlinedButton(onClick = { onPetInteraction("pet_long_press") }) { Text("聊一聊") }
-                    OutlinedButton(onClick = { onPetInteraction("pet_thinking") }) { Text("思考") }
-                    OutlinedButton(onClick = { onPetInteraction("pet_rest") }) { Text("休息") }
+                    OutlinedButton(onClick = { onAvatarInteraction("pet_touch") }) { Text("摸摸") }
+                    OutlinedButton(onClick = { onAvatarInteraction("pet_happy") }) { Text("打招呼") }
+                    OutlinedButton(onClick = { onAvatarInteraction("pet_long_press") }) { Text("聊一聊") }
+                    OutlinedButton(onClick = { onAvatarInteraction("pet_thinking") }) { Text("思考") }
+                    OutlinedButton(onClick = { onAvatarInteraction("pet_rest") }) { Text("休息") }
                 }
                 Text(
-                    when (petMood) {
+                    when (avatarMood) {
                         "happy" -> "正在回应你的互动"
                         "thinking" -> "正在思考你的请求"
                         "sleepy" -> "正在休息，随时可以叫醒"
@@ -2691,7 +2691,7 @@ private fun AvatarSettingsPage(
                 )
                 OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) },
                     label = { Text("自定义名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Button(onClick = { onPetEmojiChange(selected.first); onPetNameChange(nameDraft.trim().ifBlank { selected.second }) },
+                Button(onClick = { onAvatarIdChange(selected.first); onAvatarNameChange(nameDraft.trim().ifBlank { selected.second }) },
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("保存虚拟形象") }
             }
         }
@@ -2701,9 +2701,9 @@ private fun AvatarSettingsPage(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("虚拟形象投放到背屏", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text(if (rearPetEnabled) "已开启" else "关闭状态 · 不影响主屏虚拟形象", color = Muted, fontSize = 11.sp)
+                        Text(if (rearAvatarEnabled) "已开启" else "关闭状态 · 不影响主屏虚拟形象", color = Muted, fontSize = 11.sp)
                     }
-                    Switch(checked = rearPetEnabled, onCheckedChange = onRearPetEnabledChange)
+                    Switch(checked = rearAvatarEnabled, onCheckedChange = onRearPetEnabledChange)
                 }
                 Text("背屏背景颜色", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
                 val rearColors = listOf("#080B12", "#F4F1EA", "#E8EEF8", "#FBE7EF", "#DCEFE8", "#242424", "#1C2942", "#4A3048")
@@ -2725,7 +2725,7 @@ private fun AvatarSettingsPage(
 }
 @Composable
 private fun SettingsPage(
-    modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, rearProjectionStatus: String, onRearPetEnabledChange: (Boolean) -> Unit, onRearPetRestore: () -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
+    modifier: Modifier, avatarName: String, avatarMood: String, rearAvatarEnabled: Boolean, rearProjectionStatus: String, onRearPetEnabledChange: (Boolean) -> Unit, onRearPetRestore: () -> Unit, onAvatarInteraction: (String) -> Unit, onAvatarNameChange: (String) -> Unit,
     provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit, onDeleteProfile: (ModelProfile) -> Unit,
     ttsProfiles: List<TtsProfile>, onAddTtsProfile: (TtsProfile) -> Unit, onSelectTtsProfile: (TtsProfile) -> Unit, onDeleteTtsProfile: (TtsProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
@@ -2742,7 +2742,7 @@ private fun SettingsPage(
     onCheckUpdates: () -> Unit, openUrl: (String) -> Unit
 ) {
     var showPetNameDialog by remember { mutableStateOf(false) }
-    var petNameDraft by remember(petName) { mutableStateOf(petName) }
+    var avatarNameDraft by remember(avatarName) { mutableStateOf(avatarName) }
     var showPluginDialog by remember { mutableStateOf(false) }
     var showMcpDialog by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
@@ -3083,8 +3083,8 @@ private fun SettingsPage(
     if (showPetNameDialog) AlertDialog(
         onDismissRequest = { showPetNameDialog = false },
         title = { Text("给虚拟形象取个名字") },
-        text = { OutlinedTextField(value = petNameDraft, onValueChange = { petNameDraft = it.take(16) }, singleLine = true, label = { Text("虚拟形象名称") }) },
-        confirmButton = { TextButton(onClick = { onPetNameChange(petNameDraft); showPetNameDialog = false }) { Text("保存") } },
+        text = { OutlinedTextField(value = avatarNameDraft, onValueChange = { avatarNameDraft = it.take(16) }, singleLine = true, label = { Text("虚拟形象名称") }) },
+        confirmButton = { TextButton(onClick = { onAvatarNameChange(avatarNameDraft); showPetNameDialog = false }) { Text("保存") } },
         dismissButton = { TextButton(onClick = { showPetNameDialog = false }) { Text("取消") } }
     )
     if (showMemoryDialog) AlertDialog(
