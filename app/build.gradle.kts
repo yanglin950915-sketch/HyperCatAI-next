@@ -1,3 +1,7 @@
+import java.io.File
+import java.net.URL
+import java.util.zip.ZipFile
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -25,7 +29,7 @@ val downloadBuiltInAvatar by tasks.registering {
         val modelSettings = avatarDir.resolve("Haru.model3.json")
         if (!modelSettings.isFile) {
             val archive = temporaryDir.resolve("cubism-web-samples.zip")
-            val archiveUrl = java.net.URL("https://codeload.github.com/Live2D/CubismWebSamples/zip/$sampleCommit")
+            val archiveUrl = URL("https://codeload.github.com/Live2D/CubismWebSamples/zip/$sampleCommit")
             archiveUrl.openConnection().apply {
                 connectTimeout = 30_000
                 readTimeout = 120_000
@@ -33,7 +37,7 @@ val downloadBuiltInAvatar by tasks.registering {
                 archive.outputStream().buffered().use { output -> input.copyTo(output) }
             }
             val prefix = "CubismWebSamples-$sampleCommit/Samples/Resources/Haru/"
-            java.util.zip.ZipFile(archive).use { zip ->
+            ZipFile(archive).use { zip ->
                 val entries = zip.entries()
                 while (entries.hasMoreElements()) {
                     val entry = entries.nextElement()
@@ -41,7 +45,7 @@ val downloadBuiltInAvatar by tasks.registering {
                     val relative = entry.name.removePrefix(prefix)
                     if (relative.isBlank()) continue
                     val target = avatarDir.resolve(relative)
-                    require(target.canonicalPath.startsWith(avatarDir.canonicalPath + java.io.File.separator)) {
+                    require(target.canonicalPath.startsWith(avatarDir.canonicalPath + File.separator)) {
                         "Unsafe path in official Live2D sample archive: ${entry.name}"
                     }
                     if (entry.isDirectory) {
