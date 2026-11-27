@@ -13,7 +13,7 @@ Release 会额外提供 `HyperCatAI-rearscreen-v0.9.21.zip`，ZIP 根目录直�
 ## REAREye v2.0.0 创建流程
 
 APK 内置工具描述明确了流程：
-1. `get_html_widget_spec` 获取 HTML widget 规范。
+1. `get_widget_spec` 获取 HTML widget 规范。
 2. `create_html_widget` 用完整 HTML 和标题创建组件；默认尺寸 904×572。
 3. 使用返回的 `business` 调用 `create_card`，创建实际显示卡片。
 4. 组件创建/激活需要在 REAREye 内按提示确认。
