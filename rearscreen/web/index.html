@@ -55,7 +55,7 @@ var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:fal
 var W=0,H=0,dpr=1,CAM=0,FIT=1,DX=0,DY=0;
 var rafPend=false,paused=false,lastDraw=-1e9,lastFrame=0,dead=false;
 var mood=0,localMoodUntil=0,blink=0,blinkAt=0,nextBlink=1900,gazeX=0,gazeY=0;
-var pointerId=null,DEMO_T=1200;
+var pointerId=null,DEMO_T=1200,petName="小橘",agentReply="你好！我是你的 AI 萌宠。";
 var moods=[
   {name:T.idle,eye:1,pupil:1,mouth:0},
   {name:T.happy,eye:.64,pupil:1,mouth:1},
@@ -66,6 +66,21 @@ var moods=[
 
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function now(){return window.performance&&performance.now?performance.now():Date.now();}
+function syncMamlState(){
+  try{
+    var bridge=window.maml;if(!bridge||typeof bridge.getStringByName!=="function")return;
+    var n=bridge.getStringByName("petName");if(n&&n!=="undefined")petName=String(n).slice(0,16);
+    var r=bridge.getStringByName("reply");if(r&&r!=="undefined")agentReply=String(r).slice(0,100);
+    var raw=bridge.getStringByName("mood");if(raw&&raw!=="undefined"&&now()>=localMoodUntil){
+      var key=String(raw).toLowerCase(),map={normal:0,idle:0,happy:1,thinking:2,sleepy:3,sad:4,surprised:1};
+      if(Object.prototype.hasOwnProperty.call(map,key))mood=map[key];
+    }
+  }catch(_){}
+}
+function dispatchRearAction(action,nextMood){
+  setMoodIndex(nextMood,false);localMoodUntil=now()+4000;
+  try{if(window.maml&&typeof window.maml.doAction==="function")window.maml.doAction(action);}catch(_){}
+}
 function kick(){if(dead||paused||window.__DIAL_NO_ANIM||rafPend)return;rafPend=true;requestAnimationFrame(frame);}
 function __fit(){
   dpr=window.devicePixelRatio||1;
@@ -167,12 +182,21 @@ function draw(t){
   /* OUTER is the mandatory backing plate for the usable right-hand display. */
   roundedRect(LAYOUT.OUTER.x,LAYOUT.OUTER.y,LAYOUT.OUTER.w,LAYOUT.OUTER.h,28);
   ctx.fillStyle="#03090e";ctx.fill();ctx.strokeStyle="#102b39";ctx.lineWidth=2;ctx.stroke();
+  syncMamlState();
   ctx.fillStyle="#73dfff";ctx.font="bold 17px system-ui,sans-serif";ctx.textAlign="left";ctx.textBaseline="middle";
   ctx.fillText(T.title,LAYOUT.HEADER.x,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.25);
-  ctx.fillStyle="#345b70";ctx.font="13px system-ui,sans-serif";
-  ctx.fillText(T.touch,LAYOUT.HEADER.x,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
+  ctx.fillStyle="#e7f8ff";ctx.font="bold 18px system-ui,sans-serif";
+  ctx.fillText(petName,LAYOUT.HEADER.x,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
+  ctx.fillStyle="#73dfff";ctx.font="14px system-ui,sans-serif";ctx.textAlign="right";
+  ctx.fillText((moods[mood]||moods[0]).name,LAYOUT.HEADER.x+LAYOUT.HEADER.w,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
   drawFace(t);
   ctx.fillStyle="#31566b";ctx.fillRect(LAYOUT.REPLY.x,LAYOUT.REPLY.y,LAYOUT.REPLY.w,1);
+  ctx.fillStyle="#a8d7e8";ctx.font="14px system-ui,sans-serif";ctx.textAlign="left";ctx.textBaseline="top";
+  var replyText=String(agentReply||"").replace(/\\s+/g," "),replyLines=[],current="";
+  Array.from(replyText).forEach(function(ch){var candidate=current+ch;if(ctx.measureText(candidate).width>LAYOUT.REPLY.w&&current){replyLines.push(current);current=ch;}else current=candidate;});
+  if(current)replyLines.push(current);
+  if(replyLines.length>2){replyLines=replyLines.slice(0,2);replyLines[1]=replyLines[1].slice(0,Math.max(0,replyLines[1].length-1))+"…";}
+  replyLines.slice(0,2).forEach(function(line,i){ctx.fillText(line,LAYOUT.REPLY.x,LAYOUT.REPLY.y+8+i*18);});
   LAYOUT.BUTTONS.forEach(function(b,i){drawButton(b,mood===b.mood,t);});
   if(window.__DIAL_NO_ANIM){
     ctx.save();ctx.strokeStyle="#ff3b3b";ctx.lineWidth=3;ctx.setLineDash([10,8]);ctx.strokeRect(0,0,BASE_CAM,BASE_H);ctx.restore();
@@ -206,9 +230,9 @@ function handlePointer(e){
     try{canvas.setPointerCapture(pointerId);}catch(_){}
     gazeX=clamp((p.x-(LAYOUT.FACE.x+LAYOUT.FACE.w/2))/(LAYOUT.FACE.w/2),-1,1);
     gazeY=clamp((p.y-(LAYOUT.FACE.y+LAYOUT.FACE.h/2))/(LAYOUT.FACE.h/2),-1,1);
-    if(hit(LAYOUT.FACE,p)){setMoodIndex(1,false);localMoodUntil=now()+4000;}
+    if(hit(LAYOUT.FACE,p)){dispatchRearAction("pet_happy",1);}
     else{
-      LAYOUT.BUTTONS.forEach(function(b){if(hit(b,p)){setMoodIndex(b.mood,false);localMoodUntil=now()+4000;}});
+      LAYOUT.BUTTONS.forEach(function(b){if(hit(b,p)){dispatchRearAction(b.mood===1?"pet_happy":b.mood===2?"pet_thinking":"pet_rest",b.mood);}});
     }
     draw(now());
   }else if(e.type==="pointermove"){
@@ -234,7 +258,7 @@ window.__debugSize=__debugSize;
 window.__setMoodIndex=__setMoodIndex;
 window.__setPetState=function(nextMood){__setMoodIndex(nextMood);};
 window.__DIAL_NO_ANIM=!!window.__DIAL_NO_ANIM;
-if(window.__DIAL_NO_ANIM){setupDemo();__fit();draw(DEMO_T);}
+if(window.__DIAL_NO_ANIM){setupDemo();__fit();}
 else{__fit();lastFrame=now();kick();}
 }());
 </script>
