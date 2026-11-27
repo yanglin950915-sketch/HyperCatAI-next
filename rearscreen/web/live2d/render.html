@@ -43,7 +43,9 @@
   // 初始构图由 URL 参数决定，原生侧后续可用 __l2d.setView() 动态切换。
   var VIEW_HALF = params.get('half') === '1';
   var VIEW_RATIO = parseFloat(params.get('ratio') || '0.48');
-  var VIEW_OFFSET_X = parseFloat(params.get('offsetX') || '0');
+  var VIEW_OFFSET_X = 0;
+  // Fractional visible-alpha center measured from the rendered model, not mesh bounds.
+  var opticalCenterRatio = null;
   var PORTRAIT_CAPTURED = false;
 
   var NATIVE = window.NativeBridge || window.maml || null;
@@ -204,6 +206,7 @@
       ? model.internalModel.coreModel.getDrawableCount() : '?'));
 
     if (NATIVE && NATIVE.onReady) NATIVE.onReady();
+    measureOpticalCenter();
     capturePortraitWhenReady();
   }
 
@@ -257,9 +260,51 @@
       boxW = bf.width;
       boxH = bf.height;
     }
+    if (opticalCenterRatio !== null && isFinite(opticalCenterRatio)) {
+      model.position.x += (0.5 - opticalCenterRatio) * boxW;
+    }
     log('L2D layout canvas=' + CW.toFixed(1) + 'x' + CH.toFixed(1) +
         ' half=' + view.halfBody + ' scale=' + s.toFixed(5) +
-        ' box=' + boxW.toFixed(1) + 'x' + boxH.toFixed(1));
+        ' box=' + boxW.toFixed(1) + 'x' + boxH.toFixed(1) +
+        ' optical=' + (opticalCenterRatio === null ? 'pending' : opticalCenterRatio.toFixed(4)));
+  }
+
+  // Geometric mesh bounds may include transparent canvas padding (Rice is especially
+  // asymmetric). Scan the first rendered alpha silhouette once and use its visible
+  // center as a scale-independent correction in subsequent layouts.
+  function measureOpticalCenter() {
+    var targetModel = model;
+    if (!targetModel || !app) return;
+    requestAnimationFrame(function () {
+      if (model !== targetModel || !app) return;
+      try {
+        var extract = app.renderer && app.renderer.plugins && app.renderer.plugins.extract;
+        if (!extract || typeof extract.canvas !== 'function') return;
+        var canvas = extract.canvas(targetModel);
+        var ctx = canvas && canvas.getContext ? canvas.getContext('2d', { willReadFrequently: true }) : null;
+        if (!ctx || canvas.width < 2 || canvas.height < 2) return;
+        var pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        var minX = canvas.width, maxX = -1, minY = canvas.height, maxY = -1;
+        // Sparse scan is sufficient for the silhouette center and avoids a long UI-thread pass.
+        for (var y = 0; y < canvas.height; y += 3) {
+          for (var x = 0; x < canvas.width; x += 3) {
+            if (pixels[(y * canvas.width + x) * 4 + 3] > 24) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        if (maxX >= minX && maxY >= minY) {
+          opticalCenterRatio = ((minX + maxX) / 2) / canvas.width;
+          layout();
+          log('L2D optical center measured', opticalCenterRatio.toFixed(4), canvas.width + 'x' + canvas.height);
+        }
+      } catch (e) {
+        log('L2D optical center unavailable', String(e));
+      }
+    });
   }
 
   function capturePortraitWhenReady() {
@@ -290,7 +335,7 @@
         if (attempts < 12) setTimeout(capture, 120);
       });
     }
-    setTimeout(capture, 180);
+    setTimeout(capture, 520);
   }
 
   function viewport() {
