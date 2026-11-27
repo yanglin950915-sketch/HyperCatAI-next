@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Widget version="2" screenWidth="976" frameRate="30" scaleByDensity="false" transparentSurface="true" useVariableUpdater="DateTime.Second">
-    <Var name="petUri" type="string" expression="'content://com.hypercat.ai.rear.provider/pet-state'" const="true"/>
+    <Var name="avatarUri" type="string" expression="'content://com.hypercat.ai.rear.provider/avatar-state'" const="true"/>
     <Var name="resultJson" type="string" expression="'{}'"/>
-    <Var name="petName" type="string" expression="'小橘'"/>
-    <Var name="petEmoji" type="string" expression="'🐱'"/>
+    <Var name="avatarName" type="string" expression="'小橘'"/>
+    <Var name="avatarId" type="string" expression="'🐱'"/>
     <Var name="mood" type="string" expression="'normal'"/>
     <Var name="reply" type="string" expression="'你好！我是你的 AI 虚拟形象。'"/>
     <Var name="backgroundColor" type="string" expression="'#080B12'"/>
@@ -11,20 +11,20 @@
     <Var name="enabled" type="string" expression="'false'"/>
     <Var name="refreshTick" expression="#second">
         <Trigger>
-            <BinderCommand name="petBinder" command="refresh"/>
+            <BinderCommand name="avatarBinder" command="refresh"/>
         </Trigger>
     </Var>
 
     <VariableBinders>
-        <ContentProviderBinder name="petBinder" uriExp="@petUri" columns="result">
+        <ContentProviderBinder name="avatarBinder" uriExp="@avatarUri" columns="result">
             <Variable name="resultJson" column="result" type="string"/>
-            <Trigger><FunctionCommand target="parsePet"/></Trigger>
+            <Trigger><FunctionCommand target="parseAvatar"/></Trigger>
         </ContentProviderBinder>
     </VariableBinders>
 
-    <Function name="parsePet">
-        <VariableCommand name="petName" expression="jsonGetString(strToJson(@resultJson), 'pet_name')" type="string"/>
-        <VariableCommand name="petEmoji" expression="jsonGetString(strToJson(@resultJson), 'pet_emoji')" type="string"/>
+    <Function name="parseAvatar">
+        <VariableCommand name="avatarName" expression="jsonGetString(strToJson(@resultJson), 'avatar_name')" type="string"/>
+        <VariableCommand name="avatarId" expression="jsonGetString(strToJson(@resultJson), 'avatar_id')" type="string"/>
         <VariableCommand name="mood" expression="jsonGetString(strToJson(@resultJson), 'mood')" type="string"/>
         <VariableCommand name="reply" expression="jsonGetString(strToJson(@resultJson), 'reply')" type="string"/>
         <VariableCommand name="backgroundColor" expression="jsonGetString(strToJson(@resultJson), 'background_color')" type="string"/>
@@ -36,34 +36,34 @@
     <!-- Local offline HTML renderer; content itself reserves the left camera exclusion zone. -->
     <WebView name="wv" x="0" y="0" w="#view_width" h="#view_height" local="true" cachePage="false" uri="web/index.html">
         <Triggers>
-            <Trigger action="pet_touch">
-                <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
-                    <Extra name="action" type="string" expression="'pet_touch'"/>
+            <Trigger action="avatar_touch">
+                <IntentCommand action="com.hypercat.ai.rear.AVATAR_INTERACTION" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'avatar_touch'"/>
                 </IntentCommand>
             </Trigger>
-            <Trigger action="pet_long_press">
-                <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
-                    <Extra name="action" type="string" expression="'pet_long_press'"/>
+            <Trigger action="avatar_long_press">
+                <IntentCommand action="com.hypercat.ai.rear.AVATAR_INTERACTION" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'avatar_long_press'"/>
                 </IntentCommand>
             </Trigger>
-            <Trigger action="pet_drag">
-                <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
-                    <Extra name="action" type="string" expression="'pet_drag'"/>
+            <Trigger action="avatar_drag">
+                <IntentCommand action="com.hypercat.ai.rear.AVATAR_INTERACTION" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'avatar_drag'"/>
                 </IntentCommand>
             </Trigger>
-            <Trigger action="pet_happy">
-                <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
-                    <Extra name="action" type="string" expression="'pet_happy'"/>
+            <Trigger action="avatar_happy">
+                <IntentCommand action="com.hypercat.ai.rear.AVATAR_INTERACTION" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'avatar_happy'"/>
                 </IntentCommand>
             </Trigger>
-            <Trigger action="pet_thinking">
-                <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
-                    <Extra name="action" type="string" expression="'pet_thinking'"/>
+            <Trigger action="avatar_thinking">
+                <IntentCommand action="com.hypercat.ai.rear.AVATAR_INTERACTION" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'avatar_thinking'"/>
                 </IntentCommand>
             </Trigger>
-            <Trigger action="pet_rest">
-                <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
-                    <Extra name="action" type="string" expression="'pet_rest'"/>
+            <Trigger action="avatar_rest">
+                <IntentCommand action="com.hypercat.ai.rear.AVATAR_INTERACTION" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'avatar_rest'"/>
                 </IntentCommand>
             </Trigger>
         </Triggers>
@@ -72,11 +72,11 @@
     <ExternalCommands>
         <Trigger action="init">
             <WebViewCommand target="wv" command="runjs" params="'__fit();__setAod(0)'" delay="2000"/>
-            <BinderCommand name="petBinder" command="refresh" delay="2100"/>
+            <BinderCommand name="avatarBinder" command="refresh" delay="2100"/>
         </Trigger>
         <Trigger action="resume,exitAod">
             <WebViewCommand target="wv" command="runjs" params="'__fit();__setAod(0)'" delay="200"/>
-            <BinderCommand name="petBinder" command="refresh" delay="250"/>
+            <BinderCommand name="avatarBinder" command="refresh" delay="250"/>
         </Trigger>
         <Trigger action="pause,enterAod">
             <WebViewCommand target="wv" command="runjs" params="'__setAod(1)'"/>
