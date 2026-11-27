@@ -5,6 +5,8 @@ import android.provider.Settings
 import android.hardware.*
 import android.media.session.*
 import android.os.BatteryManager
+import android.os.Handler
+import android.os.Looper
 import android.service.notification.*
 import android.content.pm.PackageManager
 import android.Manifest
@@ -94,6 +96,8 @@ object AvatarDeviceStateStore : SensorEventListener {
     fun setMusic(playing: Boolean, title: String = "") { mutable.value = mutable.value.copy(music = playing, track = title.take(80)) }
 }
 class AvatarMediaNotificationListener : NotificationListenerService() {
+    private val handler = Handler(Looper.getMainLooper())
+    private val poll = object : Runnable { override fun run() { refresh(); handler.postDelayed(this, 2000L) } }
     private fun refresh() {
         runCatching {
             val m = getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
@@ -102,9 +106,11 @@ class AvatarMediaNotificationListener : NotificationListenerService() {
             AvatarDeviceStateStore.setMusic(c != null, c?.metadata?.getString(android.media.MediaMetadata.METADATA_KEY_TITLE).orEmpty())
         }.onFailure { AvatarDeviceStateStore.setMusic(false) }
     }
-    override fun onListenerConnected() { super.onListenerConnected(); refresh() }
+    override fun onListenerConnected() { super.onListenerConnected(); handler.removeCallbacks(poll); handler.post(poll) }
     override fun onNotificationPosted(s: StatusBarNotification?) { refresh() }
     override fun onNotificationRemoved(s: StatusBarNotification?) { refresh() }
+    override fun onListenerDisconnected() { handler.removeCallbacks(poll); AvatarDeviceStateStore.setMusic(false); super.onListenerDisconnected() }
+    override fun onDestroy() { handler.removeCallbacks(poll); super.onDestroy() }
 }
 @Composable
 fun AvatarStatusBadges(modifier: Modifier = Modifier) {
