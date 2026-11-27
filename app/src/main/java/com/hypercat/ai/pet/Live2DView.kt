@@ -127,7 +127,7 @@ class Live2DController internal constructor() {
     fun setMouth(value: Float) = call("window.__l2d&&window.__l2d.setMouth(${value.coerceIn(0f, 1f)})")
     fun setEmotion(value: String) = call("window.__l2d&&window.__l2d.setEmotion('${value.replace("'", "")}')")
     fun setGaze(x: Float, y: Float) = call("window.__l2d&&window.__l2d.setGaze(${x.coerceIn(-1f,1f)},${y.coerceIn(-1f,1f)})")
-    fun setView(halfBody: Boolean, ratio: Float = .55f) = call("window.__l2d&&window.__l2d.setView($halfBody,${ratio.coerceIn(.3f,.8f)})")
+    fun setView(halfBody: Boolean, ratio: Float = 0.55f) = call("window.__l2d&&window.__l2d.setView($halfBody,${ratio.coerceIn(0.3f,0.8f)})")
 }
 
 object Live2DControllerHub {
