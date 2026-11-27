@@ -25,6 +25,7 @@
         <VariableCommand name="mood" expression="jsonGetString(strToJson(@resultJson), 'mood')" type="string"/>
         <VariableCommand name="reply" expression="jsonGetString(strToJson(@resultJson), 'reply')" type="string"/>
         <VariableCommand name="updatedAt" expression="jsonGetString(strToJson(@resultJson), 'updated_at')" type="string"/>
+        <VariableCommand name="enabled" expression="jsonGetString(strToJson(@resultJson), 'enabled')" type="string"/>
     </Function>
 
     <!-- Local offline HTML renderer; content itself reserves the left camera exclusion zone. -->
