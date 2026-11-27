@@ -69,8 +69,10 @@ fun Live2DView(
     }
     val webView = remember(controller) {
         WebView(context).apply {
-            setBackgroundColor(android.graphics.Color.rgb(5, 7, 13))
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+            // Let the Compose scene behind the Live2D WebView show through.
+            isOpaque = false
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -117,7 +119,7 @@ fun Live2DView(
         val riceOffset = if (model.id == "rice") "-0.035" else "0"
         val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=" + riceOffset
         webView.stopLoading()
-        webView.setBackgroundColor(android.graphics.Color.rgb(5, 7, 13))
+        webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         webView.loadUrl("about:blank")
         kotlinx.coroutines.delay(45)
         webView.loadUrl(targetUrl)
