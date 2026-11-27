@@ -1052,8 +1052,8 @@ private fun HyperCatApp() {
                             rearBackgroundColor = rearBackgroundColor,
                             onRearBackgroundColorChange = { color -> rearBackgroundColor = color; AvatarStateStore.setBackgroundColor(context, color) },
                             rearProjectionStatus = rearProjectionStatus,
-                            onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
-                            onRearPetRestore = {
+                            onRearAvatarEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
+                            onRearAvatarRestore = {
                                 rearAvatarEnabled = false
 
                                 val ids = RearProjectionController.listBackups(context)
@@ -1090,8 +1090,8 @@ private fun HyperCatApp() {
                              avatarName = avatarName,
                              avatarMood = avatarMood,
                              rearAvatarEnabled = rearAvatarEnabled,
-                             onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
-                             onRearPetRestore = {
+                             onRearAvatarEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
+                             onRearAvatarRestore = {
                                  rearAvatarEnabled = false
 
                                  val ids = RearProjectionController.listBackups(context)
@@ -1169,8 +1169,8 @@ private fun HyperCatApp() {
                     avatarName = avatarName,
                     avatarMood = avatarMood,
                     rearAvatarEnabled = rearAvatarEnabled,
-                    onRearPetEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
-                    onRearPetRestore = {
+                    onRearAvatarEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
+                    onRearAvatarRestore = {
                         rearAvatarEnabled = false
 
                         val ids = RearProjectionController.listBackups(context)
@@ -2585,8 +2585,8 @@ private fun AvatarSettingsPage(
     rearBackgroundColor: String,
     onRearBackgroundColorChange: (String) -> Unit,
     rearProjectionStatus: String,
-    onRearPetEnabledChange: (Boolean) -> Unit,
-    onRearPetRestore: () -> Unit,
+    onRearAvatarEnabledChange: (Boolean) -> Unit,
+    onRearAvatarRestore: () -> Unit,
     onAvatarInteraction: (String) -> Unit,
     onAvatarNameChange: (String) -> Unit
 ) {
@@ -2703,7 +2703,7 @@ private fun AvatarSettingsPage(
                         Text("虚拟形象投放到背屏", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Text(if (rearAvatarEnabled) "已开启" else "关闭状态 · 不影响主屏虚拟形象", color = Muted, fontSize = 11.sp)
                     }
-                    Switch(checked = rearAvatarEnabled, onCheckedChange = onRearPetEnabledChange)
+                    Switch(checked = rearAvatarEnabled, onCheckedChange = onRearAvatarEnabledChange)
                 }
                 Text("背屏背景颜色", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
                 val rearColors = listOf("#080B12", "#F4F1EA", "#E8EEF8", "#FBE7EF", "#DCEFE8", "#242424", "#1C2942", "#4A3048")
@@ -2717,7 +2717,7 @@ private fun AvatarSettingsPage(
                 }
                 Text("仅支持具备背屏的 Xiaomi Pro 系列设备。需要先启动 Shizuku 并授权。首次部署后，还需在系统背屏卡片管理中重新应用卡片。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
                 Text(rearProjectionStatus, color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
-                OutlinedButton(onClick = onRearPetRestore, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("恢复原始背屏卡片") }
+                OutlinedButton(onClick = onRearAvatarRestore, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("恢复原始背屏卡片") }
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -2725,7 +2725,7 @@ private fun AvatarSettingsPage(
 }
 @Composable
 private fun SettingsPage(
-    modifier: Modifier, avatarName: String, avatarMood: String, rearAvatarEnabled: Boolean, rearProjectionStatus: String, onRearPetEnabledChange: (Boolean) -> Unit, onRearPetRestore: () -> Unit, onAvatarInteraction: (String) -> Unit, onAvatarNameChange: (String) -> Unit,
+    modifier: Modifier, avatarName: String, avatarMood: String, rearAvatarEnabled: Boolean, rearProjectionStatus: String, onRearAvatarEnabledChange: (Boolean) -> Unit, onRearAvatarRestore: () -> Unit, onAvatarInteraction: (String) -> Unit, onAvatarNameChange: (String) -> Unit,
     provider: String, onProvider: (String) -> Unit, modelProfiles: List<ModelProfile>, onAddProfile: (ModelProfile) -> Unit, onSelectProfile: (ModelProfile) -> Unit, onDeleteProfile: (ModelProfile) -> Unit,
     ttsProfiles: List<TtsProfile>, onAddTtsProfile: (TtsProfile) -> Unit, onSelectTtsProfile: (TtsProfile) -> Unit, onDeleteTtsProfile: (TtsProfile) -> Unit,
     endpoint: String, onEndpoint: (String) -> Unit, model: String, onModel: (String) -> Unit,
