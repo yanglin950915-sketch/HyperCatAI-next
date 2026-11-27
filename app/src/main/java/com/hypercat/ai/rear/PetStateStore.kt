@@ -27,7 +27,7 @@ object PetStateStore {
     val PET_URI: Uri = Uri.parse("content://com.hypercat.ai.rear.provider/pet-state")
 
     private val mutableState = MutableStateFlow(
-        RearPetState("小橘", "🤖", "normal", "你好！我是你的 AI 萌宠。", 0L, true)
+        RearPetState("小橘", "🤖", "normal", "你好！我是你的 AI 萌宠。", 0L, false)
     )
     val state: StateFlow<RearPetState> = mutableState.asStateFlow()
 
@@ -38,7 +38,7 @@ object PetStateStore {
             mood = mood.ifBlank { "normal" }.take(24),
             reply = reply.take(100),
             updatedAt = System.currentTimeMillis(),
-            enabled = enabled ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, true)
+            enabled = enabled ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
         )
         val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_NAME, next.petName)
