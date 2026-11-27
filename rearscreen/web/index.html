@@ -61,7 +61,7 @@ var LAYOUT=Object.freeze({
 var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:false});
 var W=0,H=0,dpr=1,CAM=0,FIT=1,DX=0,DY=0;
 var rafPend=false,paused=false,lastDraw=-1e9,lastFrame=0,animTime=0,dead=false;
-var mood=0,localMoodUntil=0,blink=0,blinkAt=0,nextBlink=1900,gazeX=0,gazeY=0;
+var mood=0,localMoodUntil=0,blink=0,blinkAt=0,nextBlink=1900,gazeX=0,gazeY=0,petEmoji="🐱";
 var pointerId=null,pressStartedAt=0,pressAction="",DEMO_T=1200,petName=T.petDefault,agentReply=T.replyDefault,projectionEnabled=false;
 var fontCache=Object.create(null);
 var moods=[
@@ -79,7 +79,7 @@ function fitFont(value,maxWidth,baseSize,weight){var size=Math.floor(baseSize);w
 function syncMamlState(){
   try{
     var bridge=window.maml;if(!bridge||typeof bridge.getStringByName!=="function")return;
-    var n=bridge.getStringByName("petName");if(n&&n!=="undefined")petName=String(n).slice(0,16);
+    var n=bridge.getStringByName("petName");if(n&&n!=="undefined")petName=String(n).slice(0,16);\n    var em=bridge.getStringByName("petEmoji");if(em&&em!=="undefined")petEmoji=String(em).slice(0,8);
     var r=bridge.getStringByName("reply");if(r&&r!=="undefined")agentReply=String(r).slice(0,100);
     var enabledRaw=bridge.getStringByName("enabled");
     if(enabledRaw&&enabledRaw!=="undefined")projectionEnabled=String(enabledRaw).toLowerCase()==="true"||String(enabledRaw)==="1";
@@ -200,7 +200,7 @@ function draw(t){
   ctx.fillText(petName,LAYOUT.HEADER.x,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
   ctx.fillStyle="#73dfff";ctx.font=getFont("normal",14);ctx.textAlign="right";
   ctx.fillText((moods[mood]||moods[0]).name,LAYOUT.HEADER.x+LAYOUT.HEADER.w,LAYOUT.HEADER.y+LAYOUT.HEADER.h*.72);
-  drawFace(t);
+  drawFace(t);\n  ctx.save();ctx.textAlign="center";ctx.textBaseline="middle";ctx.font="112px system-ui,sans-serif";ctx.fillText(petEmoji,LAYOUT.FACE.x+LAYOUT.FACE.w/2,LAYOUT.FACE.y+LAYOUT.FACE.h*.53);ctx.restore();
   ctx.fillStyle="#31566b";ctx.fillRect(LAYOUT.REPLY.x,LAYOUT.REPLY.y,LAYOUT.REPLY.w,LAYOUT.REPLY_RULE_HEIGHT);
   ctx.fillStyle="#a8d7e8";ctx.font=getFont("normal",14);ctx.textAlign="left";ctx.textBaseline="top";
   var replyText=String(agentReply||"").replace(/\s+/g," "),replyLines=[],current="";
