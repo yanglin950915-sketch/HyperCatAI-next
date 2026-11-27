@@ -79,7 +79,8 @@ function fitFont(value,maxWidth,baseSize,weight){var size=Math.floor(baseSize);w
 function syncMamlState(){
   try{
     var bridge=window.maml;if(!bridge||typeof bridge.getStringByName!=="function")return;
-    var n=bridge.getStringByName("petName");if(n&&n!=="undefined")petName=String(n).slice(0,16);\n    var em=bridge.getStringByName("petEmoji");if(em&&em!=="undefined")petEmoji=String(em).slice(0,8);
+    var n=bridge.getStringByName("petName");if(n&&n!=="undefined")petName=String(n).slice(0,16);
+    var em=bridge.getStringByName("petEmoji");if(em&&em!=="undefined")petEmoji=String(em).slice(0,8);
     var r=bridge.getStringByName("reply");if(r&&r!=="undefined")agentReply=String(r).slice(0,100);
     var enabledRaw=bridge.getStringByName("enabled");
     if(enabledRaw&&enabledRaw!=="undefined")projectionEnabled=String(enabledRaw).toLowerCase()==="true"||String(enabledRaw)==="1";
