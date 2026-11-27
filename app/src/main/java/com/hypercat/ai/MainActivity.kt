@@ -144,13 +144,13 @@ import com.hypercat.ai.rear.RearCard
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
-private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFFFFFFF)
-private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFFFFFFF)
-private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFF5F7FA)
+private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF5F3EE)
+private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFFAF9F6)
+private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFEFEEE8)
 private val Cyan get() = if (appDarkState) Color(0xFFE6E6E6) else Color(0xFF2563EB)
-private val Muted get() = if (appDarkState) Color(0xFFA0A0A0) else Color(0xFF6B7280)
-private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f) else Color(0xFFE5E7EB)
-private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF111827)
+private val Muted get() = if (appDarkState) Color(0xFFA0A0A0) else Color(0xFF77766F)
+private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f) else Color(0xFFE5E2DA)
+private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF262521)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1932,7 +1932,7 @@ private fun ChatPage(
                 TextButton(onClick = { selectedMessageIndices = emptySet() }) { Text("取消") }
             }
         }
-        LazyColumn(state = chatListState, modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
+        LazyColumn(state = chatListState, modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (appDarkState) Bg else Color.White).padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
             if (messages.isEmpty()) item {
                 Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("开始与 Agent 对话", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
@@ -2715,6 +2715,7 @@ private fun SettingsPage(
     var taskTitle by remember { mutableStateOf("") }
     var taskDelayMinutes by remember { mutableStateOf("30") }
     var profileName by remember { mutableStateOf("") }
+    var modelSettingsTab by remember { mutableStateOf("推理模型") }
     var pluginEnabled by remember { mutableStateOf(false) }
     var pluginName by remember { mutableStateOf("") }
     var pluginDescription by remember { mutableStateOf("") }
@@ -2807,75 +2808,92 @@ private fun SettingsPage(
         Spacer(Modifier.height(10.dp))
         Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                Text("服务类型", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("本地模型", "OpenAI 兼容接口").forEach { item ->
-                        FilterChip(selected = provider == item, onClick = { onProvider(item) }, label = { Text(item, fontSize = 12.sp) })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("推理模型", "语音 TTS", "模型档案").forEach { tab ->
+                        FilterChip(
+                            selected = modelSettingsTab == tab,
+                            onClick = { modelSettingsTab = tab },
+                            modifier = Modifier.weight(1f),
+                            label = { Text(tab, fontSize = 11.sp, maxLines = 1) }
+                        )
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 http://127.0.0.1:1234/v1")
-                ConfigField("模型名称", model, onModel, "例如 qwen2.5 或 gpt-4o-mini")
-                ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
-                Spacer(Modifier.height(14.dp))
-                Text("TTS 语音配置", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text("选择系统语音，或使用已保存模型档案连接兼容 OpenAI 的云端语音合成服务。", color = Muted, fontSize = 10.sp)
-                Spacer(Modifier.height(7.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    FilterChip(selected = ttsMode == "system", onClick = { onTtsMode("system") }, label = { Text("系统语音") })
-                    FilterChip(selected = ttsMode == "cloud", onClick = { onTtsMode("cloud") }, label = { Text("云端模型 TTS") })
+                if (modelSettingsTab == "推理模型") {
+                                    Text("服务类型", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        listOf("本地模型", "OpenAI 兼容接口").forEach { item ->
+                                            FilterChip(selected = provider == item, onClick = { onProvider(item) }, label = { Text(item, fontSize = 12.sp) })
+                                        }
+                                    }
+                                    Spacer(Modifier.height(12.dp))
+                                    ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 http://127.0.0.1:1234/v1")
+                                    ConfigField("模型名称", model, onModel, "例如 qwen2.5 或 gpt-4o-mini")
+                                    ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
+                                    Spacer(Modifier.height(14.dp))
                 }
-                if (ttsMode == "cloud") {
-                    Text("TTS 服务连接独立于推理模型配置。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
-                    ConfigField("TTS API Base URL", ttsEndpoint, onTtsEndpoint, "例如 https://api.xiaomimimo.com/v1")
-                    ConfigField("TTS API Key", ttsApiKey, onTtsApiKey, "TTS 服务密钥", secret = true)
-                    ttsProfiles.forEach { profile -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).clickable { onSelectTtsProfile(profile) }.padding(7.dp)) { Text(profile.name, color = MainText, fontSize = 12.sp); Text(profile.endpoint, color = Muted, fontSize = 9.sp, maxLines = 1) }
-                        RadioButton(selected = ttsProfileName == profile.name, onClick = { onSelectTtsProfile(profile) })
-                        IconButton(onClick = { onDeleteTtsProfile(profile) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除 TTS 模型", tint = Color(0xFFE07878)) }
-                    } }
-                    OutlinedButton(onClick = { val n = "TTS-${ttsProfiles.size + 1}"; if (ttsEndpoint.isNotBlank()) onAddTtsProfile(TtsProfile(n, ttsEndpoint.trim(), ttsApiKey)) }, enabled = ttsEndpoint.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存当前 TTS 配置") }
-                    ConfigField("TTS 模型名称", ttsModel, onTtsModel, "例如 tts-1 或服务商提供的语音模型")
-                    ConfigField("TTS 音色", ttsVoice, onTtsVoice, "例如 alloy、nova、shimmer")
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                        Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
-                        Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                    }
-                    Text("支持 OpenAI /v1/audio/speech；小米 MiMo-V2.5-TTS 自动使用 /v1/chat/completions，并解析 WAV Base64 音频。MiMo 音色可选 mimo_default、冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean。", color = Muted, fontSize = 10.sp)
-                } else {
-                    Text("朗读语言", color = Muted, fontSize = 11.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        listOf("zh-CN" to "中文普通话", "en-US" to "英语").forEach { (code, label) ->
-                            FilterChip(selected = ttsLanguage == code, onClick = { onTtsLanguage(code) }, label = { Text(label, fontSize = 11.sp) })
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                        Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
-                        Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("音调", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                        Slider(value = ttsPitch, onValueChange = onTtsPitch, valueRange = 0.7f..1.4f, modifier = Modifier.weight(1f))
-                        Text(String.format(Locale.US, "%.1f", ttsPitch), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                    }
-                    Text("参数自动保存并用于回复朗读与 AI 通话播报。", color = Muted, fontSize = 10.sp)
+                if (modelSettingsTab == "语音 TTS") {
+                                    Text("TTS 语音配置", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("选择系统语音，或使用已保存模型档案连接兼容 OpenAI 的云端语音合成服务。", color = Muted, fontSize = 10.sp)
+                                    Spacer(Modifier.height(7.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        FilterChip(selected = ttsMode == "system", onClick = { onTtsMode("system") }, label = { Text("系统语音") })
+                                        FilterChip(selected = ttsMode == "cloud", onClick = { onTtsMode("cloud") }, label = { Text("云端模型 TTS") })
+                                    }
+                                    if (ttsMode == "cloud") {
+                                        Text("TTS 服务连接独立于推理模型配置。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
+                                        ConfigField("TTS API Base URL", ttsEndpoint, onTtsEndpoint, "例如 https://api.xiaomimimo.com/v1")
+                                        ConfigField("TTS API Key", ttsApiKey, onTtsApiKey, "TTS 服务密钥", secret = true)
+                                        ttsProfiles.forEach { profile -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f).clickable { onSelectTtsProfile(profile) }.padding(7.dp)) { Text(profile.name, color = MainText, fontSize = 12.sp); Text(profile.endpoint, color = Muted, fontSize = 9.sp, maxLines = 1) }
+                                            RadioButton(selected = ttsProfileName == profile.name, onClick = { onSelectTtsProfile(profile) })
+                                            IconButton(onClick = { onDeleteTtsProfile(profile) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除 TTS 模型", tint = Color(0xFFE07878)) }
+                                        } }
+                                        OutlinedButton(onClick = { val n = "TTS-${ttsProfiles.size + 1}"; if (ttsEndpoint.isNotBlank()) onAddTtsProfile(TtsProfile(n, ttsEndpoint.trim(), ttsApiKey)) }, enabled = ttsEndpoint.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存当前 TTS 配置") }
+                                        ConfigField("TTS 模型名称", ttsModel, onTtsModel, "例如 tts-1 或服务商提供的语音模型")
+                                        ConfigField("TTS 音色", ttsVoice, onTtsVoice, "例如 alloy、nova、shimmer")
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                                            Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
+                                            Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                                        }
+                                        Text("支持 OpenAI /v1/audio/speech；小米 MiMo-V2.5-TTS 自动使用 /v1/chat/completions，并解析 WAV Base64 音频。MiMo 音色可选 mimo_default、冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean。", color = Muted, fontSize = 10.sp)
+                                    } else {
+                                        Text("朗读语言", color = Muted, fontSize = 11.sp)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                            listOf("zh-CN" to "中文普通话", "en-US" to "英语").forEach { (code, label) ->
+                                                FilterChip(selected = ttsLanguage == code, onClick = { onTtsLanguage(code) }, label = { Text(label, fontSize = 11.sp) })
+                                            }
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                                            Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
+                                            Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("音调", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                                            Slider(value = ttsPitch, onValueChange = onTtsPitch, valueRange = 0.7f..1.4f, modifier = Modifier.weight(1f))
+                                            Text(String.format(Locale.US, "%.1f", ttsPitch), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                                        }
+                                        Text("参数自动保存并用于回复朗读与 AI 通话播报。", color = Muted, fontSize = 10.sp)
+                                    }
                 }
-                Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
-                else modelProfiles.forEach { p ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).clickable { onSelectProfile(p) }.padding(vertical = 9.dp, horizontal = 4.dp)) { Text(p.name, color = MainText, fontSize = 13.sp); Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp) }
-                        Text("设为当前", color = Cyan, fontSize = 11.sp)
-                        IconButton(onClick = { onDeleteProfile(p) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除推理模型", tint = Color(0xFFE07878)) }
-                    }
+                if (modelSettingsTab == "模型档案") {
+                                    Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
+                                    else modelProfiles.forEach { p ->
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f).clickable { onSelectProfile(p) }.padding(vertical = 9.dp, horizontal = 4.dp)) { Text(p.name, color = MainText, fontSize = 13.sp); Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp) }
+                                            Text("设为当前", color = Cyan, fontSize = 11.sp)
+                                            IconButton(onClick = { onDeleteProfile(p) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除推理模型", tint = Color(0xFFE07878)) }
+                                        }
+                                    }
+                                    OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(24) }, label = { Text("档案名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank()) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey)); profileName = "" } },
+                                        enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存为模型档案") }
+                                    Spacer(Modifier.height(8.dp))
                 }
-                OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(24) }, label = { Text("档案名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank()) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey)); profileName = "" } },
-                    enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存为模型档案") }
-                Spacer(Modifier.height(8.dp))
                 Text("密钥目前保存在应用私有配置中；模型推理请求与密钥加密存储仍需后续接入。", color = Muted, fontSize = 10.sp)
                 Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) { Text("保存模型配置", fontWeight = FontWeight.Bold) }
                 if (saved) Text("配置已保存", color = Color(0xFF76E0B1), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
