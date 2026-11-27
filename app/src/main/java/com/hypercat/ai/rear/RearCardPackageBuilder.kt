@@ -39,7 +39,7 @@ object RearCardPackageBuilder {
 
     /** Reject incomplete packages before exposing them to the Xiaomi theme manager. */
     private fun verifyPackage(file: File, context: Context) {
-        val model = Live2DModelStore.current(context)
+        val model = Live2DModelStore.currentRear(context)
         val root = "web/models/active/"
         ZipFile(file).use { archive ->
             val names = archive.entries().asSequence().map { it.name }.toHashSet()
@@ -95,7 +95,7 @@ object RearCardPackageBuilder {
     }
 
     private fun addImportedLive2DModel(context: Context, zip: ZipOutputStream) {
-        val model = Live2DModelStore.current(context)
+        val model = Live2DModelStore.currentRear(context)
         val assetDirectory = model.directory
             .removePrefix("file:///android_asset/")
             .trim('/')
