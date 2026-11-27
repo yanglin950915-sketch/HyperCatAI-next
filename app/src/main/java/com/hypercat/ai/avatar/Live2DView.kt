@@ -69,6 +69,7 @@ fun Live2DView(
     val webView = remember(controller) {
         WebView(context).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -110,11 +111,14 @@ fun Live2DView(
         state = Live2DRenderState()
         val dir = android.net.Uri.encode(model.directory, "/:")
         val entry = android.net.Uri.encode(model.entry, "/")
-        // Rice's artwork is optically left-heavy inside its mesh bounds; apply a small
-        // per-character optical correction after geometric centering.
-        val offsetX = if (model.id == "rice") "0.10" else "0"
+        // Clear the previous WebView surface before loading the next model. Keeping the old
+        // composited frame visible during navigation caused motion trails on fast swaps.
+        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&fps=60&portrait=1"
         webView.stopLoading()
-        webView.loadUrl("file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=${if (halfBody) 1 else 0}&ratio=0.55&fps=60&offsetX=$offsetX&portrait=1")
+        webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        webView.loadUrl("about:blank")
+        kotlinx.coroutines.delay(45)
+        webView.loadUrl(targetUrl)
     }
     LaunchedEffect(mood, state.ready) {
         if (state.ready) controller.setEmotion(
