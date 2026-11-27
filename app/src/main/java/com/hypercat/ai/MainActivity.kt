@@ -2363,8 +2363,8 @@ private fun SettingsPage(
                     }
                     Switch(checked = rearPetEnabled, onCheckedChange = onRearPetEnabledChange)
                 }
-                Text("仅支持具备背屏的 Xiaomi 17 Pro 系列和 Xiaomi 18 Pro 系列机型。首次使用需先导出组件包，并在 REAREye 导入、创建卡片；此开关控制已安装组件的显示。", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
-                OutlinedButton(onClick = onExportRearWidget, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("导出内置背屏组件包（供 REAREye 导入）") }
+                Text("仅支持具备背屏的 Xiaomi 17 Pro 系列和 Xiaomi 18 Pro 系列机型。首次使用需先导出 ZIP，解压后按包内 REAREye_IMPORT_PROMPT.md 的步骤创建卡片；此开关控制已安装组件的显示。", color = Muted, fontSize = 10.sp, lineHeight = 14.sp)
+                OutlinedButton(onClick = onExportRearWidget, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("导出背屏组件包（含 REAREye 导入说明）") }
             }
         }
         Spacer(Modifier.height(18.dp))
