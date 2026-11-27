@@ -42,7 +42,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     sourceSets.getByName("main").assets.srcDir("../rearscreen")
-    buildFeatures { compose = true; aidl = false }
+    buildFeatures { compose = true; aidl = true }
 }
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")

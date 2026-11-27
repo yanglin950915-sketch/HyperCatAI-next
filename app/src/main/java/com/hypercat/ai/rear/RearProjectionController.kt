@@ -1,20 +1,28 @@
 package com.hypercat.ai.rear
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
+import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.os.IBinder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import rikka.shizuku.Shizuku
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
- * Direct rear-display projection through Shizuku shell access.
- *
- * The app never assumes that a secondary display is the rear panel: it only
- * auto-selects a display whose system-reported name or physical size matches
- * the known Xiaomi rear panel profile. Unknown layouts fail closed.
+ * Direct rear-display projection through Shizuku UserService.
+ * The display selector fails closed unless the framework reports a known rear
+ * display name or the 904x572 Xiaomi rear-panel logical size.
  */
 object RearProjectionController {
     private const val PERMISSION_REQUEST_CODE = 24024
     private const val HIDE_ACTION = "com.hypercat.ai.rear.ACTION_HIDE_PROJECTION"
+    @Volatile private var remoteService: IRearShellService? = null
 
     fun requestPermission(
         activity: Activity,
@@ -53,11 +61,12 @@ object RearProjectionController {
             return "尚未获得 Shizuku 授权，请重新开启背屏投放"
         }
         return runCatching {
-            val dump = runShell("dumpsys display")
+            val dump = runShell(context, "dumpsys display")
             if (dump.exitCode != 0) return "读取系统显示器失败：${dump.output.take(240)}"
             val displayId = findRearDisplayId(dump.output)
                 ?: return "没有从系统信息中可靠识别到背屏 display。为避免把萌宠投到外接屏，已停止自动投放。"
             val launch = runShell(
+                context,
                 "am start --display $displayId -n com.hypercat.ai/.rear.RearPetActivity"
             )
             if (launch.exitCode != 0 || launch.output.contains("Error:", ignoreCase = true)) {
@@ -75,22 +84,56 @@ object RearProjectionController {
             return "背屏萌宠已在 Agent 中关闭；Shizuku 不可用，无法发送远程关闭命令"
         }
         return runCatching {
-            val result = runShell("am broadcast -a $HIDE_ACTION -p com.hypercat.ai")
+            val result = runShell(context, "am broadcast -a $HIDE_ACTION -p com.hypercat.ai")
             if (result.exitCode == 0) "已发送背屏关闭指令" else "关闭指令失败：${result.output.take(220)}"
         }.getOrElse { "关闭背屏失败：${it.message ?: it.javaClass.simpleName}" }
     }
 
     private data class ShellResult(val exitCode: Int, val output: String)
 
-    private fun runShell(command: String): ShellResult {
-        val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
-        return try {
-            val stdout = process.inputStream.bufferedReader().readText()
-            val stderr = process.errorStream.bufferedReader().readText()
-            val code = process.waitFor()
-            ShellResult(code, (stdout + if (stderr.isBlank()) "" else "\n$stderr").trim())
-        } finally {
-            runCatching { process.destroy() }
+    private suspend fun runShell(context: Context, command: String): ShellResult {
+        val service = remoteService ?: bindUserService(context)
+        val raw = withContext(Dispatchers.IO) { service.exec(command) }
+        val exitCode = raw.substringBefore('\n').toIntOrNull() ?: -1
+        return ShellResult(exitCode, raw.substringAfter('\n', "").trim())
+    }
+
+    private suspend fun bindUserService(context: Context): IRearShellService = withTimeout(15_000) {
+        suspendCancellableCoroutine { continuation ->
+            val args = Shizuku.UserServiceArgs(
+                ComponentName(context, RearShellUserService::class.java)
+            )
+                .daemon(false)
+                .processNameSuffix("hypercat_rear_shell")
+                .tag("hypercat-rear-shell")
+                .version(1)
+            val connection = object : ServiceConnection {
+                override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+                    val service = binder?.let { IRearShellService.Stub.asInterface(it) }
+                    if (service == null) {
+                        if (continuation.isActive) continuation.resumeWithException(
+                            IllegalStateException("Shizuku UserService 未返回有效 Binder")
+                        )
+                    } else {
+                        remoteService = service
+                        if (continuation.isActive) continuation.resume(service)
+                    }
+                }
+
+                override fun onServiceDisconnected(name: ComponentName?) {
+                    remoteService = null
+                    if (continuation.isActive) continuation.resumeWithException(
+                        IllegalStateException("Shizuku UserService 已断开")
+                    )
+                }
+            }
+            continuation.invokeOnCancellation {
+                runCatching { Shizuku.unbindUserService(args, connection, false) }
+            }
+            runCatching { Shizuku.bindUserService(args, connection) }
+                .onFailure {
+                    if (continuation.isActive) continuation.resumeWithException(it)
+                }
         }
     }
 
@@ -99,15 +142,7 @@ object RearProjectionController {
         val displayInfo = Regex("""DisplayInfo\{([^}]+)}""")
         val idPattern = Regex("""displayId[ =]+(\d+)""")
         val rearName = Regex("""(?i)(rear|back|subscreen|secondary|副屏|背屏)""")
-        displayInfo.findAll(dump).forEach { match ->
-            val block = match.groupValues[1]
-            val id = idPattern.find(block)?.groupValues?.getOrNull(1)?.toIntOrNull()
-            if (id != null && id != 0 && rearName.containsMatchIn(block)) candidates += id
-        }
-        // Prefer a logical DisplayInfo record with the known rear-panel
-        // dimensions. Do not confuse physical device uniqueId values with
-        // logical display IDs; those identifiers are not guaranteed to match.
-        val dimensions = Regex("""(?:logicalWidth|realWidth|appWidth)[ =]+(\\d+).*?(?:logicalHeight|realHeight|appHeight)[ =]+(\\d+)""")
+        val dimensions = Regex("""(?:logicalWidth|realWidth|appWidth)[ =]+(\d+).*?(?:logicalHeight|realHeight|appHeight)[ =]+(\d+)""")
         displayInfo.findAll(dump).forEach { match ->
             val block = match.groupValues[1]
             val id = idPattern.find(block)?.groupValues?.getOrNull(1)?.toIntOrNull()
