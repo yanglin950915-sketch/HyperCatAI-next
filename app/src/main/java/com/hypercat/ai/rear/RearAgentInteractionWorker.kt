@@ -21,8 +21,8 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
         val model = prefs.getString("model", "").orEmpty().trim()
         val apiKey = prefs.getString("api_key", "").orEmpty()
         if (endpoint.isBlank() || model.isBlank()) {
-            val current = PetStateStore.read(applicationContext)
-            PetStateStore.update(applicationContext, current.petName, current.petEmoji, "sad", "请先在主屏配置 Agent 模型，我就能回答你啦。")
+            val current = AvatarStateStore.read(applicationContext)
+            AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, "sad", "请先在主屏配置 Agent 模型，我就能回答你啦。")
             return@withContext Result.success()
         }
         try {
@@ -70,7 +70,7 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
                     else -> ""
                 }.ifBlank { "我收到你的互动啦！再和我说说话吧。" }
             } finally { connection.disconnect() }
-            history.put(JSONObject().put("text", if (action == "pet_voice") userText else eventPrompt).put("fromUser", true).put("attachments", JSONArray()))
+            history.put(JSONObject().put("text", if (action == "avatar_voice") userText else eventPrompt).put("fromUser", true).put("attachments", JSONArray()))
             history.put(JSONObject().put("text", reply).put("fromUser", false).put("attachments", JSONArray()))
             prefs.edit()
                 .putString(sessionKey, history.toString())
@@ -82,24 +82,24 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
                 listOf("惊讶", "哇", "竟然").any { reply.contains(it) } -> "surprised"
                 else -> "normal"
             }
-            val current = PetStateStore.read(applicationContext)
-            PetStateStore.update(applicationContext, current.petName, current.petEmoji, mood, reply, userText = if (action == "pet_voice") userText else eventPrompt)
+            val current = AvatarStateStore.read(applicationContext)
+            AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, mood, reply, userText = if (action == "avatar_voice") userText else eventPrompt)
             Result.success()
         } catch (error: Exception) {
             if (runAttemptCount < 2) return@withContext Result.retry()
-            val current = PetStateStore.read(applicationContext)
-            PetStateStore.update(applicationContext, current.petName, current.petEmoji, "sad", "刚才没能连接到 Agent，请稍后再试。")
+            val current = AvatarStateStore.read(applicationContext)
+            AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, "sad", "刚才没能连接到 Agent，请稍后再试。")
             Result.success()
         }
     }
 
     private fun eventPrompt(action: String, text: String): String? = when (action) {
-        "pet_touch", "pet_happy" -> "[背屏互动：用户摸了摸虚拟形象，请自然回应。]"
-        "pet_long_press" -> "[背屏互动：用户长按虚拟形象，想开始聊天，请主动邀请用户交流。]"
-        "pet_drag" -> "[背屏互动：用户在背屏上拖动了虚拟形象，请用轻松可爱的语气回应这次互动。]"
-        "pet_thinking" -> "[背屏互动：用户点击思考，请给出一句简短回应。]"
-        "pet_rest" -> "[背屏互动：用户让你休息，请温柔回应。]"
-        "pet_voice" -> text.takeIf { it.isNotBlank() }
+        "avatar_touch", "avatar_happy" -> "[背屏互动：用户摸了摸虚拟形象，请自然回应。]"
+        "avatar_long_press" -> "[背屏互动：用户长按虚拟形象，想开始聊天，请主动邀请用户交流。]"
+        "avatar_drag" -> "[背屏互动：用户在背屏上拖动了虚拟形象，请用轻松可爱的语气回应这次互动。]"
+        "avatar_thinking" -> "[背屏互动：用户点击思考，请给出一句简短回应。]"
+        "avatar_rest" -> "[背屏互动：用户让你休息，请温柔回应。]"
+        "avatar_voice" -> text.takeIf { it.isNotBlank() }
         else -> null
     }
 

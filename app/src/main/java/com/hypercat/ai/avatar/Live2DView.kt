@@ -1,4 +1,4 @@
-package com.hypercat.ai.pet
+package com.hypercat.ai.avatar
 
 import android.annotation.SuppressLint
 import android.util.Log
@@ -50,12 +50,15 @@ fun Live2DView(
                 Handler(Looper.getMainLooper()).post { state = state.copy(error = message); latestState(state) }
             }
             @JavascriptInterface fun onGesture(action: String, part: String) {
-                if (action in setOf("pet_touch", "pet_long_press", "pet_drag")) Handler(Looper.getMainLooper()).post { latestGesture(action, part) }
+                val normalized = if (action.startsWith("pet_")) "avatar_" + action.removePrefix("pet_") else action
+                if (normalized in setOf("avatar_touch", "avatar_long_press", "avatar_drag")) {
+                    Handler(Looper.getMainLooper()).post { latestGesture(normalized, part) }
+                }
             }
             @JavascriptInterface fun onFps(fps: Int) {
                 Handler(Looper.getMainLooper()).post { state = state.copy(fps = fps); latestState(state) }
             }
-            @JavascriptInterface fun onPoke(part: String) { latestGesture("pet_touch", part) }
+            @JavascriptInterface fun onPoke(part: String) { latestGesture("avatar_touch", part) }
         }
     }
     val webView = remember(controller) {

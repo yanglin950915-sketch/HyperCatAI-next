@@ -34,12 +34,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import java.util.Locale
 import android.speech.tts.UtteranceProgressListener
-import com.hypercat.ai.pet.Live2DModelStore
-import com.hypercat.ai.pet.Live2DView
-import com.hypercat.ai.pet.Live2DControllerHub
+import com.hypercat.ai.avatar.Live2DModelStore
+import com.hypercat.ai.avatar.Live2DView
+import com.hypercat.ai.avatar.Live2DControllerHub
 
 /** Direct rear-display host. Uses the same Live2D renderer and Agent state as the main screen. */
-class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
+class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var listening by mutableStateOf(false)
@@ -50,22 +50,22 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        PetStateStore.read(applicationContext)
+        AvatarStateStore.read(applicationContext)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         activeActivity = this
         tts = TextToSpeech(this, this)
         setContent {
-            val pet by PetStateStore.state.collectAsState()
-            val live2dModel = androidx.compose.runtime.remember { Live2DModelStore.current(this@RearPetActivity) }
+            val avatar by AvatarStateStore.state.collectAsState()
+            val live2dModel = androidx.compose.runtime.remember { Live2DModelStore.current(this@RearAvatarActivity) }
             Box(Modifier.fillMaxSize().background(Color(0xFF05070D))) {
                 if (live2dModel != null) {
                     Live2DView(
                         model = live2dModel,
                         modifier = Modifier.fillMaxSize(),
-                        mood = pet.mood,
+                        mood = avatar.mood,
                         speaking = live2dSpeaking,
                         halfBody = true,
-                        onGesture = { action, _ -> RearAgentInteractionDispatcher.enqueue(this@RearPetActivity, action) }
+                        onGesture = { action, _ -> RearAgentInteractionDispatcher.enqueue(this@RearAvatarActivity, action) }
                     )
                 } else {
                 AndroidView(
@@ -79,11 +79,11 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             settings.allowContentAccess = true
                             settings.cacheMode = WebSettings.LOAD_NO_CACHE
                             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                            addJavascriptInterface(RearMamlBridge(this@RearPetActivity), "maml")
+                            addJavascriptInterface(RearMamlBridge(this@RearAvatarActivity), "maml")
                             webViewClient = object : WebViewClient() {
                                 override fun onPageFinished(view: WebView, url: String?) {
                                     super.onPageFinished(view, url)
-                                    applyPetState(view, pet.petName, pet.petEmoji, pet.mood, pet.reply, pet.backgroundColor)
+                                    applyAvatarState(view, avatar.avatarName, avatar.avatarId, avatar.mood, avatar.reply, avatar.backgroundColor)
                                 }
                             }
                             rearWebView = this
@@ -91,7 +91,7 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         }
                     },
                     update = { view ->
-                        applyPetState(view, pet.petName, pet.petEmoji, pet.mood, pet.reply, pet.backgroundColor)
+                        applyAvatarState(view, avatar.avatarName, avatar.avatarId, avatar.mood, avatar.reply, avatar.backgroundColor)
                     }
                 )
                 }
@@ -103,8 +103,8 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     Text(if (listening) "正在聆听…" else "🎙 说话", color = Color.White, fontSize = 13.sp)
                 }
             }
-            LaunchedEffect(pet.updatedAt, pet.reply) {
-                val reply = pet.reply.trim()
+            LaunchedEffect(avatar.updatedAt, avatar.reply) {
+                val reply = avatar.reply.trim()
                 if (reply.isNotBlank() && reply != lastSpokenReply &&
                     reply != "让我想一想……" && reply != "我准备休息啦。" &&
                     reply != "我听到啦，正在回答你……" && !listening
@@ -116,7 +116,7 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun applyPetState(view: WebView, name: String, avatar: String, mood: String, reply: String, backgroundColor: String) {
+    private fun applyAvatarState(view: WebView, name: String, avatar: String, mood: String, reply: String, backgroundColor: String) {
         val script = "window.__setAgentState && window.__setAgentState(" +
             "${org.json.JSONObject.quote(name)}," +
             "${org.json.JSONObject.quote(avatar)}," +
@@ -126,13 +126,13 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         view.evaluateJavascript(script, null)
     }
 
-    class RearMamlBridge(private val activity: RearPetActivity) {
+    class RearMamlBridge(private val activity: RearAvatarActivity) {
         @JavascriptInterface
         fun getStringByName(name: String): String {
-            val state = PetStateStore.state.value
+            val state = AvatarStateStore.state.value
             return when (name) {
-                "petName" -> state.petName
-                "petEmoji" -> state.petEmoji
+                "avatarName", "petName" -> state.avatarName
+                "avatarId", "petEmoji" -> state.avatarId
                 "mood" -> state.mood
                 "reply" -> state.reply
                 "backgroundColor" -> state.backgroundColor
@@ -145,7 +145,10 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         @JavascriptInterface
         fun doAction(action: String) {
             activity.runOnUiThread {
-                if (action in setOf("pet_touch", "pet_happy", "pet_long_press", "pet_drag", "pet_thinking", "pet_rest")) {
+                if (action in setOf(
+                    "avatar_touch", "avatar_happy", "avatar_long_press", "avatar_drag", "avatar_thinking", "avatar_rest",
+                    "pet_touch", "pet_happy", "pet_long_press", "pet_drag", "pet_thinking", "pet_rest"
+                )) {
                     RearAgentInteractionDispatcher.enqueue(activity, action)
                 }
             }
@@ -163,8 +166,8 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private fun launchRecognizer() {
         if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
-            val current = PetStateStore.read(this)
-            PetStateStore.update(this, current.petName, current.petEmoji, "sad", "当前系统没有可用的语音识别服务。")
+            val current = AvatarStateStore.read(this)
+            AvatarStateStore.update(this, current.avatarName, current.avatarId, "sad", "当前系统没有可用的语音识别服务。")
             return
         }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -176,8 +179,8 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         listening = true
         runCatching { startActivityForResult(intent, REQUEST_SPEECH) }.onFailure {
             listening = false
-            val current = PetStateStore.read(this)
-            PetStateStore.update(this, current.petName, current.petEmoji, "sad", "无法启动语音识别，请检查系统语音服务。")
+            val current = AvatarStateStore.read(this)
+            AvatarStateStore.update(this, current.avatarName, current.avatarId, "sad", "无法启动语音识别，请检查系统语音服务。")
         }
     }
 
@@ -188,10 +191,10 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         listening = false
         val spoken = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
         if (resultCode == RESULT_OK && spoken.isNotBlank()) {
-            RearAgentInteractionDispatcher.enqueue(this, "pet_voice", spoken)
+            RearAgentInteractionDispatcher.enqueue(this, "avatar_voice", spoken)
         } else {
-            val current = PetStateStore.read(this)
-            PetStateStore.update(this, current.petName, current.petEmoji, "normal", "没有听清，再点麦克风试一次吧。")
+            val current = AvatarStateStore.read(this)
+            AvatarStateStore.update(this, current.avatarName, current.avatarId, "normal", "没有听清，再点麦克风试一次吧。")
         }
     }
 
@@ -201,8 +204,8 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             pendingPermission = false
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) launchRecognizer()
             else {
-                val current = PetStateStore.read(this)
-                PetStateStore.update(this, current.petName, current.petEmoji, "sad", "需要麦克风权限才能和我说话。")
+                val current = AvatarStateStore.read(this)
+                AvatarStateStore.update(this, current.avatarName, current.avatarId, "sad", "需要麦克风权限才能和我说话。")
             }
         }
     }
@@ -250,7 +253,7 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     companion object {
         private const val REQUEST_AUDIO = 8101
         private const val REQUEST_SPEECH = 8102
-        @Volatile private var activeActivity: RearPetActivity? = null
+        @Volatile private var activeActivity: RearAvatarActivity? = null
         fun hideIfVisible() { activeActivity?.runOnUiThread { activeActivity?.finish() } }
     }
 }
