@@ -2868,6 +2868,38 @@ private fun SettingsPage(
         confirmButton = { TextButton(onClick = { showHelpDialog = false; openUrl("https://github.com/yanglin950915-sketch/HyperCatAI-next/issues") }) { Text("提交反馈") } },
         dismissButton = { TextButton(onClick = { showHelpDialog = false; openUrl("https://github.com/yanglin950915-sketch/HyperCatAI-next") }) { Text("项目主页") } }
     )
+    if (showRearPicker) AlertDialog(
+        onDismissRequest = { if (!rearPickerBusy) showRearPicker = false },
+        title = { Text(if (rearPickerMode == "deploy") "选择要替换的背屏" else "选择要恢复的背屏") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text(if (rearPickerMode == "deploy") "已扫描 .ai_wallpaper/maml/ 和旧版 .ai_app。请选择一张 AI 壁纸，程序只替换其中的 rearscreen 文件，不会覆盖整个壁纸目录。" else "选择此前备份过原始资源的背屏卡片。恢复只影响所选卡片。", color = Muted, fontSize = 11.sp)
+                Spacer(Modifier.height(10.dp))
+                rearPickerCards.forEach { card ->
+                    Surface(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(enabled = !rearPickerBusy) {
+                        rearPickerBusy = true
+                        scope.launch {
+                            try {
+                                rearProjectionStatus = if (rearPickerMode == "deploy") RearProjectionController.deploy(context, card) else RearProjectionController.restore(context, card.cardId)
+                                rearPetEnabled = rearPickerMode == "deploy"
+                                PetStateStore.setEnabled(context, rearPetEnabled)
+                                showRearPicker = false
+                            } catch (error: Exception) { rearProjectionStatus = error.message ?: "背屏操作失败" }
+                            finally { rearPickerBusy = false }
+                        }
+                    }, color = Panel2, shape = RoundedCornerShape(12.dp)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(card.name, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(card.root + "/" + card.path, color = Muted, fontSize = 9.sp, maxLines = 3)
+                            Text(if (rearPickerMode == "deploy") "点击后备份原资源并替换此卡片" else "点击后恢复此卡片的原始资源", color = Cyan, fontSize = 10.sp)
+                        }
+                    }
+                }
+                if (rearPickerBusy) { Spacer(Modifier.height(8.dp)); Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)); Text("正在处理所选背屏…", color = Muted, fontSize = 11.sp) } }
+            }
+        },
+        confirmButton = { TextButton(enabled = !rearPickerBusy, onClick = { showRearPicker = false }) { Text("取消") } }
+    )
     if (showDocsDialog) AlertDialog(
         onDismissRequest = { showDocsDialog = false },
         title = { Text("项目文档") },
