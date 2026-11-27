@@ -3,6 +3,10 @@ package com.hypercat.ai.rear
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.display.DisplayManager
+import android.util.DisplayMetrics
+import android.view.Display
+import android.view.Surface
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
@@ -60,48 +64,60 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         super.onCreate(savedInstanceState)
         AvatarStateStore.read(applicationContext)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
-            val cutout = insets.displayCutout
-            val width = view.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
-            val height = view.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
-            if (width > 0 && height > 0) {
-                val rects = cutout?.boundingRects.orEmpty()
-                val obstruction = if (rects.isNotEmpty()) android.graphics.Rect().apply {
-                    set(rects.first())
-                    rects.drop(1).forEach { union(it) }
-                } else null
-                val candidates = mutableListOf<android.graphics.Rect>()
-                // Camera island: keep four independent regions; do not treat its
-                // bounding rectangle as a top inset when the obstruction is off-centre.
-                if (obstruction != null) {
-                    if (obstruction.left > 0) candidates += android.graphics.Rect(0, 0, obstruction.left, height)
-                    if (obstruction.right < width) candidates += android.graphics.Rect(obstruction.right, 0, width, height)
-                    if (obstruction.top > 0) candidates += android.graphics.Rect(0, 0, width, obstruction.top)
-                    if (obstruction.bottom < height) candidates += android.graphics.Rect(0, obstruction.bottom, width, height)
+        fun updateRearSafeArea() {
+            val rearDisplay = window.decorView.display
+                ?: getSystemService(DisplayManager::class.java).getDisplay(display?.displayId ?: Display.DEFAULT_DISPLAY)
+            if (rearDisplay == null) return
+            @Suppress("DEPRECATION")
+            val metrics = DisplayMetrics().also { rearDisplay.getRealMetrics(it) }
+            val width = metrics.widthPixels
+            val height = metrics.heightPixels
+            if (width <= 0 || height <= 0) return
+
+            val cutout = rearDisplay.cutout
+            val left = cutout?.safeInsetLeft ?: 0
+            val top = cutout?.safeInsetTop ?: 0
+            val right = cutout?.safeInsetRight ?: 0
+            val bottom = cutout?.safeInsetBottom ?: 0
+
+            // Xiaomi 17 Pro Max community projects document a left-side camera island
+            // occupying roughly 30% of the rear panel; layouts start at 32%.
+            // Use the measured DisplayCutout when HyperOS exposes it. Fall back only
+            // for the positively identified 17 Pro / 17 Pro Max rear panel.
+            val model = android.os.Build.MODEL.orEmpty().uppercase(Locale.ROOT)
+            val device = android.os.Build.DEVICE.orEmpty().lowercase(Locale.ROOT)
+            val is17ProMax = device == "popsicle" || model.contains("2509FPN0BC")
+            val is17Pro = device == "pandora"
+            val isKnown17Rear = is17ProMax || is17Pro
+            val landscape = width >= height
+
+            var safeLeft = left
+            var safeTop = top
+            var safeRight = right
+            var safeBottom = bottom
+            if (isKnown17Rear && left == 0 && top == 0 && right == 0 && bottom == 0) {
+                when (rearDisplay.rotation) {
+                    Surface.ROTATION_0 -> if (landscape) safeLeft = (width * 0.32f).toInt()
+                    Surface.ROTATION_90 -> if (landscape) safeBottom = (height * 0.32f).toInt()
+                    Surface.ROTATION_180 -> if (landscape) safeRight = (width * 0.32f).toInt()
+                    Surface.ROTATION_270 -> if (landscape) safeTop = (height * 0.32f).toInt()
                 }
-                val insetLeft = cutout?.safeInsetLeft ?: 0
-                val insetRight = cutout?.safeInsetRight ?: 0
-                val insetTop = cutout?.safeInsetTop ?: 0
-                val insetBottom = cutout?.safeInsetBottom ?: 0
-                if (insetLeft > 0) candidates += android.graphics.Rect(insetLeft, 0, width, height)
-                if (insetRight > 0) candidates += android.graphics.Rect(0, 0, width - insetRight, height)
-                if (insetTop > 0) candidates += android.graphics.Rect(0, insetTop, width, height)
-                if (insetBottom > 0) candidates += android.graphics.Rect(0, 0, width, height - insetBottom)
-                if (candidates.isEmpty()) candidates += android.graphics.Rect(0, 0, width, height)
-                val validCandidates = candidates.filter { candidate ->
-                    candidate.width() > 0 && candidate.height() > 0 &&
-                        (obstruction == null || !android.graphics.Rect.intersects(candidate, obstruction))
-                }
-                val safe = validCandidates.maxByOrNull { it.width().toLong() * it.height().toLong() }
-                rearSafeLeftRatio = safe?.left?.toFloat()?.div(width)?.coerceIn(0f, 0.95f) ?: 0f
-                rearSafeTopRatio = safe?.top?.toFloat()?.div(height)?.coerceIn(0f, 0.95f) ?: 0f
-                rearSafeRightRatio = safe?.let { (width - it.right).toFloat() / width }?.coerceIn(0f, 0.95f) ?: 0f
-                rearSafeBottomRatio = safe?.let { (height - it.bottom).toFloat() / height }?.coerceIn(0f, 0.95f) ?: 0f
-                android.util.Log.i("HyperCatRear", "viewport=${width}x${height}, model=${android.os.Build.MODEL}, cutout=$obstruction, safe=$safe")
             }
-            insets
+
+            rearSafeLeftRatio = (safeLeft.toFloat() / width).coerceIn(0f, 0.95f)
+            rearSafeTopRatio = (safeTop.toFloat() / height).coerceIn(0f, 0.95f)
+            rearSafeRightRatio = (safeRight.toFloat() / width).coerceIn(0f, 0.95f)
+            rearSafeBottomRatio = (safeBottom.toFloat() / height).coerceIn(0f, 0.95f)
+            android.util.Log.i(
+                "HyperCatRear",
+                "displayId=${rearDisplay.displayId}, size=${width}x${height}, rotation=${rearDisplay.rotation}, " +
+                    "model=${android.os.Build.MODEL}, device=${android.os.Build.DEVICE}, " +
+                    "cutout=${cutout?.boundingRects}, safeInsets=${left},${top},${right},${bottom}, " +
+                    "applied=${safeLeft},${safeTop},${safeRight},${safeBottom}"
+            )
         }
-        window.decorView.post { ViewCompat.requestApplyInsets(window.decorView) }
+        window.decorView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateRearSafeArea() }
+        updateRearSafeArea()
         activeActivity = this
         tts = TextToSpeech(this, this)
         setContent {
