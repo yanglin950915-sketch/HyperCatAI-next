@@ -40,8 +40,6 @@
   'use strict';
 
   var params = new URLSearchParams(location.search);
-  // The rear card is a clean character display. Legacy title/status/reply overlays are opt-in only.
-  var SHOW_INTERFACE = params.get('ui') === '1';
   // Resolve model assets against this document, not the MAML host's working directory.
   // The rear card hosts this renderer directly, without a nested file:// iframe.
   var DIR = new URL(params.get('dir') || '../models/active/', document.baseURI).href;
@@ -88,9 +86,6 @@
   // 由 PIXI 的 ticker 驱动，但所有可视状态都由原生侧写入，本页只做平滑。
   var model = null;
   var app = null;
-  var ui = null;
-  var uiState = { name: '小橘', mood: '待机中', reply: '你好！我是你的 AI 虚拟形象。' };
-  var lastMamlSync = 0;
   var target = { mouth: 0, speaking: false, gazeX: 0, gazeY: 0 };
   var smooth = { mouth: 0, gazeX: 0, gazeY: 0, angleX: 0, angleY: 0, bodyX: 0, pokeT: -10 };
   var emotionTimer = 0;
@@ -232,10 +227,7 @@
 
   function attach(m) {
     model = m;
-    if (SHOW_INTERFACE) createLive2DInterface();
-    if (ui && ui.bg) app.stage.addChild(ui.bg);
     app.stage.addChild(model);
-    if (ui && ui.root) app.stage.addChild(ui.root);
 
     // 不能手动调 internalModel.update：库在 _render() 里已经用
     //   internalModel.update(deltaTime, elapsedTime)
@@ -417,8 +409,6 @@
     var fpsAcc = 0, fpsLast = 0;
     PIXI.Ticker.shared.add(function () {
       if (!model) return;
-      syncMamlInterface();
-      updateLive2DInterface();
       fpsAcc++;
       var now = performance.now();
       if (now - fpsLast > 1000) {
@@ -554,70 +544,6 @@
   window.addEventListener('pointercancel', function () { pointerStart = null; }, { passive: true });
 
   // ---- Live2D 原生界面层：所有画面元素均由同一个 PIXI/Live2D 场景渲染 ----
-  function createLive2DInterface() {
-    var root = new PIXI.Container();
-    var bg = new PIXI.Graphics();
-    var panel = new PIXI.Graphics();
-    var title = new PIXI.Text('HYPERCAT AI', {fontFamily:'system-ui,sans-serif',fontSize:17,fontWeight:'bold',fill:0x83e7ff,letterSpacing:2});
-    var name = new PIXI.Text(uiState.name, {fontFamily:'system-ui,sans-serif',fontSize:19,fontWeight:'bold',fill:0xf1f8ff});
-    var mood = new PIXI.Text(uiState.mood, {fontFamily:'system-ui,sans-serif',fontSize:14,fill:0x83e7ff});
-    var reply = new PIXI.Text(uiState.reply, {fontFamily:'system-ui,sans-serif',fontSize:15,fill:0xd8edf7,wordWrap:true,wordWrapWidth:520,breakWords:true,lineHeight:21});
-    var hint = new PIXI.Text('轻触互动 · 长按聊天 · 拖动跟随', {fontFamily:'system-ui,sans-serif',fontSize:12,fill:0x7fa6b8,align:'center'});
-    root.addChild(panel);
-    [title,name,mood,reply,hint].forEach(function(t){t.resolution=Math.min(window.devicePixelRatio||1,2);root.addChild(t);});
-    ui={root:root,bg:bg,panel:panel,title:title,name:name,mood:mood,reply:reply,hint:hint};
-    layoutLive2DInterface();
-  }
-  function layoutLive2DInterface() {
-    if(!ui||!app)return;
-    var w=app.renderer.width/app.renderer.resolution,h=app.renderer.height/app.renderer.resolution;
-    ui.bg.clear();ui.bg.beginFill(0x101522,1);ui.bg.drawRect(0,0,w,h);ui.bg.endFill();
-    ui.panel.clear();ui.panel.beginFill(0x172638,0.94);ui.panel.drawRoundedRect(12,h-91,w-24,78,13);ui.panel.endFill();
-    ui.title.position.set(18,14);
-    ui.name.position.set(18,39);
-    ui.mood.anchor.set(1,0);ui.mood.position.set(w-18,42);
-    ui.reply.position.set(24,h-82);ui.reply.style.wordWrapWidth=Math.max(160,w-48);
-    ui.hint.anchor.set(.5,0);ui.hint.position.set(w/2,h-108);
-  }
-  function updateLive2DInterface() {
-    if(!ui)return;
-    ui.name.text=uiState.name;
-    ui.mood.text=uiState.mood;
-    ui.reply.text=uiState.reply;
-  }
-  window.addEventListener('message',function(event){
-    var data=event.data;
-    if(!data||data.type!=='hypercat-agent-state'||!data.state)return;
-    var st=data.state;
-    if(st.name)uiState.name=String(st.name).slice(0,18);
-    if(st.reply)uiState.reply=String(st.reply).slice(0,120);
-    if(st.mood){
-      var key=String(st.mood).toLowerCase();
-      var map={normal:'待机中',idle:'待机中',happy:'很开心',thinking:'正在思考',curious:'好奇中',sleepy:'休息中',sad:'有点难过',surprised:'有点惊讶'};
-      uiState.mood=map[key]||String(st.mood).slice(0,12);
-      var ex={happy:'happy',thinking:'thinking',curious:'curious',sleepy:'sleepy',sad:'sad',surprised:'surprised'};
-      if(ex[key]&&window.__l2d)window.__l2d.setEmotion(ex[key]);
-    }
-  });
-  function syncMamlInterface() {
-    var now=performance.now();
-    if(now-lastMamlSync<450)return;
-    lastMamlSync=now;
-    try{
-      var bridge=window.parent&&window.parent.maml;
-      if(!bridge||typeof bridge.getStringByName!=='function')return;
-      var n=bridge.getStringByName('avatarName'),m=bridge.getStringByName('mood'),r=bridge.getStringByName('reply');
-      if(n&&n!=='undefined')uiState.name=String(n).slice(0,18);
-      if(m&&m!=='undefined'){
-        var key=String(m).toLowerCase(),map={normal:'待机中',idle:'待机中',happy:'很开心',thinking:'正在思考',curious:'好奇中',sleepy:'休息中',sad:'有点难过',surprised:'有点惊讶'};
-        uiState.mood=map[key]||String(m).slice(0,12);
-        var expression={happy:'happy',thinking:'thinking',curious:'curious',sleepy:'sleepy',sad:'sad',surprised:'surprised'};
-        if(expression[key]&&window.__l2d)window.__l2d.setEmotion(expression[key]);
-      }
-      if(r&&r!=='undefined')uiState.reply=String(r).slice(0,120);
-    }catch(e){log('MAML UI sync',String(e));}
-  }
-
   // ---- 原生接口 ----
   window.__l2d = {
     ready: function () { return !!model; },
@@ -664,7 +590,6 @@
       var expressions = {happy:'happy',thinking:'thinking',curious:'curious',sleepy:'sleepy',sad:'sad',surprised:'surprised'};
       if (expressions[key] && window.__l2d) window.__l2d.setEmotion(expressions[key]);
     }
-    updateLive2DInterface();
   }
   window.__setAgentState = applyAgentState;
   window.__setAgentJson = function (value) {
