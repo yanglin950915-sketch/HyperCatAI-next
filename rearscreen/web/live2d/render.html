@@ -93,6 +93,9 @@
   }
 
   function loadModel(dir, entry) {
+    // 每个模型必须重新测量可见轮廓；禁止沿用上一个角色的透明留白/中心偏移。
+    opticalCenterRatio = null;
+    PORTRAIT_CAPTURED = false;
     var url = dir + (entry || 'model.model3.json');
     log('L2D loading', url);
 
@@ -287,9 +290,10 @@
         if (!ctx || canvas.width < 2 || canvas.height < 2) throw new Error('model canvas unavailable');
         var pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
         var minX = canvas.width, maxX = -1, minY = canvas.height, maxY = -1;
-        // Sparse scan is sufficient for the silhouette center and avoids a long UI-thread pass.
-        for (var y = 0; y < canvas.height; y += 3) {
-          for (var x = 0; x < canvas.width; x += 3) {
+        // 扫描全部像素行列，避免稀疏采样在细发梢/装饰物上产生偏差。
+        // 只使用 alpha 轮廓，排除透明画布留白，不依赖具体角色或模型 ID。
+        for (var y = 0; y < canvas.height; y++) {
+          for (var x = 0; x < canvas.width; x++) {
             if (pixels[(y * canvas.width + x) * 4 + 3] > 24) {
               if (x < minX) minX = x;
               if (x > maxX) maxX = x;
@@ -302,7 +306,8 @@
           opticalCenterRatio = ((minX + maxX) / 2) / canvas.width;
           layout();
           measured = true;
-          log('L2D optical center measured', opticalCenterRatio.toFixed(4), canvas.width + 'x' + canvas.height);
+          log('L2D optical center measured', opticalCenterRatio.toFixed(5), canvas.width + 'x' + canvas.height,
+              'visible=' + minX + '-' + maxX);
         } else {
           throw new Error('no visible model pixels yet');
         }
