@@ -67,6 +67,10 @@ var canvas=document.getElementById("rear"),ctx=canvas.getContext("2d",{alpha:fal
     frame.title="HyperCat AI Live2D";
     frame.setAttribute("aria-label","Live2D 虚拟形象");
     frame.src="live2d/render.html?dir=../models/active/&entry="+encodeURIComponent(info.entry)+"&half=1&ratio=0.78&fps=20";
+    frame.addEventListener("load",function(){
+      var names=["neutral","happy","thinking","sleepy","sad","surprised"];
+      if(frame.contentWindow&&frame.contentWindow.__l2d)frame.contentWindow.__l2d.setEmotion(names[mood]||"neutral");
+    });
     document.body.appendChild(frame);
   }).catch(function(){ /* No imported model: keep the built-in canvas renderer. */ });
 })();
