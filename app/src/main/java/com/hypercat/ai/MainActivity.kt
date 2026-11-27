@@ -2356,34 +2356,42 @@ private fun AvatarRenderer(
     }
 }
 
+/** Process-wide bitmap cache: chat rows reuse one captured portrait instead of
+ * keeping a separate 60 FPS WebView alive for every assistant message. */
+private object Live2DPortraitCache {
+    val portraits = mutableStateMapOf<String, Bitmap>()
+}
+
 /** Small, non-animated portrait matching the currently selected virtual character. */
 @Composable
 private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
     val model = Live2DModelStore.characters.firstOrNull { it.id == character }
         ?: Live2DModelStore.characters.first()
-    var portrait by remember(character) { mutableStateOf<Bitmap?>(null) }
+    val captured = Live2DPortraitCache.portraits[character]
     Box(modifier.clip(CircleShape).background(Color(0xFFEDEAF4))) {
-        // Keep the Live2D surface mounted as a live fallback. The captured bitmap is
-        // layered above it instead of replacing/destroying the WebView; this avoids a
-        // blank portrait if WebGL's first extraction is transient or partially transparent.
-        Live2DView(
-            model = model,
-            modifier = Modifier.size(128.dp).align(Alignment.Center),
-            halfBody = true,
-            onPortrait = { dataUrl ->
-                runCatching {
-                    val encoded = dataUrl.substringAfter(',', "")
-                    val bytes = Base64.getDecoder().decode(encoded)
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                }.getOrNull()?.takeIf { !it.isRecycled && it.width > 1 && it.height > 1 }?.let { portrait = it }
-            }
-        )
-        portrait?.let { captured ->
+        if (captured != null && !captured.isRecycled) {
             Image(
                 bitmap = captured.asImageBitmap(),
                 contentDescription = model.displayName,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
+            )
+        } else {
+            // Capture once at a larger backing size, cache it globally, then dispose
+            // the temporary WebView. All chat rows subsequently draw the same bitmap.
+            Live2DView(
+                model = model,
+                modifier = Modifier.requiredSize(128.dp).align(Alignment.Center),
+                halfBody = true,
+                onPortrait = { dataUrl ->
+                    runCatching {
+                        val encoded = dataUrl.substringAfter(',', "")
+                        val bytes = Base64.getDecoder().decode(encoded)
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    }.getOrNull()?.takeIf { !it.isRecycled && it.width > 1 && it.height > 1 }?.let {
+                        Live2DPortraitCache.portraits[character] = it
+                    }
+                }
             )
         }
     }
