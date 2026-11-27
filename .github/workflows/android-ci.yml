@@ -11,10 +11,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify complete rearscreen folder
+      - name: Verify REAREye widget source and layout
         run: |
           test -s rearscreen/manifest.xml
-          test "$(find rearscreen -maxdepth 1 -type f | wc -l)" -eq 1
+          test -s rearscreen/web/index.html
+          test -s rearscreen/REAREye_IMPORT_PROMPT.md
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+
+          manifest = Path("rearscreen/manifest.xml")
+          html = Path("rearscreen/web/index.html").read_text(encoding="utf-8")
+          root = ET.parse(manifest).getroot()
+          webview = root.find("WebView")
+          assert webview is not None, "REAREye WebView element missing"
+          assert webview.attrib.get("local") == "true", "WebView must load local assets"
+          assert webview.attrib.get("cachePage") == "true", "WebView cache contract missing"
+          assert webview.attrib.get("uri") == "web/index.html", "WebView entry point mismatch"
+          assert root.attrib.get("screenWidth") == "904", "target rear width mismatch"
+          assert root.find("VariableBinders") is not None, "Agent data binder missing"
+          assert "com.hypercat.ai.rear.provider/pet-state" in manifest.read_text(encoding="utf-8"), "Agent provider URI missing"
+          assert "PET_INTERACTION" in manifest.read_text(encoding="utf-8"), "rear touch receiver actions missing"
+          assert '<meta name="viewport"' in html, "viewport meta missing"
+          assert "SAFE_ZONE:" in html and "AVAIL:" in html and "TOUCH:" in html, "layout audit comments missing"
+          assert "BASE_W=904,BASE_H=572" in html, "target design space mismatch"
+          assert "bridge.getStringByName" in html and "window.maml.doAction" in html, "MAML bridge integration missing"
+          for name in ("__fit", "__setAod", "__debugSize", "__setMoodIndex"):
+              assert f"window.{name}" in html, f"{name} lifecycle API missing"
+          scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
+          assert len(scripts) == 1, "expected one self-contained inline script"
+          Path("/tmp/hypercat-rear-inline.js").write_text(scripts[0], encoding="utf-8")
+          PY
+          node --check /tmp/hypercat-rear-inline.js
       - name: Upload rearscreen folder
         uses: actions/upload-artifact@v4
         with:

@@ -5,15 +5,23 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Binder
 import org.json.JSONObject
 
-/** Exported read-only provider consumed directly by the rear-screen MAML host. */
+/**
+ * Read-only state bridge for the REAREye host. Only the installed REAREye package
+ * may query it; arbitrary third-party apps cannot read Agent reply text.
+ */
 class RearPetProvider : ContentProvider() {
     override fun onCreate(): Boolean = true
 
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor {
+        val appContext = requireNotNull(context)
+        if (!RearCallerVerifier.isTrustedUid(appContext, Binder.getCallingUid())) {
+            throw SecurityException("Only REAREye may read HyperCat AI rear-pet state")
+        }
         if (uri.authority != AUTHORITY || uri.path != "/pet-state") {
-            return cursor(JSONObject().put("error", "Unknown HyperCat route").toString())
+            throw IllegalArgumentException("Unknown HyperCat rear-state URI")
         }
         return cursor(readPetJson())
     }

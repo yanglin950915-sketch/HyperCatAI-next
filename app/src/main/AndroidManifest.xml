@@ -24,6 +24,13 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/hypercat_accessibility_service" />
         </service>
+        <receiver
+            android:name=".rear.RearPetInteractionReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.hypercat.ai.rear.PET_INTERACTION" />
+            </intent-filter>
+        </receiver>
         <provider
             android:name=".rear.RearPetProvider"
             android:authorities="com.hypercat.ai.rear.provider"
