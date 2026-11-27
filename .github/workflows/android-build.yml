@@ -42,11 +42,23 @@ jobs:
       - name: Verify APK signature
         run: |
           $ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk
+      - name: Package REAREye rear-screen widget
+        run: |
+          cd rearscreen
+          zip -r ../HyperCatAI-rearscreen.zip manifest.xml web/index.html
+          test -s ../HyperCatAI-rearscreen.zip
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: HyperCatAI-debug
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload REAREye widget artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HyperCatAI-rearscreen
+          path: HyperCatAI-rearscreen.zip
           if-no-files-found: error
           retention-days: 30
       - name: Publish GitHub Release for pushed versions
