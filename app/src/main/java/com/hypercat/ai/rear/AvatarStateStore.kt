@@ -55,7 +55,7 @@ object AvatarStateStore {
             avatarName = name.ifBlank { "小橘" }.take(16),
             avatarId = avatarId.ifBlank { "sakura" }.take(32),
             mood = mood.ifBlank { "normal" }.take(24),
-            reply = reply.take(100),
+            reply = reply.take(240),
             updatedAt = System.currentTimeMillis(),
             enabled = enabled ?: prefs.getBoolean(KEY_ENABLED, legacy.getBoolean("rear_pet_enabled", false)),
             userText = userText.take(1000),
