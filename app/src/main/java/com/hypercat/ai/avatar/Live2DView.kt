@@ -1,0 +1,142 @@
+package com.hypercat.ai.avatar
+
+import android.annotation.SuppressLint
+import android.util.Log
+import android.os.Handler
+import android.os.Looper
+import android.webkit.ConsoleMessage
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.AndroidView
+import java.util.concurrent.CopyOnWriteArraySet
+
+data class Live2DRenderState(val ready: Boolean = false, val error: String? = null, val fps: Int = 0)
+
+/** WebGL Live2D host. Cubism model assets are imported by the user and remain app-private. */
+@SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
+@Composable
+fun Live2DView(
+    model: Live2DModel,
+    modifier: Modifier = Modifier,
+    mood: String = "normal",
+    speaking: Boolean = false,
+    halfBody: Boolean = true,
+    onGesture: (String, String) -> Unit = { _, _ -> },
+    onState: (Live2DRenderState) -> Unit = {}
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var state by remember(model.directory, model.entry) { mutableStateOf(Live2DRenderState()) }
+    val latestGesture by androidx.compose.runtime.rememberUpdatedState(onGesture)
+    val latestState by androidx.compose.runtime.rememberUpdatedState(onState)
+    val controller = remember(model.directory, model.entry) { Live2DController() }
+    val bridge = remember(controller) {
+        object {
+            @JavascriptInterface fun onReady() {
+                Handler(Looper.getMainLooper()).post { state = state.copy(ready = true, error = null); latestState(state) }
+            }
+            @JavascriptInterface fun onError(message: String) {
+                Log.e(TAG, "Live2D: $message")
+                Handler(Looper.getMainLooper()).post { state = state.copy(error = message); latestState(state) }
+            }
+            @JavascriptInterface fun onGesture(action: String, part: String) {
+                if (action in setOf("pet_touch", "pet_long_press", "pet_drag")) Handler(Looper.getMainLooper()).post { latestGesture(action, part) }
+            }
+            @JavascriptInterface fun onFps(fps: Int) {
+                Handler(Looper.getMainLooper()).post { state = state.copy(fps = fps); latestState(state) }
+            }
+            @JavascriptInterface fun onPoke(part: String) { latestGesture("pet_touch", part) }
+        }
+    }
+    val webView = remember(controller) {
+        WebView(context).apply {
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                allowFileAccess = true
+                allowContentAccess = false
+                @Suppress("DEPRECATION")
+                allowFileAccessFromFileURLs = true
+                @Suppress("DEPRECATION")
+                allowUniversalAccessFromFileURLs = true
+                mediaPlaybackRequiresUserGesture = false
+                cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            }
+            addJavascriptInterface(bridge, "NativeBridge")
+            webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                    Log.d(TAG, "js: ${message.message()} @${message.lineNumber()}")
+                    return true
+                }
+            }
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = true
+            }
+        }
+    }
+    DisposableEffect(webView) {
+        controller.attach(webView)
+        Live2DControllerHub.register(controller)
+        onDispose {
+            Live2DControllerHub.unregister(controller)
+            controller.detach()
+            webView.stopLoading()
+            webView.removeJavascriptInterface("NativeBridge")
+            webView.loadUrl("about:blank")
+            webView.destroy()
+        }
+    }
+    LaunchedEffect(model.directory, model.entry, halfBody) {
+        val dir = android.net.Uri.encode(model.directory, "/:")
+        val entry = android.net.Uri.encode(model.entry, "/")
+        webView.loadUrl("file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=${if (halfBody) 1 else 0}&ratio=0.55&fps=24")
+    }
+    LaunchedEffect(mood, state.ready) {
+        if (state.ready) controller.setEmotion(
+            when (mood.lowercase()) {
+                "happy" -> "happy"
+                "sad" -> "sad"
+                "angry" -> "angry"
+                "shy" -> "shy"
+                else -> "neutral"
+            }
+        )
+    }
+    LaunchedEffect(speaking, state.ready) { if (state.ready) controller.setSpeaking(speaking) }
+    AndroidView(factory = { webView }, modifier = modifier)
+}
+
+class Live2DController internal constructor() {
+    @Volatile private var webView: WebView? = null
+    internal fun attach(view: WebView) { webView = view }
+    internal fun detach() { webView = null }
+    private fun call(script: String) { webView?.post { webView?.evaluateJavascript(script, null) } }
+    fun setSpeaking(value: Boolean) = call("window.__l2d&&window.__l2d.setSpeaking($value)")
+    fun setMouth(value: Float) = call("window.__l2d&&window.__l2d.setMouth(${value.coerceIn(0f, 1f)})")
+    fun setEmotion(value: String) = call("window.__l2d&&window.__l2d.setEmotion('${value.replace("'", "")}')")
+    fun setGaze(x: Float, y: Float) = call("window.__l2d&&window.__l2d.setGaze(${x.coerceIn(-1f,1f)},${y.coerceIn(-1f,1f)})")
+    fun setView(halfBody: Boolean, ratio: Float = 0.55f) = call("window.__l2d&&window.__l2d.setView($halfBody,${ratio.coerceIn(0.3f,0.8f)})")
+}
+
+object Live2DControllerHub {
+    private val controllers = CopyOnWriteArraySet<Live2DController>()
+    internal fun register(controller: Live2DController) { controllers.add(controller) }
+    internal fun unregister(controller: Live2DController) { controllers.remove(controller) }
+    fun setSpeaking(value: Boolean) { controllers.forEach { it.setSpeaking(value) } }
+    fun setMouth(value: Float) { controllers.forEach { it.setMouth(value) } }
+    fun setEmotion(value: String) { controllers.forEach { it.setEmotion(value) } }
+}
+
+private const val TAG = "HyperCatLive2D"
