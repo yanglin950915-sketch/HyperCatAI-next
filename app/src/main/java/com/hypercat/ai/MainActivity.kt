@@ -2869,7 +2869,7 @@ private fun AvatarSettingsPage(
                                     }
                                     RearProjectionController.deploy(context, card)
                                 }.onSuccess { message ->
-                                    Toast.makeText(context, message + "。请在手机系统设置中重新应用背屏卡片。", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "背屏卡片已更新，请到手机系统设置重新应用。", Toast.LENGTH_LONG).show()
                                 }.onFailure { error ->
                                     Toast.makeText(context, "背屏卡片自动更新失败：" + (error.message ?: "未知错误"), Toast.LENGTH_LONG).show()
                                 }
