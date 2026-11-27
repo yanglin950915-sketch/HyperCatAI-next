@@ -171,9 +171,17 @@ private fun applyPlatformNightMode(context: Context, mode: String) {
         "dark" -> manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_YES)
         "light" -> manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_NO)
         "time" -> {
-            manager.setCustomNightModeStart(java.time.LocalTime.of(19, 0))
-            manager.setCustomNightModeEnd(java.time.LocalTime.of(7, 0))
-            manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_CUSTOM)
+            if (Build.VERSION.SDK_INT >= 34) {
+                manager.setCustomNightModeStart(java.time.LocalTime.of(19, 0))
+                manager.setCustomNightModeEnd(java.time.LocalTime.of(7, 0))
+                manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_CUSTOM)
+            } else {
+                val darkNow = java.time.LocalTime.now().let { it.hour < 7 || it.hour >= 19 }
+                manager.setApplicationNightMode(
+                    if (darkNow) android.app.UiModeManager.MODE_NIGHT_YES
+                    else android.app.UiModeManager.MODE_NIGHT_NO
+                )
+            }
         }
         else -> manager.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_AUTO)
     }
