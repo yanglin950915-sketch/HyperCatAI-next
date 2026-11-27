@@ -320,14 +320,31 @@
           var extract = app.renderer && app.renderer.plugins && app.renderer.plugins.extract;
           if (!extract || typeof extract.canvas !== 'function') throw new Error('PIXI canvas extractor unavailable');
           var canvas = extract.canvas(model);
-          var dataUrl = canvas && canvas.toDataURL ? canvas.toDataURL('image/png') : '';
-          if (dataUrl && dataUrl.indexOf('data:image/png;base64,') === 0 && dataUrl.length > 1500) {
+          var ctx = canvas && canvas.getContext ? canvas.getContext('2d', { willReadFrequently: true }) : null;
+          if (!ctx || canvas.width < 2 || canvas.height < 2) throw new Error('portrait canvas unavailable');
+          var pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+          var visible = 0, minChannel = 255, maxChannel = 0;
+          for (var py = 0; py < canvas.height; py += 4) {
+            for (var px = 0; px < canvas.width; px += 4) {
+              var pi = (py * canvas.width + px) * 4;
+              if (pixels[pi + 3] > 24) {
+                visible++;
+                minChannel = Math.min(minChannel, pixels[pi], pixels[pi + 1], pixels[pi + 2]);
+                maxChannel = Math.max(maxChannel, pixels[pi], pixels[pi + 1], pixels[pi + 2]);
+              }
+            }
+          }
+          var dataUrl = canvas.toDataURL('image/png');
+          // Reject blank/white WebGL snapshots; the native UI keeps its stable static
+          // fallback rather than briefly showing a bad frame and then losing it.
+          if (visible > 40 && maxChannel - minChannel > 8 &&
+              dataUrl && dataUrl.indexOf('data:image/png;base64,') === 0 && dataUrl.length > 1500) {
             PORTRAIT_CAPTURED = true;
             NATIVE.onPortrait(dataUrl);
-            log('portrait captured', canvas.width + 'x' + canvas.height);
+            log('portrait captured', canvas.width + 'x' + canvas.height, 'visible=' + visible);
             return;
           }
-          throw new Error('empty portrait canvas');
+          throw new Error('portrait canvas is blank or uniform');
         } catch (e) {
           log('portrait capture attempt ' + (attempts + 1) + ' failed', String(e));
         }
