@@ -819,6 +819,7 @@ private fun HyperCatApp() {
     var avatarInteractionReplyId by remember { mutableLongStateOf(0L) }
     var rearAvatarEnabled by remember { mutableStateOf(initialRearState.enabled) }
     var rearBackgroundColor by remember { mutableStateOf(initialRearState.backgroundColor) }
+    var mainAvatarBackgroundColor by remember { mutableStateOf("#FFE6F0") }
     var rearProjectionStatus by remember { mutableStateOf("尚未连接背屏") }
     var rearPickerCards by remember { mutableStateOf<List<RearCard>>(emptyList()) }
     var rearPickerMode by remember { mutableStateOf("deploy") }
@@ -953,6 +954,7 @@ private fun HyperCatApp() {
         autoReadReplies = prefs.getBoolean("auto_read_replies", false)
         avatarName = prefs.getString("avatar_name", prefs.getString("pet_name", "小橘"))?.takeIf { it.isNotBlank() } ?: "小橘"
         avatarId = (prefs.getString("avatar_id", prefs.getString("pet_emoji", "sakura")) ?: "sakura").let { if (it in setOf("haru", "hiyori", "mao", "natori", "rice")) it else "haru" }
+        mainAvatarBackgroundColor = prefs.getString("avatar_preview_background_color", "#FFE6F0") ?: "#FFE6F0"
         themeMode = prefs.getString("theme_mode", "system") ?: "system"
     }
 
@@ -1149,8 +1151,39 @@ private fun HyperCatApp() {
                             autoReadReplies = autoReadReplies,
                             isSpeaking = speakingNow,
                             rearAvatarEnabled = rearAvatarEnabled,
+                            mainAvatarBackgroundColor = mainAvatarBackgroundColor,
+                            onMainAvatarBackgroundColorChange = { color ->
+                                mainAvatarBackgroundColor = color
+                                context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit()
+                                    .putString("avatar_preview_background_color", color).apply()
+                            },
                             rearBackgroundColor = rearBackgroundColor,
-                            onRearBackgroundColorChange = { color -> rearBackgroundColor = color; AvatarStateStore.setBackgroundColor(context, color) },
+                            onRearBackgroundColorChange = { color -> rearBackgroundColor = color },
+                            onConfirmRearBackgroundColor = {
+                                AvatarStateStore.setBackgroundColor(context, rearBackgroundColor)
+                                val prefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+                                val cardId = prefs.getString("rear_deployed_card_id", null)
+                                if (!rearAvatarEnabled || cardId.isNullOrBlank()) {
+                                    rearProjectionStatus = "背屏背景颜色已保存；请先部署背屏卡片，之后在系统设置重新应用。"
+                                } else {
+                                    rearProjectionStatus = "正在同步背屏背景颜色…"
+                                    scope.launch {
+                                        runCatching {
+                                            val card = withContext(Dispatchers.IO) {
+                                                RearProjectionController.scan(context).firstOrNull { it.cardId == cardId }
+                                                    ?: error("找不到上次投放的背屏卡片，请重新选择目标卡片")
+                                            }
+                                            RearProjectionController.deploy(context, card)
+                                        }.onSuccess {
+                                            rearProjectionStatus = "背屏背景已同步，请到系统设置重新应用背屏卡片。"
+                                            Toast.makeText(context, rearProjectionStatus, Toast.LENGTH_LONG).show()
+                                        }.onFailure { error ->
+                                            rearProjectionStatus = "背屏背景已保存，但卡片同步失败：" + (error.message ?: "未知错误")
+                                            Toast.makeText(context, rearProjectionStatus, Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }
+                            },
                             rearProjectionStatus = rearProjectionStatus,
                             onRearAvatarEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                             onRearAvatarRestore = {
@@ -2441,12 +2474,14 @@ private fun AvatarRenderer(
     speaking: Boolean = false,
     model: Live2DModel? = Live2DModelStore.state.value,
     halfBody: Boolean = false,
+    showLyrics: Boolean = false,
     onGesture: (String, String) -> Unit = { _, _ -> }
 ) {
     val deviceState by AvatarDeviceStateStore.state.collectAsState()
     if (model != null) {
         Live2DView(
             model = model, modifier = modifier, mood = mood, speaking = speaking, musicPlaying = deviceState.music, halfBody = halfBody,
+            showLyrics = showLyrics,
             onGesture = onGesture,
             onPortrait = { dataUrl ->
                 runCatching {
@@ -2752,6 +2787,52 @@ private fun AnimeGirlAvatar(
     }
 }
 
+
+@Composable
+private fun AvatarColorEditor(title: String, color: String, onColorChange: (String) -> Unit) {
+    val presets = listOf("#080B12", "#F4F1EA", "#E8EEF8", "#FBE7EF", "#DCEFE8", "#242424", "#1C2942", "#4A3048", "#FFE6F0", "#E9E8FF")
+    val hsv = remember(color) {
+        val values = FloatArray(3)
+        runCatching { android.graphics.Color.colorToHSV(android.graphics.Color.parseColor(color), values) }
+        values
+    }
+    var hue by remember(color) { mutableFloatStateOf(hsv[0]) }
+    var saturation by remember(color) { mutableFloatStateOf(hsv[1]) }
+    var brightness by remember(color) { mutableFloatStateOf(hsv[2]) }
+    fun publish() {
+        val argb = android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness))
+        onColorChange(String.format(Locale.US, "#%06X", 0xFFFFFF and argb))
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(avatarColor(color)).border(1.dp, GlassBorder, RoundedCornerShape(8.dp)))
+            Text(color.uppercase(), color = Muted, fontSize = 10.sp, modifier = Modifier.padding(start = 8.dp))
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            presets.forEach { hex ->
+                Box(Modifier.size(30.dp).clip(CircleShape).background(avatarColor(hex))
+                    .border(if (color.equals(hex, true)) 2.dp else 1.dp, if (color.equals(hex, true)) Cyan else GlassBorder, CircleShape)
+                    .clickable {
+                        val values = FloatArray(3)
+                        android.graphics.Color.colorToHSV(android.graphics.Color.parseColor(hex), values)
+                        hue = values[0]; saturation = values[1]; brightness = values[2]
+                        onColorChange(hex)
+                    })
+            }
+        }
+        Text("色相", color = Muted, fontSize = 10.sp)
+        Slider(value = hue, onValueChange = { hue = it; publish() }, valueRange = 0f..360f)
+        Text("饱和度", color = Muted, fontSize = 10.sp)
+        Slider(value = saturation, onValueChange = { saturation = it; publish() }, valueRange = 0f..1f)
+        Text("明度", color = Muted, fontSize = 10.sp)
+        Slider(value = brightness, onValueChange = { brightness = it; publish() }, valueRange = 0f..1f)
+    }
+}
+
+private fun avatarColor(hex: String): Color =
+    runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color(0xFF080B12))
+
 @Composable
 private fun AvatarSettingsPage(
     modifier: Modifier,
@@ -2764,8 +2845,11 @@ private fun AvatarSettingsPage(
     autoReadReplies: Boolean,
     isSpeaking: Boolean,
     rearAvatarEnabled: Boolean,
+    mainAvatarBackgroundColor: String,
+    onMainAvatarBackgroundColorChange: (String) -> Unit,
     rearBackgroundColor: String,
     onRearBackgroundColorChange: (String) -> Unit,
+    onConfirmRearBackgroundColor: () -> Unit,
     rearProjectionStatus: String,
     onRearAvatarEnabledChange: (Boolean) -> Unit,
     onRearAvatarRestore: () -> Unit,
@@ -2790,7 +2874,7 @@ private fun AvatarSettingsPage(
             Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
                     Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(20.dp))
-                        .background(Brush.verticalGradient(listOf(Color(0xFFFFE6F0), Color(0xFFE9E8FF))))
+                        .background(avatarColor(mainAvatarBackgroundColor))
                         .then(if (live2dModel == null) Modifier.pointerInput(selectedIndex) {
                             detectHorizontalDragGestures(
                                 onDragStart = { dragTotal = 0f },
@@ -2810,7 +2894,7 @@ private fun AvatarSettingsPage(
                 ) {
                     val selectedModel = Live2DModelStore.characters.firstOrNull { it.id == selected.first }
                         ?: Live2DModelStore.characters.first()
-                    AvatarRenderer(selected.first, Modifier.fillMaxSize(), avatarMood, model = selectedModel) { action, _ -> onAvatarInteraction(action) }
+                    AvatarRenderer(selected.first, Modifier.fillMaxSize(), avatarMood, model = selectedModel, showLyrics = true) { action, _ -> onAvatarInteraction(action) }
                     var visibleBubble by remember { mutableStateOf("") }
                     // Ignore the reply already present when this page is first opened.
                     // Replies generated by a new touch interaction have a new ID and remain visible.
@@ -2840,6 +2924,11 @@ private fun AvatarSettingsPage(
                         }
                     }
                 }
+                AvatarColorEditor(
+                    title = "主屏虚拟形象背景颜色",
+                    color = mainAvatarBackgroundColor,
+                    onColorChange = onMainAvatarBackgroundColorChange
+                )
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = { selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size) }) { Text("‹ 上一个") }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2908,15 +2997,13 @@ private fun AvatarSettingsPage(
                     }
                     Switch(checked = rearAvatarEnabled, onCheckedChange = onRearAvatarEnabledChange)
                 }
-                Text("背屏背景颜色", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
-                val rearColors = listOf("#080B12", "#F4F1EA", "#E8EEF8", "#FBE7EF", "#DCEFE8", "#242424", "#1C2942", "#4A3048")
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                    rearColors.forEach { hex ->
-                        val swatch = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color.Black)
-                        Box(Modifier.size(30.dp).clip(CircleShape).background(swatch).clickable { onRearBackgroundColorChange(hex) }, contentAlignment = Alignment.Center) {
-                            if (rearBackgroundColor.equals(hex, true)) Icon(Icons.Outlined.Check, contentDescription = "已选择", tint = if (hex in listOf("#F4F1EA", "#E8EEF8", "#DCEFE8")) Color.Black else Color.White, modifier = Modifier.size(16.dp))
-                        }
-                    }
+                AvatarColorEditor(
+                    title = "背屏虚拟形象背景颜色",
+                    color = rearBackgroundColor,
+                    onColorChange = onRearBackgroundColorChange
+                )
+                Button(onClick = onConfirmRearBackgroundColor, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                    Text("确认并同步背屏背景")
                 }
                 Text("仅支持具备背屏的 Xiaomi Pro 系列设备。需要先启动 Shizuku 并授权。首次部署后，还需在系统背屏卡片管理中重新应用卡片。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
                 Text(rearProjectionStatus, color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))

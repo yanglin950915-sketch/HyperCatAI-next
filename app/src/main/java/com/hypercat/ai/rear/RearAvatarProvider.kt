@@ -24,7 +24,9 @@ class RearAvatarProvider : ContentProvider() {
     }
 
     private fun readAvatarJson(): String {
-        val state = AvatarStateStore.read(requireNotNull(context))
+        val appContext = requireNotNull(context)
+        val state = AvatarStateStore.read(appContext)
+        val device = com.hypercat.ai.avatar.AvatarDeviceStateStore.state.value
         return JSONObject()
             .put("avatar_name", state.avatarName)
             .put("avatar_id", state.avatarId)
@@ -37,6 +39,17 @@ class RearAvatarProvider : ContentProvider() {
             .put("enabled", state.enabled)
             .put("user_text", state.userText)
             .put("background_color", state.backgroundColor)
+            .put("battery", device.battery)
+            .put("charging", device.charging)
+            .put("steps", device.steps)
+            .put("weather", device.weather)
+            .put("temperature", device.temperature)
+            .put("music", device.music)
+            .put("track", device.track)
+            .put("artist", device.artist)
+            .put("lyrics", device.lyrics)
+            .put("current_lyric", device.currentLyric)
+            .put("music_beat", device.musicBeat.toDouble())
             .toString()
     }
 

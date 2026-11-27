@@ -162,7 +162,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             val avatar by AvatarStateStore.state.collectAsState()
             val deviceState by AvatarDeviceStateStore.state.collectAsState()
             val live2dModel = androidx.compose.runtime.remember { Live2DModelStore.currentRear(this@RearAvatarActivity) }
-            Box(Modifier.fillMaxSize().background(Color(0xFF05070D))) {
+            Box(Modifier.fillMaxSize().background(runCatching { Color(android.graphics.Color.parseColor(avatar.backgroundColor)) }.getOrDefault(Color(0xFF05070D)))) {
                 if (live2dModel != null) {
                     Live2DView(
                         model = live2dModel,
@@ -209,7 +209,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     }
                 )
                 }
-                AvatarStatusBadges(Modifier.align(Alignment.TopCenter).padding(start = 12.dp, end = 12.dp, top = 10.dp).fillMaxWidth().zIndex(2f))
+                AvatarStatusBadges(Modifier.align(Alignment.TopCenter).padding(start = 12.dp, end = 12.dp, top = 10.dp).fillMaxWidth().zIndex(2f), rearControls = true)
                 if (live2dModel == null) Button(
                     onClick = { startVoiceInput() },
                     modifier = Modifier.align(Alignment.TopEnd).padding(14.dp),
@@ -261,7 +261,9 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         @JavascriptInterface
         fun doAction(action: String) {
             activity.runOnUiThread {
-                if (action in setOf(
+                if (action in setOf("media_toggle", "media_next", "media_previous", "music_settings")) {
+                    AvatarDeviceStateStore.handleMediaAction(activity, action)
+                } else if (action in setOf(
                     "avatar_touch", "avatar_happy", "avatar_long_press", "avatar_drag", "avatar_thinking", "avatar_rest",
                     "pet_touch", "pet_happy", "pet_long_press", "pet_drag", "pet_thinking", "pet_rest"
                 )) {

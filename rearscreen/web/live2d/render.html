@@ -11,11 +11,29 @@
   canvas { display:block; background:transparent; }
   #render-error { display:none; position:fixed; inset:0; z-index:99; box-sizing:border-box; padding:24px; color:#eaf4ff; background:#080d18; font:14px/1.6 system-ui,sans-serif; align-items:center; justify-content:center; text-align:center; overflow-wrap:anywhere; }
   #render-error strong { display:block; margin-bottom:10px; color:#ffb8c2; font-size:17px; }
+  #rear-status { display:none; position:fixed; z-index:40; top:9px; left:33%; right:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:6px; pointer-events:none; font:11px/1.2 system-ui,sans-serif; }
+  .status-chip { color:#fff; background:rgba(12,18,30,.78); border:1px solid rgba(255,255,255,.20); border-radius:18px; padding:7px 10px; max-width:45%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #media-controls { display:flex; align-items:center; gap:5px; pointer-events:auto; }
+  #media-controls button { color:#fff; background:rgba(24,42,65,.88); border:1px solid rgba(255,255,255,.24); border-radius:18px; min-width:34px; min-height:30px; padding:5px 9px; font:11px system-ui,sans-serif; }
+  #music-lyrics { display:none; position:fixed; z-index:35; left:33%; right:10px; bottom:5%; padding:8px 12px; border-radius:13px; color:#fff; background:rgba(10,15,25,.68); border:1px solid rgba(255,255,255,.16); text-align:center; font:14px/1.45 system-ui,sans-serif; text-shadow:0 1px 3px #000; pointer-events:none; }
 </style>
 </head>
 <body>
 <div id="stage"></div>
 <div id="render-error" role="alert"><div><strong>虚拟形象加载失败</strong><span id="render-error-detail">正在检查渲染资源…</span></div></div>
+<div id="rear-status" aria-label="设备状态">
+  <span id="status-weather" class="status-chip">天气获取中</span>
+  <span id="status-steps" class="status-chip">步数读取中</span>
+  <span id="status-battery" class="status-chip">电量读取中</span>
+  <span id="status-track" class="status-chip">暂无音乐</span>
+  <div id="media-controls">
+    <button type="button" data-action="media_previous" aria-label="上一首">上一首</button>
+    <button type="button" id="media-toggle" data-action="media_toggle" aria-label="播放或暂停">播放</button>
+    <button type="button" data-action="media_next" aria-label="下一首">下一首</button>
+    <button type="button" data-action="music_settings" aria-label="音乐同步设置">同步</button>
+  </div>
+</div>
+<div id="music-lyrics" aria-live="polite"></div>
 <script src="pixi.min.js"></script>
 <script src="live2dcubismcore.min.js"></script>
 <script src="cubism4.min.js"></script>
@@ -69,6 +87,12 @@
   // Keep the horizontal adjustment isolated to the rear display. The same renderer
   // is also used by the main-screen avatar, which must remain centred.
   var IS_REAR_DISPLAY = params.get('rear') === '1' || !!window.maml;
+  var SHOW_LYRICS = params.get('lyrics') === '1' || !!window.maml || params.get('rear') === '1';
+  if (window.maml) {
+    var rearStatusPanel = document.getElementById('rear-status');
+    if (rearStatusPanel) rearStatusPanel.style.display = 'flex';
+  }
+  var initialDeviceState = {};
   var VIEW_OFFSET_X = IS_REAR_DISPLAY ? -0.07 : 0;
   var PORTRAIT_CAPTURED = false;
   // Per-model horizontal correction. Default is zero; only Xiaomi Rice receives a tuned value.
@@ -102,7 +126,7 @@
   // 由 PIXI 的 ticker 驱动，但所有可视状态都由原生侧写入，本页只做平滑。
   var model = null;
   var app = null;
-  var target = { mouth: 0, speaking: false, musicBeat: 0, gazeX: 0, gazeY: 0 };
+  var target = { mouth: 0, speaking: false, musicBeat: 0, musicPlaying: false, gazeX: 0, gazeY: 0 };
   var smooth = { mouth: 0, gazeX: 0, gazeY: 0, angleX: 0, angleY: 0, bodyX: 0, musicBeat: 0, pokeT: -10 };
   var musicBaseY = 0;
   var emotionTimer = 0;
@@ -460,8 +484,10 @@
     smooth.gazeY += (target.gazeY - smooth.gazeY) * 0.08;
 
     // 呼吸与轻微待机摆动由代码驱动（模型没有 motion3 文件）。
-    smooth.musicBeat += (target.musicBeat - smooth.musicBeat) * 0.16;
-    var beatPulse = Math.max(0, (smooth.musicBeat - 0.14) / 0.86);
+    var fallbackBeat = target.musicPlaying ? (0.12 + 0.22 * (0.5 + 0.5 * Math.sin(t * 8.4))) : 0;
+    var beatTarget = target.musicBeat > 0.015 ? target.musicBeat : fallbackBeat;
+    smooth.musicBeat += (beatTarget - smooth.musicBeat) * 0.16;
+    var beatPulse = Math.max(0, (smooth.musicBeat - 0.10) / 0.90);
     var groove = Math.sin(t * 9.1 + Math.sin(t * 0.73) * 0.55);
     var counterGroove = Math.sin(t * 5.7 + 1.1 + Math.sin(t * 0.41) * 0.35);
     var sway = Math.sin(t * 1.17) * 0.55 + Math.sin(t * 0.71 + 1.4) * 0.3;
@@ -578,6 +604,10 @@
     setMouth: function (v) { target.mouth = Math.max(0, Math.min(1, v || 0)); },
     setSpeaking: function (on) { target.speaking = !!on; },
     setMusicBeat: function (v) { target.musicBeat = Math.max(0, Math.min(1, Number(v) || 0)); },
+    setMusicPlaying: function (on) { target.musicPlaying = !!on; },
+    setDeviceState: function (value) { applyDeviceState(typeof value === 'string' ? JSON.parse(value) : value); },
+    setLyrics: function (value) { applyDeviceState({current_lyric: value}); },
+    setBackgroundColor: function (value) { applyAgentState(null, null, null, null, value); },
     setGaze: function (x, y) { target.gazeX = Math.max(-1, Math.min(1, x || 0)); target.gazeY = Math.max(-1, Math.min(1, y || 0)); },
     /**
      * 切换构图：半身（只留头与上半身）或全身。
@@ -609,19 +639,51 @@
 
   // MAML lifecycle and Agent commands now execute in this same WebView.
   // This replaces the old outer-page/inner-iframe bridge.
-  function applyAgentState(name, avatar, mood, reply) {
-    // The renderer no longer draws the legacy title/status/reply overlay.
-    // Keep only the Agent-to-Live2D expression bridge.
+  function applyAgentState(name, avatar, mood, reply, backgroundColor) {
+    if (backgroundColor && /^#[0-9a-fA-F]{6}$/.test(String(backgroundColor))) {
+      document.body.style.backgroundColor = String(backgroundColor);
+      var stage = document.getElementById('stage');
+      if (stage) stage.style.backgroundColor = String(backgroundColor);
+    }
     if (!mood || mood === 'undefined') return;
     var key = String(mood).toLowerCase();
     var expressions = {happy:'happy',thinking:'thinking',curious:'curious',sleepy:'sleepy',sad:'sad',surprised:'surprised'};
     if (expressions[key] && window.__l2d) window.__l2d.setEmotion(expressions[key]);
   }
+  function dispatchDeviceAction(action) {
+    if (NATIVE && NATIVE.onAction) NATIVE.onAction(action);
+    else if (NATIVE && NATIVE.doAction) NATIVE.doAction(action);
+    else { try { if (window.parent && window.parent.maml) window.parent.maml.doAction(action); } catch (_) {} }
+  }
+  function applyDeviceState(value) {
+    if (!value) return;
+    initialDeviceState = Object.assign(initialDeviceState, value);
+    var d = initialDeviceState;
+    if (typeof d.music === 'boolean' || d.music === 'true' || d.music === 'false') {
+      target.musicPlaying = d.music === true || d.music === 'true';
+    }
+    if (d.music_beat !== undefined) target.musicBeat = Math.max(0, Math.min(1, Number(d.music_beat) || 0));
+    var setText = function(id, text) { var el = document.getElementById(id); if (el) el.textContent = text; };
+    setText('status-weather', (d.weather || '天气暂不可用') + (d.temperature ? ' ' + d.temperature + '°C' : ''));
+    setText('status-steps', Number(d.steps) >= 0 ? '👣 ' + d.steps + ' 步' : '👣 步数未授权');
+    setText('status-battery', Number(d.battery) >= 0 ? (d.charging === true || d.charging === 'true' ? '⚡ ' : '电量 ') + d.battery + '%' : '电量读取中');
+    setText('status-track', target.musicPlaying ? '♫ ' + (d.track || '正在播放') : '♫ 暂无音乐');
+    setText('media-toggle', target.musicPlaying ? '暂停' : '播放');
+    var lyrics = document.getElementById('music-lyrics');
+    var lyric = String(d.current_lyric || '');
+    if (lyrics) { lyrics.textContent = lyric; lyrics.style.display = lyric && target.musicPlaying && SHOW_LYRICS ? 'block' : 'none'; }
+  }
+  document.querySelectorAll('#media-controls button[data-action]').forEach(function(button) {
+    button.addEventListener('click', function() { dispatchDeviceAction(button.getAttribute('data-action')); });
+  });
   window.__setAgentState = applyAgentState;
   window.__setAgentJson = function (value) {
     try {
       var data = typeof value === 'string' ? JSON.parse(value) : value;
-      if (data) applyAgentState(data.avatar_name, data.avatar_id, data.mood, data.reply);
+      if (data) {
+        applyAgentState(data.avatar_name, data.avatar_id, data.mood, data.reply, data.background_color);
+        applyDeviceState(data);
+      }
     } catch (error) { log('MAML state JSON', String(error)); }
   };
   window.__fit = function () { onResize(); };

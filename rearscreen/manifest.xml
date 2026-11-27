@@ -66,6 +66,26 @@
                     <Extra name="action" type="string" expression="'avatar_rest'"/>
                 </IntentCommand>
             </Trigger>
+            <Trigger action="media_toggle">
+                <IntentCommand action="com.hypercat.ai.rear.MEDIA_CONTROL" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'media_toggle'"/>
+                </IntentCommand>
+            </Trigger>
+            <Trigger action="media_next">
+                <IntentCommand action="com.hypercat.ai.rear.MEDIA_CONTROL" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'media_next'"/>
+                </IntentCommand>
+            </Trigger>
+            <Trigger action="media_previous">
+                <IntentCommand action="com.hypercat.ai.rear.MEDIA_CONTROL" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'media_previous'"/>
+                </IntentCommand>
+            </Trigger>
+            <Trigger action="music_settings">
+                <IntentCommand action="com.hypercat.ai.rear.MEDIA_CONTROL" package="com.hypercat.ai" broadcast="true">
+                    <Extra name="action" type="string" expression="'music_settings'"/>
+                </IntentCommand>
+            </Trigger>
         </Triggers>
     </WebView>
 

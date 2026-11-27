@@ -20,6 +20,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import java.util.concurrent.CopyOnWriteArraySet
+import org.json.JSONObject
+import androidx.compose.runtime.collectAsState
 
 data class Live2DRenderState(val ready: Boolean = false, val error: String? = null, val fps: Int = 0)
 
@@ -39,11 +41,13 @@ fun Live2DView(
     safeBottomRatio: Float = 0f,
     rearDisplay: Boolean = false,
     showInterface: Boolean = false,
+    showLyrics: Boolean = false,
     onGesture: (String, String) -> Unit = { _, _ -> },
     onState: (Live2DRenderState) -> Unit = {},
     onPortrait: (String) -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val deviceState by AvatarDeviceStateStore.state.collectAsState()
     var state by remember { mutableStateOf(Live2DRenderState()) }
     val latestGesture by androidx.compose.runtime.rememberUpdatedState(onGesture)
     val latestState by androidx.compose.runtime.rememberUpdatedState(onState)
@@ -71,6 +75,9 @@ fun Live2DView(
                 Handler(Looper.getMainLooper()).post { latestPortrait(dataUrl) }
             }
             @JavascriptInterface fun onPoke(part: String) { latestGesture("avatar_touch", part) }
+            @JavascriptInterface fun onAction(action: String) {
+                Handler(Looper.getMainLooper()).post { AvatarDeviceStateStore.handleMediaAction(context, action) }
+            }
         }
     }
     val webView = remember(controller) {
@@ -127,7 +134,7 @@ fun Live2DView(
         val rearSafeLeft = if (rearDisplay) safeLeftRatio.coerceIn(0f, 0.95f) else 0f
         val rearSafeRight = if (rearDisplay) safeRightRatio.coerceIn(0f, 0.95f) else 0f
         val rearSafeBottom = if (rearDisplay) safeBottomRatio.coerceIn(0f, 0.95f) else 0f
-        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&safeTop=$rearSafeTop&safeLeft=$rearSafeLeft&safeRight=$rearSafeRight&safeBottom=$rearSafeBottom&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=0&rear=${if (rearDisplay) 1 else 0}"
+        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&safeTop=$rearSafeTop&safeLeft=$rearSafeLeft&safeRight=$rearSafeRight&safeBottom=$rearSafeBottom&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=0&rear=${if (rearDisplay) 1 else 0}&lyrics=${if (showLyrics || rearDisplay) 1 else 0}"
         webView.stopLoading()
         webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         webView.loadUrl("about:blank")
@@ -146,23 +153,25 @@ fun Live2DView(
         )
     }
     LaunchedEffect(speaking, state.ready) { if (state.ready) controller.setSpeaking(speaking) }
-    LaunchedEffect(musicPlaying, state.ready) {
+    LaunchedEffect(musicPlaying, state.ready) { if (state.ready) controller.setMusicPlaying(musicPlaying) }
+    LaunchedEffect(deviceState.musicBeat, state.ready) {
+        if (state.ready) controller.setMusicBeat(deviceState.musicBeat)
+    }
+    LaunchedEffect(deviceState, state.ready) {
         if (state.ready) {
-            if (!musicPlaying) controller.setMusicBeat(0f)
-            else {
-                val startedAt = System.nanoTime()
-                while (true) {
-                    val elapsed = (System.nanoTime() - startedAt) / 1_000_000_000.0
-                    val bpm = 108.0 + 9.0 * kotlin.math.sin(elapsed * 0.13)
-                    val phase = elapsed * bpm / 60.0 * 2.0 * Math.PI
-                    val mainBeat = kotlin.math.max(0.0, kotlin.math.sin(phase))
-                    val offBeat = kotlin.math.max(0.0, kotlin.math.sin(phase * 0.5 + 0.9))
-                    val accent = 0.08 * (0.5 + 0.5 * kotlin.math.sin(elapsed * 1.7))
-                    val pulse = (0.10 + 0.78 * mainBeat * mainBeat + 0.14 * offBeat * offBeat + accent).coerceIn(0.08, 1.0)
-                    controller.setMusicBeat(pulse.toFloat())
-                    kotlinx.coroutines.delay(55L)
-                }
-            }
+            val payload = JSONObject()
+                .put("battery", deviceState.battery)
+                .put("charging", deviceState.charging)
+                .put("steps", deviceState.steps)
+                .put("weather", deviceState.weather)
+                .put("temperature", deviceState.temperature)
+                .put("music", deviceState.music)
+                .put("track", deviceState.track)
+                .put("artist", deviceState.artist)
+                .put("lyrics", deviceState.lyrics)
+                .put("current_lyric", deviceState.currentLyric)
+                .put("music_beat", deviceState.musicBeat)
+            controller.setDeviceState(payload.toString())
         }
     }
     AndroidView(factory = { webView }, modifier = modifier)
@@ -175,6 +184,8 @@ class Live2DController internal constructor() {
     private fun call(script: String) { webView?.post { webView?.evaluateJavascript(script, null) } }
     fun setSpeaking(value: Boolean) = call("window.__l2d&&window.__l2d.setSpeaking($value)")
     fun setMusicBeat(value: Float) = call("window.__l2d&&window.__l2d.setMusicBeat(${value.coerceIn(0f,1f)})")
+    fun setMusicPlaying(value: Boolean) = call("window.__l2d&&window.__l2d.setMusicPlaying($value)")
+    fun setDeviceState(value: String) = call("window.__l2d&&window.__l2d.setDeviceState(" + JSONObject.quote(value) + ")")
     fun setMouth(value: Float) = call("window.__l2d&&window.__l2d.setMouth(${value.coerceIn(0f, 1f)})")
     fun setEmotion(value: String) = call("window.__l2d&&window.__l2d.setEmotion('${value.replace("'", "")}')")
     fun setGaze(x: Float, y: Float) = call("window.__l2d&&window.__l2d.setGaze(${x.coerceIn(-1f,1f)},${y.coerceIn(-1f,1f)})")
