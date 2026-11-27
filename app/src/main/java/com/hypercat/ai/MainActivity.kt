@@ -207,6 +207,10 @@ class MainActivity : ComponentActivity() {
             }
             window.decorView.systemUiVisibility = systemUi
         }
+        // The Activity window already has the saved app-preference color. Release the
+        // system splash immediately so an app-dark preference does not sit behind a
+        // prolonged light splash while WorkManager/Compose initialize.
+        splashThemeReady = true
         // Keep the platform splash visible until the saved app theme has been applied
         // to both the Activity window behind it and the outgoing splash surface.
         splashScreen.setOnExitAnimationListener { provider ->
@@ -218,7 +222,6 @@ class MainActivity : ComponentActivity() {
             "hypercat-release-check", ExistingPeriodicWorkPolicy.KEEP, updateCheck
         )
         setContent { HyperCatApp() }
-        splashThemeReady = true
     }
 }
 
