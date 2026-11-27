@@ -60,6 +60,7 @@
   var smooth = { mouth: 0, gazeX: 0, gazeY: 0, angleX: 0, angleY: 0, bodyX: 0, pokeT: -10 };
   var emotionTimer = 0;
   var emotionOverride = null;
+  var emotionPersistent = false;
   var startTs = 0;
 
   // 构图模式。原生侧通过 __l2d.setView() 写入后立即 relayout。
@@ -365,10 +366,10 @@
     // 表情覆盖：持续 1.6 秒后自动淡出。
     if (emotionOverride) {
       var age = t - emotionTimer;
-      if (age > 1.6) {
+      if (!emotionPersistent && age > 1.6) {
         emotionOverride = null;
       } else {
-        var fade = age > 1.1 ? (1.6 - age) / 0.5 : 1;
+        var fade = emotionPersistent ? 1 : (age > 1.1 ? (1.6 - age) / 0.5 : 1);
         for (var name in emotionOverride) {
           var idx = P[name];
           if (idx !== undefined && idx >= 0) {
@@ -440,8 +441,9 @@
     },
     setEmotion: function (name) {
       var e = EMOTIONS[name];
-      if (!e) { emotionOverride = null; return; }
+      if (!e) { emotionOverride = null; emotionPersistent = false; return; }
       emotionOverride = e;
+      emotionPersistent = true;
       emotionTimer = (performance.now() - startTs) / 1000;
     },
     poke: function (part) {
