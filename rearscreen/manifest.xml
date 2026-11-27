@@ -33,7 +33,7 @@
         <WebViewCommand target="wv" command="runjs" params="'__setAgentJson('+@resultJson+')'" delay="250"/>
     </Function>
 
-    <!-- Local offline HTML renderer; content itself reserves the left camera exclusion zone. -->
+    <!-- Local offline Live2D renderer; content reserves the top-centre camera safe area. -->
     <WebView name="wv" x="0" y="0" w="#view_width" h="#view_height" local="true" cachePage="false" uri="web/live2d/render.html">
         <Triggers>
             <Trigger action="avatar_touch">
