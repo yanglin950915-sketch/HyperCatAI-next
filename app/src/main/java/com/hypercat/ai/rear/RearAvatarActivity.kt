@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.view.ViewCompat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -164,7 +165,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 if (live2dModel != null) {
                     Live2DView(
                         model = live2dModel,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().zIndex(0f),
                         mood = avatar.mood,
                         speaking = live2dSpeaking,
                         musicPlaying = deviceState.music,
@@ -207,7 +208,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     }
                 )
                 }
-                AvatarStatusBadges(Modifier.align(Alignment.TopStart).padding(10.dp))
+                AvatarStatusBadges(Modifier.align(Alignment.TopCenter).padding(start = 12.dp, end = 12.dp, top = 10.dp).fillMaxWidth().zIndex(2f))
                 if (live2dModel == null) Button(
                     onClick = { startVoiceInput() },
                     modifier = Modifier.align(Alignment.TopEnd).padding(14.dp),

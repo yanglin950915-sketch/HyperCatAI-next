@@ -2178,17 +2178,19 @@ private fun ChatPage(
                             Column(Modifier.weight(1f)) { Text("我的AI小伙伴", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("你的 AI 伙伴与聊天空间", color = Muted, fontSize = 11.sp) }
                         }
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
-                            Row(Modifier.fillMaxWidth().clickable { drawerSection = "avatar_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(104.dp).clickable { drawerSection = "avatar_settings" }, contentAlignment = Alignment.Center) {
-                                    AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel, halfBody = false) { action, _ -> onAvatarInteraction(action) }
+                            Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(96.dp).clickable { drawerSection = "avatar_settings" }, contentAlignment = Alignment.Center) {
+                                        AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel, halfBody = false) { action, _ -> onAvatarInteraction(action) }
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f).clickable { drawerSection = "avatar_settings" }) {
+                                        Text(avatarName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                        Text(when (avatarMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
+                                        Text("点击头像管理虚拟形象与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                                    }
                                 }
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(avatarName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                    Text(when (avatarMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
-                                    Text("点击头像管理虚拟形象与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
-                                    AvatarStatusBadges(Modifier.padding(top = 6.dp))
-                                }
+                                AvatarStatusBadges(Modifier.fillMaxWidth().padding(top = 12.dp))
                             }
                         }
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
