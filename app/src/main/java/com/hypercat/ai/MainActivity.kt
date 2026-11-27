@@ -142,6 +142,9 @@ import com.hypercat.ai.rear.PetStateStore
 import com.hypercat.ai.rear.RearAgentInteractionDispatcher
 import com.hypercat.ai.rear.RearProjectionController
 import com.hypercat.ai.rear.RearCard
+import com.hypercat.ai.pet.Live2DModel
+import com.hypercat.ai.pet.Live2DModelStore
+import com.hypercat.ai.pet.Live2DView
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
@@ -1467,6 +1470,8 @@ private fun ChatPage(
     petSettingsContent: @Composable (Modifier) -> Unit
 ) {
     val context: Context = LocalContext.current
+    val live2dModel by Live2DModelStore.state.collectAsState()
+    LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var userMovedChat by remember(currentSessionTitle) { mutableStateOf(false) }
     LaunchedEffect(chatListState) {
@@ -2178,7 +2183,7 @@ private fun ChatPage(
                         Surface(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), color = Panel2, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                             Row(Modifier.fillMaxWidth().clickable { drawerSection = "pet_settings" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(104.dp).clickable { drawerSection = "pet_settings" }, contentAlignment = Alignment.Center) {
-                                    AnimeGirlAvatar(petEmoji, Modifier.fillMaxSize(), petMood)
+                                    PetAvatarRenderer(petEmoji, Modifier.fillMaxSize(), petMood, isSpeaking, live2dModel) { action, _ -> onPetInteraction(action) }
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
@@ -2425,6 +2430,22 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
                     tint = if (isListening) Color(0xFF06202A) else MainText)
             }
         }
+    }
+}
+
+@Composable
+private fun PetAvatarRenderer(
+    character: String,
+    modifier: Modifier = Modifier,
+    mood: String = "normal",
+    speaking: Boolean = false,
+    model: Live2DModel? = Live2DModelStore.state.value,
+    onGesture: (String, String) -> Unit = { _, _ -> }
+) {
+    if (model != null) {
+        Live2DView(model = model, modifier = modifier, mood = mood, speaking = speaking, halfBody = true, onGesture = onGesture)
+    } else {
+        AnimeGirlAvatar(character, modifier, mood)
     }
 }
 
