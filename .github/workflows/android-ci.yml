@@ -45,7 +45,7 @@ jobs:
           assert "enqueueUniqueWork" in dispatcher and "RearAgentInteractionWorker" in dispatcher, "rear event must be queued durably"
           assert "rear_avatar_enabled" in Path("app/src/main/java/com/hypercat/ai/rear/AvatarStateStore.kt").read_text(encoding="utf-8"), "rear projection preference missing"
           assert "canvas.style.visibility=projectionEnabled" not in html, "rear canvas must not be hidden by optional provider state"
-          assert "data:image/svg+xml;charset=utf-8" in html and "avatarSvg(id)" in html, "rear character art must be embedded inline"
+          assert "function avatarSvg" not in html and "function drawFace" not in html and "drawFace(t)" not in html, "legacy hand-drawn rear avatar renderer must be removed"
           assert 'assets.srcDir("../rearscreen")' in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "rear widget assets must be bundled in APK"
           assert "RearAgentInteractionDispatcher.enqueue(context, action)" in receiver, "rear receiver must use shared dispatcher"
           avatar_store = Path("app/src/main/java/com/hypercat/ai/rear/AvatarStateStore.kt").read_text(encoding="utf-8")
@@ -116,7 +116,7 @@ jobs:
           assert "resolveInitialDarkMode(this)" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "theme must be resolved before first Activity frame"
           assert "window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(initialWindowColor))" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "Activity window must match resolved theme before Compose"
           assert "Mood-specific facial expressions" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "main avatar mood expressions missing"
-          assert "expression overlays" in html, "rear avatar mood expressions missing"
+          assert "__onRearLive2DReady" in html and "__onRearLive2DError" in html, "rear Live2D readiness bridge missing"
           assert "core-splashscreen:1.2.0" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "SplashScreen compat dependency missing"
           assert "installSplashScreen()" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "SplashScreen must be installed before Compose content"
           assert "padding(start = 12.dp" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "chat placeholder left spacing missing"
