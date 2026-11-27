@@ -25,8 +25,13 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
         val model = prefs.getString("model", "").orEmpty().trim()
         val apiKey = prefs.getString("api_key", "").orEmpty()
         if (endpoint.isBlank() || model.isBlank()) {
-            val current = AvatarStateStore.read(applicationContext)
-            AvatarStateStore.update(applicationContext, current.avatarName, current.avatarId, "sad", "请先在主屏配置 Agent 模型，我就能回答你啦。")
+            if (isLatestInteraction()) {
+                val current = AvatarStateStore.read(applicationContext)
+                AvatarStateStore.update(
+                    applicationContext, current.avatarName, current.avatarId, "sad",
+                    "请先在主屏配置 Agent 模型，我就能回答你啦。", userText = eventPrompt.orEmpty()
+                )
+            }
             return@withContext Result.success()
         }
         try {
