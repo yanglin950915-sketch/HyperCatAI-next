@@ -59,6 +59,29 @@ object RearCardPackageBuilder {
             val textures = refs.optJSONArray("Textures") ?: error("模型配置缺少纹理列表")
             require(textures.length() > 0) { "模型配置没有纹理资源" }
             for (index in 0 until textures.length()) requireFile(textures.optString(index))
+
+            // A model can have valid MOC/textures but still fail to initialize if an
+            // auxiliary file referenced by the settings was omitted from the exported ZIP.
+            listOf("Physics", "Pose", "UserData").forEach { key ->
+                val path = refs.optString(key)
+                if (path.isNotBlank() && path != "null") requireFile(path)
+            }
+            val expressions = refs.optJSONArray("Expressions")
+            if (expressions != null) for (index in 0 until expressions.length()) {
+                val path = expressions.optJSONObject(index)?.optString("File").orEmpty()
+                if (path.isNotBlank()) requireFile(path)
+            }
+            val motions = refs.optJSONObject("Motions")
+            if (motions != null) {
+                val groups = motions.keys()
+                while (groups.hasNext()) {
+                    val group = motions.getJSONArray(groups.next())
+                    for (index in 0 until group.length()) {
+                        val path = group.optJSONObject(index)?.optString("File").orEmpty()
+                        if (path.isNotBlank()) requireFile(path)
+                    }
+                }
+            }
         }
     }
 
