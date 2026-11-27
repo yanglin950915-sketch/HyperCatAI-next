@@ -733,6 +733,8 @@ private fun HyperCatApp() {
     var avatarId by remember { mutableStateOf(initialRearState.avatarId.takeIf { it in setOf("haru", "hiyori", "mao", "natori", "rice") } ?: "haru") }
     var avatarMood by remember { mutableStateOf(initialRearState.mood) }
     var avatarReply by remember { mutableStateOf(initialRearState.reply) }
+    var avatarInteractionReply by remember { mutableStateOf("") }
+    var avatarInteractionReplyId by remember { mutableLongStateOf(0L) }
     var rearAvatarEnabled by remember { mutableStateOf(initialRearState.enabled) }
     var rearBackgroundColor by remember { mutableStateOf(initialRearState.backgroundColor) }
     var rearProjectionStatus by remember { mutableStateOf("尚未连接背屏") }
@@ -904,6 +906,10 @@ private fun HyperCatApp() {
                 messages.add(ChatLine(rearAvatarState.reply, false))
             }
             avatarReply = rearAvatarState.reply
+            if (rearAvatarState.userText.startsWith("[背屏互动") && rearAvatarState.reply.isNotBlank() && rearAvatarState.reply !in transientRearFeedback) {
+                avatarInteractionReply = rearAvatarState.reply
+                avatarInteractionReplyId = rearAvatarState.updatedAt
+            }
         }
     }
 
@@ -937,7 +943,13 @@ private fun HyperCatApp() {
                     onShareCurrentSession = { shareChatText(context, formatChatForSharing(currentSessionTitle, messages)) },
                     onClearCurrentSession = { currentSessionTitle = "" },
                     currentSessionTitle = currentSessionTitle,
-                    onAvatarInteraction = { action -> RearAgentInteractionDispatcher.enqueue(context, action) },
+                    onAvatarInteraction = { action ->
+                        if (action in setOf("avatar_touch", "avatar_long_press", "avatar_drag")) {
+                            avatarInteractionReply = ""
+                            avatarInteractionReplyId = System.currentTimeMillis()
+                        }
+                        RearAgentInteractionDispatcher.enqueue(context, action)
+                    },
                     onAvatarNameChange = { value -> val clean = value.trim().take(16).ifBlank { "小橘" }; avatarName = clean; chatPrefs.edit().putString("avatar_name", clean).apply() },
                     modelProfiles = modelProfiles.toList(), ttsProfiles = ttsProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
                     onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
@@ -1089,6 +1101,8 @@ private fun HyperCatApp() {
                             onAutoReadReplies = { enabled -> autoReadReplies = enabled; chatPrefs.edit().putBoolean("auto_read_replies", enabled).apply() },
                              avatarName = avatarName,
                              avatarMood = avatarMood,
+                             avatarInteractionReply = avatarInteractionReply,
+                             avatarInteractionReplyId = avatarInteractionReplyId,
                              rearAvatarEnabled = rearAvatarEnabled,
                              onRearAvatarEnabledChange = { enabled -> setRearProjectionEnabled(enabled) },
                              onRearAvatarRestore = {
@@ -1361,7 +1375,6 @@ private fun ChatPage(
 ) {
     val context: Context = LocalContext.current
     val live2dModel by Live2DModelStore.state.collectAsState()
-    val avatarBubbleText = messages.lastOrNull { !it.fromUser }?.text?.trim().orEmpty()
     LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var userMovedChat by remember(currentSessionTitle) { mutableStateOf(false) }
@@ -2079,24 +2092,7 @@ private fun ChatPage(
                                 Column(Modifier.weight(1f)) {
                                     Text(avatarName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                     Text(when (avatarMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
-                                    if (avatarBubbleText.isNotBlank()) {
-                                        Surface(
-                                            color = if (appDarkState) Color(0xFF282333) else Color(0xFFF1EDFF),
-                                            shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomEnd = 12.dp),
-                                            modifier = Modifier.padding(top = 7.dp).widthIn(max = 220.dp)
-                                        ) {
-                                            Text(
-                                                avatarBubbleText.take(220),
-                                                color = MainText,
-                                                fontSize = 10.sp,
-                                                lineHeight = 14.sp,
-                                                maxLines = 4,
-                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
-                                            )
-                                        }
-                                    } else {
-                                        Text("点击头像管理虚拟形象与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
-                                    }
+                                    Text("点击头像管理虚拟形象与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                                 }
                             }
                         }
@@ -2350,7 +2346,19 @@ private fun AvatarRenderer(
     onGesture: (String, String) -> Unit = { _, _ -> }
 ) {
     if (model != null) {
-        Live2DView(model = model, modifier = modifier, mood = mood, speaking = speaking, halfBody = true, onGesture = onGesture)
+        Live2DView(
+            model = model, modifier = modifier, mood = mood, speaking = speaking, halfBody = true,
+            onGesture = onGesture,
+            onPortrait = { dataUrl ->
+                runCatching {
+                    val encoded = dataUrl.substringAfter(',', "")
+                    val bytes = Base64.getDecoder().decode(encoded)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                }.getOrNull()?.takeIf { !it.isRecycled && it.width > 1 && it.height > 1 }?.let {
+                    Live2DPortraitCache.portraits[model.id] = it
+                }
+            }
+        )
     } else {
         AnimeGirlAvatar(character, modifier, mood)
     }
@@ -2377,22 +2385,9 @@ private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
                 contentScale = ContentScale.Crop
             )
         } else {
-            // Capture once at a larger backing size, cache it globally, then dispose
-            // the temporary WebView. All chat rows subsequently draw the same bitmap.
-            Live2DView(
-                model = model,
-                modifier = Modifier.requiredSize(128.dp).align(Alignment.Center),
-                halfBody = true,
-                onPortrait = { dataUrl ->
-                    runCatching {
-                        val encoded = dataUrl.substringAfter(',', "")
-                        val bytes = Base64.getDecoder().decode(encoded)
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    }.getOrNull()?.takeIf { !it.isRecycled && it.width > 1 && it.height > 1 }?.let {
-                        Live2DPortraitCache.portraits[character] = it
-                    }
-                }
-            )
+            // Never create a separate 60 FPS WebView for every message row.
+            // Keep a stable static fallback until the persistent avatar view caches its portrait.
+            AnimeGirlAvatar(character, Modifier.fillMaxSize(), "normal")
         }
     }
 }
@@ -2654,6 +2649,8 @@ private fun AvatarSettingsPage(
     avatarId: String,
     onAvatarIdChange: (String) -> Unit,
     avatarMood: String,
+    avatarInteractionReply: String,
+    avatarInteractionReplyId: Long,
     rearAvatarEnabled: Boolean,
     rearBackgroundColor: String,
     onRearBackgroundColorChange: (String) -> Unit,
@@ -2700,7 +2697,32 @@ private fun AvatarSettingsPage(
                     val selectedModel = Live2DModelStore.characters.firstOrNull { it.id == selected.first }
                         ?: Live2DModelStore.characters.first()
                     AvatarRenderer(selected.first, Modifier.fillMaxSize(), avatarMood, model = selectedModel) { action, _ -> onAvatarInteraction(action) }
- 
+                    var visibleBubble by remember { mutableStateOf("") }
+                    LaunchedEffect(avatarInteractionReplyId, avatarInteractionReply) {
+                        visibleBubble = ""
+                        if (avatarInteractionReply.isNotBlank() && avatarInteractionReplyId > 0L) {
+                            visibleBubble = avatarInteractionReply
+                            val expectedId = avatarInteractionReplyId
+                            delay((avatarInteractionReply.length * 220L).coerceIn(5000L, 12000L))
+                            if (avatarInteractionReplyId == expectedId) visibleBubble = ""
+                        }
+                    }
+                    AnimatedVisibility(
+                        visible = visibleBubble.isNotBlank(),
+                        enter = fadeIn(tween(160)) + androidx.compose.animation.scaleIn(initialScale = 0.92f),
+                        exit = fadeOut(tween(220)),
+                        modifier = Modifier.align(Alignment.TopCenter).padding(10.dp).widthIn(max = 270.dp)
+                    ) {
+                        Surface(
+                            color = if (appDarkState) Color(0xF0221F2B) else Color(0xFDF8F4FF),
+                            shape = RoundedCornerShape(16.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x667B68B8)),
+                            shadowElevation = 8.dp
+                        ) {
+                            Text(visibleBubble.take(240), color = MainText, fontSize = 12.sp,
+                                lineHeight = 17.sp, maxLines = 5, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+                        }
+                    }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = { selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size) }) { Text("‹ 上一个") }
