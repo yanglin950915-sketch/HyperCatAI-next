@@ -61,7 +61,7 @@ marker.onerror=function(){console.error("Rear Live2D model package is missing: m
 document.head.appendChild(marker);
 setInterval(syncMamlState,500);
 window.addEventListener("resize",window.__fit);
-try{if(window.maml&&typeof window.maml.doAction==="function")window.maml.doAction("avatar_touch");}catch(e){}
+window.__rearAction=function(action){try{if(window.maml&&typeof window.maml.doAction==="function")window.maml.doAction(action);}catch(e){}};
 }());
 </script>
 </body>
