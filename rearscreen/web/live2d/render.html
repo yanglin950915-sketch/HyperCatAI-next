@@ -315,7 +315,8 @@
       backgroundAlpha: 0,
       antialias: true,
       autoDensity: true,
-      resolution: Math.min(window.devicePixelRatio || 1, 2.5),
+      resolution: Math.min(window.devicePixelRatio || 1, 1.5),
+      clearBeforeRender: true,
       powerPreference: 'high-performance'
     });
     document.getElementById('stage').appendChild(app.view);
@@ -327,11 +328,11 @@
     // 贴图带宽吃紧而抖动，肉眼反而不如稳定 24。`PIXI.Ticker.shared` 同时驱动
     // `_render()` 和 `autoUpdate`（→ internalModel.update），所以只调它的 maxFPS
     // 就能让「渲染」和「模型动画」一起降速，不会出现画面 24fps 而动作 60fps 的撕裂。
-    var MAX_FPS = parseFloat(params.get('fps') || '45');
-    if (!isFinite(MAX_FPS) || MAX_FPS < 1) MAX_FPS = 45;
+    var MAX_FPS = parseFloat(params.get('fps') || '30');
+    if (!isFinite(MAX_FPS) || MAX_FPS < 1) MAX_FPS = 30;
     PIXI.Ticker.shared.maxFPS = MAX_FPS;
     // Clamp long frame gaps after app switching or transient GPU stalls.
-    PIXI.Ticker.shared.minFPS = 30;
+    PIXI.Ticker.shared.minFPS = 20;
     log('L2D fps cap=' + MAX_FPS);
 
     // 只做 FPS 统计；参数写入全部交给 onBeforeModelUpdate。
