@@ -117,6 +117,8 @@ Agent 可根据用户请求调用 Android 系统能力或外部数据服务，�
 
 组件源码已通过 Android Gradle assets source set 内置于主 APK；应用内「设置 → 萌宠伙伴」可开启/关闭背屏投放，并通过「导出内置背屏组件包」将 ZIP 分享给 REAREye。主屏萌宠的轻触和长按与背屏使用同一个 Agent 事件分发器。
 
+组件源码已通过 Android Gradle assets source set 内置于主 APK；应用内「设置 → 萌宠伙伴」可开启/关闭背屏投放，并通过「导出内置背屏组件包」将 ZIP 分享给 REAREye。主屏萌宠的轻触和长按与背屏使用同一个 Agent 事件分发器。
+
 背屏与主屏 Agent 共用同一份萌宠状态。主应用通过只读 ContentProvider 暴露名称、情绪和最新回复；REAREye 的 MAML 组件负责刷新数据，WebView 负责离线绘制表情与触摸区域。触摸动作通过 MAML WebView 内部 Trigger 回传 Android 广播，经身份校验后交由 WorkManager 排队调用当前 Agent 模型，生成的回复再同步到背屏状态。
 
 - **主屏到背屏：** Agent 思考状态、最终回复、天气/系统操作结果和萌宠名称/情绪。
