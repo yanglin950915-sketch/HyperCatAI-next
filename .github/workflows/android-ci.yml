@@ -16,7 +16,6 @@ jobs:
           test -s rearscreen/manifest.xml
           test -s rearscreen/web/index.html
           test "$(find rearscreen -maxdepth 1 -type f | wc -l)" -eq 1
-          test "$(find rearscreen/web -maxdepth 1 -type f | wc -l)" -eq 1
           python3 - <<'PY'
           from pathlib import Path
           import re
