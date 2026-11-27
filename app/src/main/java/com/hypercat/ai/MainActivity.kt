@@ -2391,35 +2391,48 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
 
 @Composable
 private fun AnimeGirlAvatar(character: String, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val assetName = when (character) {
-        "aoi" -> "aoi"
-        "luna" -> "luna"
-        "yuna" -> "yuna"
-        else -> "sakura"
+    val palette = when (character) {
+        "aoi" -> listOf(Color(0xFFB9E8FF), Color(0xFF526BC7), Color(0xFF35A8D8), Color(0xFF173A72))
+        "luna" -> listOf(Color(0xFFE8E7FF), Color(0xFF777BAF), Color(0xFF9C91E8), Color(0xFF45466F))
+        "yuna" -> listOf(Color(0xFFFFD7E8), Color(0xFFB85C91), Color(0xFFE88AB6), Color(0xFF783C72))
+        else -> listOf(Color(0xFFFFDCE9), Color(0xFFB95F83), Color(0xFFE98AA8), Color(0xFF713A58))
     }
-    val portrait = remember(assetName) {
-        runCatching {
-            context.assets.open("web/avatars/$assetName.webp").use { stream ->
-                BitmapFactory.decodeStream(stream)?.asImageBitmap()
-            }
-        }.getOrNull()
-    }
-    if (portrait != null) {
-        Image(
-            bitmap = portrait,
-            contentDescription = "虚拟形象",
-            contentScale = ContentScale.Crop,
-            modifier = modifier.clip(CircleShape)
-        )
-    } else {
-        Box(
-            modifier = modifier.clip(CircleShape)
-                .background(Brush.verticalGradient(listOf(Color(0xFFFFD9EA), Color(0xFFB9B8FF)))),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("♡", color = Color.White, fontSize = 32.sp)
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        drawRect(brush = Brush.verticalGradient(listOf(palette[0], Color(0xFFFFF1F5))))
+        drawCircle(Color.White.copy(alpha = .28f), w * .12f, Offset(w * .16f, h * .18f))
+        drawCircle(Color.White.copy(alpha = .22f), w * .08f, Offset(w * .83f, h * .32f))
+        // shoulders and outfit
+        drawOval(Brush.verticalGradient(listOf(Color(0xFFFFF8FB), palette[2])), Offset(w*.12f,h*.69f), Size(w*.76f,h*.48f))
+        drawRoundRect(palette[1], Offset(w*.42f,h*.58f), Size(w*.16f,h*.18f), androidx.compose.ui.geometry.CornerRadius(w*.04f))
+        // long hair behind the face
+        drawOval(Brush.verticalGradient(listOf(palette[1], palette[3])), Offset(w*.19f,h*.13f), Size(w*.62f,h*.67f))
+        drawOval(Brush.verticalGradient(listOf(Color(0xFFFFE5EF),Color(0xFFFFC9DD))), Offset(w*.27f,h*.23f), Size(w*.46f,h*.48f))
+        // side locks
+        drawOval(Brush.verticalGradient(listOf(palette[2],palette[1])), Offset(w*.17f,h*.30f), Size(w*.19f,h*.47f))
+        drawOval(Brush.verticalGradient(listOf(palette[2],palette[1])), Offset(w*.64f,h*.30f), Size(w*.19f,h*.47f))
+        // face
+        drawOval(Brush.verticalGradient(listOf(Color(0xFFFFF0E9),Color(0xFFFFD8D0))), Offset(w*.30f,h*.25f), Size(w*.40f,h*.42f))
+        // fringe
+        val fringe = Path().apply {
+            moveTo(w*.27f,h*.39f); cubicTo(w*.25f,h*.12f,w*.70f,h*.12f,w*.73f,h*.40f)
+            cubicTo(w*.62f,h*.32f,w*.58f,h*.31f,w*.51f,h*.42f)
+            cubicTo(w*.45f,h*.32f,w*.38f,h*.34f,w*.27f,h*.43f); close()
         }
+        drawPath(fringe, Brush.verticalGradient(listOf(palette[2],palette[1])))
+        // eyes and highlights
+        listOf(w*.405f,w*.595f).forEach { x ->
+            drawOval(Color.White, Offset(x-w*.045f,h*.43f), Size(w*.09f,h*.105f))
+            drawOval(palette[3], Offset(x-w*.027f,h*.445f), Size(w*.054f,h*.083f))
+            drawCircle(Color.White,w*.014f,Offset(x-w*.009f,h*.462f))
+        }
+        drawCircle(Color(0xFFFFA4B9).copy(alpha=.55f),w*.035f,Offset(w*.345f,h*.555f))
+        drawCircle(Color(0xFFFFA4B9).copy(alpha=.55f),w*.655f,Offset(w*.555f,h*.555f))
+        drawOval(Color(0xFFB85E75), Offset(w*.475f,h*.585f), Size(w*.05f,h*.018f))
+        // decorative bow / hair accessory
+        drawCircle(Color(0xFFFFF7FB),w*.055f,Offset(w*.76f,h*.24f))
+        drawCircle(palette[2],w*.035f,Offset(w*.76f,h*.24f))
     }
 }
 
@@ -2437,43 +2450,57 @@ private fun PetSettingsPage(
     onPetInteraction: (String) -> Unit,
     onPetNameChange: (String) -> Unit
 ) {
+    val characters = listOf(
+        Triple("sakura", "樱花", "温柔、黏人又有一点小傲娇。喜欢樱花、甜点和被认真倾听；遇到你时总会先露出笑容。"),
+        Triple("aoi", "葵", "活泼开朗的蓝发歌姬。热爱音乐与新鲜事物，擅长用元气和鼓励陪你度过忙碌的一天。"),
+        Triple("luna", "露娜", "安静细腻的银发魔法师。好奇心强，喜欢探索知识；说话温柔，关键时刻十分可靠。"),
+        Triple("yuna", "优奈", "俏皮可爱的双马尾少女。喜欢恶作剧和分享日常，情绪表达直接，是个热情的小伙伴。")
+    )
+    var selectedIndex by remember(petEmoji) { mutableIntStateOf(characters.indexOfFirst { it.first == petEmoji }.coerceAtLeast(0)) }
     var nameDraft by remember(petName) { mutableStateOf(petName) }
+    var dragTotal by remember { mutableFloatStateOf(0f) }
+    val selected = characters[selectedIndex]
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
-        Text("虚拟形象设置", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Text("管理伙伴资料、互动与背屏投放", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
-        Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(112.dp).clip(CircleShape).background(Panel2).clickable { onPetInteraction("pet_touch") }, contentAlignment = Alignment.Center) {
-                        AnimeGirlAvatar(petEmoji, Modifier.fillMaxSize())
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(petName, color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                        Text(when (petMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
-                    }
-                }
-                Spacer(Modifier.height(14.dp))
-                Text("选择二次元角色", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
-                    listOf("sakura" to "樱花 · 樱发少女", "aoi" to "葵 · 蓝发歌姬", "luna" to "露娜 · 银发魔法师", "yuna" to "优奈 · 粉发双马尾").chunked(2).forEach { row ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            row.forEach { (id, label) ->
-                                Surface(onClick = { onPetEmojiChange(id) }, color = if (petEmoji == id) Cyan.copy(alpha = .18f) else Panel2, shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(if (petEmoji == id) 1.5.dp else 0.dp, if (petEmoji == id) Cyan else Color.Transparent), modifier = Modifier.weight(1f)) {
-                                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        AnimeGirlAvatar(id, Modifier.size(58.dp))
-                                        Spacer(Modifier.width(7.dp))
-                                        Text(label, color = MainText, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                    }
+        Text("虚拟形象", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text("左右滑动选择伙伴，确认后再保存", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+        Surface(color = Panel, shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(20.dp))
+                        .background(Brush.verticalGradient(listOf(Color(0xFFFFE6F0), Color(0xFFE9E8FF))))
+                        .pointerInput(selectedIndex) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { dragTotal = 0f },
+                                onHorizontalDrag = { change, amount -> change.consume(); dragTotal += amount },
+                                onDragEnd = {
+                                    if (dragTotal < -36f) selectedIndex = (selectedIndex + 1).mod(characters.size)
+                                    else if (dragTotal > 36f) selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size)
                                 }
-                            }
-                        }
-                    }
+                            )
+                        }.clickable { onPetInteraction("pet_touch") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    AnimeGirlAvatar(selected.first, Modifier.fillMaxSize())
+                    Text("点击角色互动", color = Color(0xFF754A67), fontSize = 11.sp,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp))
                 }
-                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) }, label = { Text("虚拟形象名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Button(onClick = { onPetNameChange(nameDraft) }, modifier = Modifier.fillMaxWidth()) { Text("保存虚拟形象资料") }
-                OutlinedButton(onClick = { onPetInteraction("pet_touch") }, modifier = Modifier.fillMaxWidth()) { Text("和虚拟形象互动") }
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = { selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size) }) { Text("‹ 上一个") }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(selected.second, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("${selectedIndex + 1} / ${characters.size}", color = Muted, fontSize = 11.sp)
+                    }
+                    TextButton(onClick = { selectedIndex = (selectedIndex + 1).mod(characters.size) }) { Text("下一个 ›") }
+                }
+                Text("性格介绍", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                Text(selected.third, color = Muted, fontSize = 12.sp, lineHeight = 19.sp,
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 14.dp))
+                OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) },
+                    label = { Text("自定义名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Button(onClick = { onPetEmojiChange(selected.first); onPetNameChange(nameDraft.trim().ifBlank { selected.second }) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("保存虚拟形象") }
             }
         }
         Text("背屏投放", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 22.dp, bottom = 8.dp))
@@ -2494,7 +2521,6 @@ private fun PetSettingsPage(
         Spacer(Modifier.height(24.dp))
     }
 }
-
 @Composable
 private fun SettingsPage(
     modifier: Modifier, petName: String, petMood: String, rearPetEnabled: Boolean, rearProjectionStatus: String, onRearPetEnabledChange: (Boolean) -> Unit, onRearPetRestore: () -> Unit, onPetInteraction: (String) -> Unit, onPetNameChange: (String) -> Unit,
