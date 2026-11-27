@@ -67,7 +67,7 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             webViewClient = object : WebViewClient() {
                                 override fun onPageFinished(view: WebView, url: String?) {
                                     super.onPageFinished(view, url)
-                                    applyPetState(view, pet.petName, pet.petEmoji, pet.mood, pet.reply)
+                                    applyPetState(view, pet.petName, pet.petEmoji, pet.mood, pet.reply, pet.backgroundColor)
                                 }
                             }
                             rearWebView = this
@@ -75,7 +75,7 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         }
                     },
                     update = { view ->
-                        applyPetState(view, pet.petName, pet.petEmoji, pet.mood, pet.reply)
+                        applyPetState(view, pet.petName, pet.petEmoji, pet.mood, pet.reply, pet.backgroundColor)
                     }
                 )
                 Button(
@@ -99,12 +99,13 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun applyPetState(view: WebView, name: String, avatar: String, mood: String, reply: String) {
+    private fun applyPetState(view: WebView, name: String, avatar: String, mood: String, reply: String, backgroundColor: String) {
         val script = "window.__setAgentState && window.__setAgentState(" +
             "${org.json.JSONObject.quote(name)}," +
             "${org.json.JSONObject.quote(avatar)}," +
             "${org.json.JSONObject.quote(mood)}," +
-            "${org.json.JSONObject.quote(reply)});"
+            "${org.json.JSONObject.quote(reply)}," +
+            "${org.json.JSONObject.quote(backgroundColor)});"
         view.evaluateJavascript(script, null)
     }
 
@@ -117,6 +118,7 @@ class RearPetActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 "petEmoji" -> state.petEmoji
                 "mood" -> state.mood
                 "reply" -> state.reply
+                "backgroundColor" -> state.backgroundColor
                 "enabled" -> state.enabled.toString()
                 "updatedAt" -> state.updatedAt.toString()
                 else -> ""
