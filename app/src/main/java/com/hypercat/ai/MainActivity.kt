@@ -145,6 +145,8 @@ import com.hypercat.ai.rear.RearProjectionController
 import com.hypercat.ai.rear.RearCardPackageBuilder
 import com.hypercat.ai.rear.RearCard
 import com.hypercat.ai.avatar.Live2DModel
+import com.hypercat.ai.avatar.AvatarDeviceStateStore
+import com.hypercat.ai.avatar.AvatarStatusBadges
 import com.hypercat.ai.avatar.Live2DModelStore
 import com.hypercat.ai.avatar.Live2DView
 import com.hypercat.ai.avatar.Live2DControllerHub
@@ -210,6 +212,7 @@ class MainActivity : ComponentActivity() {
         runCatching { applyPlatformNightMode(this, savedMode) }
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        AvatarDeviceStateStore.start(applicationContext)
         var splashThemeReady = false
         splashScreen.setKeepOnScreenCondition { !splashThemeReady }
         // Resolve the user's app appearance before allowing the system splash to exit.
@@ -2174,6 +2177,7 @@ private fun ChatPage(
                                     Text(avatarName, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                     Text(when (avatarMood) { "happy" -> "心情愉快 · 陪伴中"; "thinking" -> "正在思考"; "sad" -> "需要一点安慰"; else -> "在线 · 随时可以聊天" }, color = Muted, fontSize = 11.sp)
                                     Text("点击头像管理虚拟形象与背屏", color = Cyan, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                                    AvatarStatusBadges(Modifier.padding(top = 6.dp))
                                 }
                             }
                         }
@@ -2429,7 +2433,7 @@ private fun AvatarRenderer(
 ) {
     if (model != null) {
         Live2DView(
-            model = model, modifier = modifier, mood = mood, speaking = speaking, halfBody = halfBody,
+            model = model, modifier = modifier, mood = mood, speaking = speaking || deviceState.musicPlaying, halfBody = halfBody,
             onGesture = onGesture,
             onPortrait = { dataUrl ->
                 runCatching {
