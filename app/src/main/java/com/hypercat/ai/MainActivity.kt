@@ -2004,11 +2004,6 @@ private fun ChatPage(
                             line.attachments.forEach { name -> Text("📎 $name", color = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan, fontSize = 11.sp) }
                         }
                     }
-                    if (line.fromUser) {
-                        Box(Modifier.padding(start = 8.dp).size(34.dp).clip(RoundedCornerShape(11.dp)).background(Color(0xFF397D9D)), contentAlignment = Alignment.Center) {
-                            Text("我", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
                 }
             }
             if (isThinking && searchQuery.isBlank()) item {
