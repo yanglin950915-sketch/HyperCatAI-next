@@ -2,7 +2,7 @@ package com.hypercat.ai.rear
 
 import android.content.Context
 import android.net.Uri
-import com.hypercat.ai.pet.Live2DModelStore
+import com.hypercat.ai.avatar.Live2DModelStore
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
