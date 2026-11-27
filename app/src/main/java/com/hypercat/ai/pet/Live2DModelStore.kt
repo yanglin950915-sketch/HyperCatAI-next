@@ -100,8 +100,12 @@ object Live2DModelStore {
 
             for ((index, archive) in archives.withIndex()) {
                 val target = File(archive.parentFile, "${archive.nameWithoutExtension}_contents")
-                if (target.exists()) continue
+                if (target.exists()) {
+                    archive.delete()
+                    continue
+                }
                 extractArchive(archive, target, budget, depth + 1)
+                archive.delete()
             }
             depth++
         }
