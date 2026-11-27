@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Widget version="2" screenWidth="904" frameRate="30" scaleByDensity="false" transparentSurface="false" useVariableUpdater="DateTime.Second">
+<Widget version="2" screenWidth="976" frameRate="30" scaleByDensity="false" transparentSurface="true" useVariableUpdater="DateTime.Second">
     <Var name="petUri" type="string" expression="'content://com.hypercat.ai.rear.provider/pet-state'" const="true"/>
     <Var name="resultJson" type="string" expression="'{}'"/>
     <Var name="petName" type="string" expression="'小橘'"/>
     <Var name="petEmoji" type="string" expression="'🐱'"/>
     <Var name="mood" type="string" expression="'normal'"/>
-    <Var name="reply" type="string" expression="'你好！我是你的 AI 萌宠。'"/>
+    <Var name="reply" type="string" expression="'你好！我是你的 AI 虚拟形象。'"/>
+    <Var name="backgroundColor" type="string" expression="'#080B12'"/>
     <Var name="updatedAt" type="string" expression="'0'"/>
     <Var name="enabled" type="string" expression="'false'"/>
     <Var name="refreshTick" expression="#second">
@@ -26,12 +27,14 @@
         <VariableCommand name="petEmoji" expression="jsonGetString(strToJson(@resultJson), 'pet_emoji')" type="string"/>
         <VariableCommand name="mood" expression="jsonGetString(strToJson(@resultJson), 'mood')" type="string"/>
         <VariableCommand name="reply" expression="jsonGetString(strToJson(@resultJson), 'reply')" type="string"/>
+        <VariableCommand name="backgroundColor" expression="jsonGetString(strToJson(@resultJson), 'background_color')" type="string"/>
         <VariableCommand name="updatedAt" expression="jsonGetString(strToJson(@resultJson), 'updated_at')" type="string"/>
         <VariableCommand name="enabled" expression="jsonGetString(strToJson(@resultJson), 'enabled')" type="string"/>
+        <WebViewCommand target="wv" command="runjs" params="'__setAgentJson('+@resultJson+')'" delay="250"/>
     </Function>
 
     <!-- Local offline HTML renderer; content itself reserves the left camera exclusion zone. -->
-    <WebView name="wv" x="0" y="0" w="#view_width" h="#view_height" local="true" cachePage="true" uri="web/index.html">
+    <WebView name="wv" x="0" y="0" w="#view_width" h="#view_height" local="true" cachePage="false" uri="web/index.html">
         <Triggers>
             <Trigger action="pet_touch">
                 <IntentCommand action="com.hypercat.ai.rear.PET_INTERACTION" package="com.hypercat.ai" broadcast="true">
