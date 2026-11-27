@@ -35,6 +35,7 @@ class RearPetProvider : ContentProvider() {
             .put("reply", prefs.getString("reply", "你好！我是你的虚拟形象。") ?: "")
             .put("updated_at", prefs.getLong("updated_at", 0L).toString())
             .put("enabled", prefs.getBoolean("rear_pet_enabled", false))
+            .put("user_text", prefs.getString("user_text", "") ?: "")
             .toString()
     }
 
