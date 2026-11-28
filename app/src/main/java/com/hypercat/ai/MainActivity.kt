@@ -1854,11 +1854,11 @@ private fun ChatPage(
     val latestDraft by rememberUpdatedState(draft)
     val latestCallActive by rememberUpdatedState(callActive)
     val latestMicEnabled by rememberUpdatedState(micEnabled)
-    val latestSpeechRecognizer by rememberUpdatedState(speechRecognizer)
     val latestOnCallInitiative by rememberUpdatedState(onCallInitiative)
     var pendingRecognitionStart by remember { mutableStateOf(false) }
     var pendingMicPermissionRequest by remember { mutableStateOf(false) }
     var speechRecognizer by remember(context) { mutableStateOf(createCallSpeechRecognizer(context)) }
+    val latestSpeechRecognizer by rememberUpdatedState(speechRecognizer)
     DisposableEffect(speechRecognizer) {
         val activeRecognizer = speechRecognizer
         activeRecognizer.setRecognitionListener(object : RecognitionListener {
