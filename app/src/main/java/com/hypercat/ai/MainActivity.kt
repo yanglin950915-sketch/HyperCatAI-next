@@ -3499,7 +3499,7 @@ private fun ChatPage(
                             }
                         }
                     )
-                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                         Button(
                             onClick = {
                                 showFullScreenEditor = false
