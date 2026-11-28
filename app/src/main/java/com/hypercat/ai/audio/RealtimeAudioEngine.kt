@@ -83,23 +83,30 @@ class RealtimeAudioEngine(
             input.release()
             "This device does not support the requested playback format ($outputMin)"
         }
-        val output = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(maxOf(outputMin, frameBytes * 4))
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
+        val output = try {
+            AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setSampleRate(sampleRate)
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(maxOf(outputMin, frameBytes * 4))
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+        } catch (error: Throwable) {
+            // AudioTrack construction can throw before the main startup
+            // transaction begins; do not leak the already-created recorder.
+            runCatching { input.release() }
+            throw error
+        }
         check(output.state == AudioTrack.STATE_INITIALIZED) {
             input.release()
             output.release()
