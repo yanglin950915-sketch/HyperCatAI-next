@@ -80,6 +80,8 @@ class RearAgentInteractionWorker(appContext: Context, params: WorkerParameters) 
                 }.ifBlank { "我收到你的互动啦！再和我说说话吧。" }
             } finally { connection.disconnect() }
             val finalReply = if (action == "avatar_voice") reply else stripInteractionStageDirections(reply)
+            // APPEND_OR_REPLACE may leave an already-running worker alive; stale gestures must not mutate chat history.
+            if (!isLatestInteraction()) return@withContext Result.success()
             history.put(JSONObject().put("text", if (action == "avatar_voice") userText else eventPrompt).put("fromUser", true).put("attachments", JSONArray()))
             history.put(JSONObject().put("text", finalReply).put("fromUser", false).put("attachments", JSONArray()))
             prefs.edit()
