@@ -8,8 +8,6 @@ import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
-import android.media.AudioManager
-import android.media.audiofx.AudioEffect
 import android.os.Process
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean

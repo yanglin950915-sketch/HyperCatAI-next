@@ -79,7 +79,7 @@ class CallPcmCaptureController(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
         )
         check(minBuffer > 0) { "设备不支持 16kHz PCM 麦克风采集（$minBuffer）" }
-        val acquired = lease ?: coordinator.acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true).also { lease = it }
+        val acquired = lease ?: coordinator.acquire(AudioSessionCoordinator.Owner.CALL_CAPTURE, speakerphone = true).also { lease = it }
         var input: AudioRecord? = null
         try {
             val startedRecorder = AudioRecord(
