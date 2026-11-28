@@ -41,7 +41,7 @@ internal class RealtimeVisionController(
         val hash = runCatching { perceptualHash(jpeg) }.getOrNull() ?: return
         val previous = lastHash
         val changed = previous == null || java.lang.Long.bitCount(previous xor hash) >= CHANGE_THRESHOLD_BITS
-        val refreshDue = now - lastSuccessAt >= FORCE_REFRESH_INTERVAL_MS
+        val refreshDue = now - maxOf(lastSuccessAt, lastAnalysisAt) >= FORCE_REFRESH_INTERVAL_MS
         if (!changed && !refreshDue) return
         if (!inFlight.compareAndSet(false, true)) return
 
