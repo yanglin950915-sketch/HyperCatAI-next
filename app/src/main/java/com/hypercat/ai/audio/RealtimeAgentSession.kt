@@ -33,8 +33,28 @@ class RealtimeAgentSession(
     private val playbackQueue = ArrayBlockingQueue<ByteArray>(48)
     @Volatile private var playbackThread: Thread? = null
     @Volatile private var microphoneEnabled = true
+    private val localVad = PcmVoiceActivityDetector()
+    @Volatile private var localSpeechInterruptActive = false
 
     fun currentState(): State = state
+
+    private fun handleMicrophoneFrame(pcm: ByteArray, length: Int) {
+        if (closed.get() || !microphoneEnabled) return
+        when (localVad.process(pcm, length)) {
+            PcmVoiceActivityDetector.Event.SPEECH_STARTED -> {
+                if (state == State.RESPONDING && !localSpeechInterruptActive) {
+                    localSpeechInterruptActive = true
+                    playbackQueue.clear()
+                    audio.interruptPlayback()
+                    adapter.cancelResponse()
+                    transition(State.INTERRUPTED)
+                }
+            }
+            PcmVoiceActivityDetector.Event.SPEECH_ENDED -> localSpeechInterruptActive = false
+            else -> Unit
+        }
+        adapter.sendAudioFrame(pcm, length)
+    }
 
     @Synchronized
     fun start() {
@@ -59,7 +79,7 @@ class RealtimeAgentSession(
                 override fun onReady() {
                     if (closed.get()) return
                     try {
-                        audio.setFrameConsumer(if (microphoneEnabled) ({ pcm, length -> adapter.sendAudioFrame(pcm, length) }) else null)
+                        audio.setFrameConsumer(if (microphoneEnabled) ({ pcm, length -> handleMicrophoneFrame(pcm, length) }) else null)
                         audio.start()
                         startPlaybackWorker()
                         transition(State.LISTENING)
@@ -128,7 +148,8 @@ class RealtimeAgentSession(
     fun setMicrophoneEnabled(enabled: Boolean) {
         if (closed.get()) return
         microphoneEnabled = enabled
-        audio.setFrameConsumer(if (enabled) ({ pcm, length -> adapter.sendAudioFrame(pcm, length) }) else null)
+        if (!enabled) { localVad.reset(); localSpeechInterruptActive = false }
+        audio.setFrameConsumer(if (enabled) ({ pcm, length -> handleMicrophoneFrame(pcm, length) }) else null)
     }
 
     fun reportAudioFailure(message: String, cause: Throwable? = null) {
