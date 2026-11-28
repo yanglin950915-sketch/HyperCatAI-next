@@ -26,6 +26,11 @@ class OpenAiRealtimeAudioAdapter(
 ) : RealtimeModelAdapter {
 
     override val requiredSampleRate: Int = 24_000
+    // OpenAI Realtime vision-capable model families. Other provider/model IDs stay audio-only
+    // until their image-input compatibility is explicitly confirmed.
+    override val supportsImageInput: Boolean = model.lowercase().let {
+        it.contains("gpt-realtime") || it.contains("gpt-4o")
+    }
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -61,7 +66,7 @@ class OpenAiRealtimeAudioAdapter(
                     .put("type", "session.update")
                     .put("session", JSONObject()
                         .put("modalities", org.json.JSONArray().put("text").put("audio"))
-                        .put("instructions", "你是 HyperCat AI 的中文语音伙伴。自然、简洁地回答。")
+                        .put("instructions", if (supportsImageInput) "你是 HyperCat AI 的中文语音伙伴。自然、简洁地回答。用户开启摄像头时，你会收到实时画面截图；用户询问画面时，请结合最近收到的图像如实描述，不要声称看不到已收到的画面。若没有收到图像，不要猜测画面内容。" else "你是 HyperCat AI 的中文语音伙伴。自然、简洁地回答。当前模型未启用实时图像输入，不要声称能够看到摄像头画面。")
                         .put("voice", "alloy")
                         .put("input_audio_format", "pcm16")
                         .put("output_audio_format", "pcm16")
@@ -98,6 +103,22 @@ class OpenAiRealtimeAudioAdapter(
             .put("type", "input_audio_buffer.append")
             .put("audio", encoded).toString()) ?: false
         if (!sent && !closed.get()) fail("Realtime 音频帧发送失败")
+    }
+
+    override fun sendImageFrame(jpeg: ByteArray): Boolean {
+        if (closed.get() || !supportsImageInput || jpeg.isEmpty()) return false
+        val encoded = Base64.encodeToString(jpeg, Base64.NO_WRAP)
+        val item = JSONObject()
+            .put("type", "conversation.item.create")
+            .put("item", JSONObject()
+                .put("type", "message")
+                .put("role", "user")
+                .put("content", org.json.JSONArray().put(JSONObject()
+                    .put("type", "input_image")
+                    .put("image_url", "data:image/jpeg;base64,$encoded"))))
+        // Do not request a response for every frame. The next user audio turn will be
+        // answered with the most recently supplied visual context.
+        return socket?.send(item.toString()) ?: false
     }
 
     /** Server VAD commits microphone turns; explicit commit is intentionally not sent. */
