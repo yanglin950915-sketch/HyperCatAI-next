@@ -1109,9 +1109,12 @@ private fun HyperCatApp() {
             try {
                 val hasLocation = AgentDeviceTools.hasLocationPermission(context)
                 val precise = AgentDeviceTools.hasPreciseLocationPermission(context)
-                val result = if (hasLocation) withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context) }
-                    else "未授予位置权限，无法获取当地天气。请在系统权限弹窗中允许位置访问，或直接告诉我城市名称。"
-                val display = if (hasLocation && !precise) "提示：目前只获得大致位置权限，天气区域可能不够准确。请在应用权限中开启“精确位置”。\\n$result" else result
+                val result = when {
+                    !hasLocation -> "未授予位置权限，无法获取当地天气。请允许位置访问，或直接告诉我城市名称。"
+                    !precise -> "目前仅授予了大致位置权限，系统可能把你定位到附近其他城市。为避免返回错误天气，请在系统设置中为 HyperCat AI 开启“精确位置”，然后重试。"
+                    else -> withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context) }
+                }
+                val display = result
                 appendAgentReply(context, messages, display)
                 avatarReply = display
                 avatarMood = "happy"
@@ -4311,7 +4314,6 @@ private fun SettingsPage(
     var weatherProvider by remember { mutableStateOf(prefs.getString("weather_provider", "openmeteo") ?: "openmeteo") }
     var amapWeatherKey by remember { mutableStateOf(prefs.getString("amap_weather_key", "") ?: "") }
     var caiyunWeatherToken by remember { mutableStateOf(prefs.getString("caiyun_weather_token", "") ?: "") }
-    var weatherDefaultPlace by remember { mutableStateOf(prefs.getString("weather_default_place", "西安市") ?: "西安市") }
     val pluginImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("无法读取插件清单")
@@ -4561,10 +4563,6 @@ private fun SettingsPage(
             }
         }
         Spacer(Modifier.height(22.dp))
-        Text("默认天气城市", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        ConfigField("默认天气城市", weatherDefaultPlace, { weatherDefaultPlace = it; prefs.edit().putString("weather_default_place", it.trim()).apply() }, "例如：西安市；可随时修改")
-        Text("未在问题中指定城市时，优先使用这里设置的城市，避免错误定位或旧坐标影响天气结果。", color = Muted, fontSize = 10.sp)
-        Spacer(Modifier.height(14.dp))
         Text("天气服务", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Text("三种天气服务共存，独立保存配置；选择后 Agent 会使用对应服务查询天气。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
         Surface(color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {

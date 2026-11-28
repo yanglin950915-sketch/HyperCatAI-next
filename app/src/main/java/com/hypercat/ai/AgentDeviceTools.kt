@@ -69,33 +69,31 @@ object AgentDeviceTools {
         }
 
     private suspend fun currentDeviceLocation(context: Context): Location? {
-        if (!hasLocationPermission(context)) return null
+        // Android approximate location can be deliberately displaced to another city.
+        // Require a fresh precise fix for city-level weather; never use cached coordinates.
+        if (!hasPreciseLocationPermission(context)) return null
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val precise = hasPreciseLocationPermission(context)
-        val providers = if (precise) listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-            else listOf(LocationManager.NETWORK_PROVIDER)
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
         for (provider in providers) {
             val enabled = runCatching { manager.isProviderEnabled(provider) }.getOrDefault(false)
             if (!enabled) continue
             val location = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                withTimeoutOrNull(10_000L) {
+                withTimeoutOrNull(15_000L) {
                     suspendCancellableCoroutine<Location?> { continuation ->
                         try {
                             manager.getCurrentLocation(provider, null, context.mainExecutor) { result ->
                                 if (continuation.isActive) continuation.resume(result)
                             }
-                        } catch (_: SecurityException) {
-                            if (continuation.isActive) continuation.resume(null)
-                        } catch (_: Exception) {
-                            if (continuation.isActive) continuation.resume(null)
-                        }
+                        } catch (_: SecurityException) { if (continuation.isActive) continuation.resume(null) }
+                          catch (_: Exception) { if (continuation.isActive) continuation.resume(null) }
                     }
                 }
             } else requestSingleLocation(manager, provider)
-            if (location != null && location.latitude.isFinite() && location.longitude.isFinite()) return location
+            if (location != null && location.latitude.isFinite() && location.longitude.isFinite() &&
+                location.latitude in -90.0..90.0 && location.longitude in -180.0..180.0 &&
+                System.currentTimeMillis() - location.time in 0L..120_000L) return location
         }
-        // Only fall back to a recent cache entry; never silently reuse stale coordinates.
-        return freshestRecentLocation(context, precise)?.takeIf { System.currentTimeMillis() - it.time <= 120_000L }
+        return null
     }
 
     private fun resolveNamedAddress(geocoder: Geocoder, requestedPlace: String): android.location.Address? {
@@ -211,9 +209,7 @@ object AgentDeviceTools {
         val provider = prefs.getString("weather_provider", "openmeteo") ?: "openmeteo"
         val amapKey = prefs.getString("amap_weather_key", "").orEmpty().trim()
         val caiyunToken = prefs.getString("caiyun_weather_token", "").orEmpty().trim()
-        // A user-confirmed city takes precedence over device coordinates; this avoids stale or mis-geocoded locations.
         val weatherPlace = requestedPlace?.trim()?.takeIf { it.isNotBlank() }
-            ?: prefs.getString("weather_default_place", "西安市")?.trim()?.takeIf { it.isNotBlank() }
         fun json(url: String): JSONObject {
             val c = URL(url).openConnection() as HttpURLConnection
             try {
@@ -270,14 +266,9 @@ object AgentDeviceTools {
                 val loc = currentDeviceLocation(context)
                     ?: return@withContext "无法获取当前实时位置。请开启系统定位并稍后重试，或直接告诉我城市/区县名称。"
                 @Suppress("DEPRECATION")
-                geocoder.getFromLocation(loc.latitude, loc.longitude, 5)
-                    ?.maxByOrNull { a ->
-                        (if (!a.locality.isNullOrBlank()) 4 else 0) +
-                        (if (!a.subLocality.isNullOrBlank()) 3 else 0) +
-                        (if (!a.adminArea.isNullOrBlank()) 2 else 0) +
-                        (if (!a.countryName.isNullOrBlank()) 1 else 0)
-                    }
-                    ?: android.location.Address(Locale.CHINA).apply { latitude = loc.latitude; longitude = loc.longitude }
+                // Use the closest reverse-geocoded result; do not choose a farther candidate by field completeness.
+                geocoder.getFromLocation(loc.latitude, loc.longitude, 1)?.firstOrNull()
+                    ?: return@withContext "系统无法识别当前坐标对应的城市，请检查定位服务后重试。"
             }
         } catch (e: Exception) { return@withContext "地点解析失败：" + (e.message ?: "系统地理编码不可用") }
             ?: return@withContext "无法可靠匹配地点“" + (weatherPlace ?: "当前位置") + "”。请补充省份、城市和区县名称，避免使用同名地区。"
