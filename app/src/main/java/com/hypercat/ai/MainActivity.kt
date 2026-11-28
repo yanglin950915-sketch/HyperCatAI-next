@@ -1782,6 +1782,21 @@ private fun ChatPage(
                             }
                         }
                     }
+                } else if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_SERVER) {
+                    // Voice-message recording also shares this recognizer. Rebuild it after a
+                    // binder/client failure even though there is no continuous call to auto-restart.
+                    speechScope.launch {
+                        delay(500L)
+                        if (!latestCallActive && speechRecognizer === activeRecognizer) {
+                            runCatching {
+                                val replacement = createCallSpeechRecognizer(context)
+                                speechRecognizer = replacement
+                                speechStatus = "语音识别服务已恢复，请重新按住麦克风说话"
+                            }.onFailure {
+                                speechStatus = "语音识别服务重建失败：${it.message ?: "请检查系统语音识别服务"}"
+                            }
+                        }
+                    }
                 }
             }
             override fun onResults(results: Bundle?) {
