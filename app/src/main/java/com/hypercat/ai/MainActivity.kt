@@ -1712,6 +1712,7 @@ private fun ChatPage(
             override fun onError(error: Int) {
                 recognitionSessionActive = false
                 isListening = false
+                if (!latestCallActive) { speechAudioLease?.close(); speechAudioLease = null }
                 val reason = when (error) {
                     SpeechRecognizer.ERROR_AUDIO -> "麦克风音频采集失败，请检查系统麦克风隐私开关或其他应用占用"
                     SpeechRecognizer.ERROR_CLIENT -> "语音识别服务被中断"
@@ -1768,6 +1769,7 @@ private fun ChatPage(
             override fun onResults(results: Bundle?) {
                 recognitionSessionActive = false
                 isListening = false
+                if (!latestCallActive) { speechAudioLease?.close(); speechAudioLease = null }
                 val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
                 if (spoken.isNotBlank()) {
                     if (latestCallActive && latestMicEnabled) {
@@ -2442,6 +2444,7 @@ private fun ChatPage(
     if (showCallInfo) Dialog(
         onDismissRequest = {
             callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+            speechAudioLease?.close(); speechAudioLease = null
             runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
             agentPlaybackUntilMs = 0L
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -2455,6 +2458,7 @@ private fun ChatPage(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("‹", color = Color.White, fontSize = 28.sp, modifier = Modifier.clickable {
                         callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+                        speechAudioLease?.close(); speechAudioLease = null
                         runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
                         agentPlaybackUntilMs = 0L
                         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
