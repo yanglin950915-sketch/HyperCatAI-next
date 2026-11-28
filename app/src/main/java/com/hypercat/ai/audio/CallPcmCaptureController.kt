@@ -97,15 +97,18 @@ class CallPcmCaptureController(
             recorder = startedRecorder
             lease = acquired
             running = true
-            captureThread = Thread({
+            val worker = Thread({
                 Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
                 captureLoop(startedRecorder)
-            }, "HyperCat-CallMicCapture").apply { start() }
+            }, "HyperCat-CallMicCapture")
+            captureThread = worker
+            worker.start()
         } catch (error: Throwable) {
             running = false
             releaseAudioEffects()
             runCatching { input?.release() }
             if (recorder === input) recorder = null
+            captureThread = null
             if (lease === acquired) lease = null
             acquired.close()
             throw error
@@ -120,12 +123,14 @@ class CallPcmCaptureController(
         var utteranceBytes = 0
         val frame = ByteArray(FRAME_BYTES)
         var levelFrameCounter = 0
+        var captureFailed = false
         try {
             while (running && enabled && !Thread.currentThread().isInterrupted) {
                 val count = input.read(frame, 0, frame.size, AudioRecord.READ_BLOCKING)
                 if (count < 0) {
                     if (running) {
                         running = false
+                        captureFailed = true
                         onError("AudioRecord.read 失败：$count", null)
                     }
                     break
@@ -180,10 +185,29 @@ class CallPcmCaptureController(
         } catch (error: Throwable) {
             if (running && enabled) {
                 running = false
+                captureFailed = true
                 onError("麦克风实时采集异常：${error.message}", error)
             }
         } finally {
             if (collecting && utteranceBytes >= MIN_UTTERANCE_BYTES) dispatchUtterance(utterance.toByteArray())
+            if (captureFailed) cleanupFailedCapture(input)
+        }
+    }
+
+    /**
+     * A failed reader cleans up only the recorder instance it owns. If a user
+     * stop already replaced/released it, the identity check makes this a no-op.
+     */
+    private fun cleanupFailedCapture(input: AudioRecord) {
+        synchronized(lock) {
+            if (recorder !== input || running) return
+            if (captureThread === Thread.currentThread()) captureThread = null
+            releaseAudioEffects()
+            runCatching { input.stop() }
+            runCatching { input.release() }
+            recorder = null
+            lease?.close()
+            lease = null
         }
     }
 

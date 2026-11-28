@@ -33,6 +33,7 @@ class RealtimeAgentSession(
     @Volatile private var state = State.IDLE
     @Volatile private var audioLease: AudioSessionCoordinator.Lease? = null
     private val interruptedByAudioFocus = AtomicBoolean(false)
+    private val audioReady = AtomicBoolean(false)
     private val playbackQueue = ArrayBlockingQueue<ByteArray>(16)
     @Volatile private var playbackThread: Thread? = null
     @Volatile private var microphoneEnabled = true
@@ -88,7 +89,8 @@ class RealtimeAgentSession(
                             transition(State.INTERRUPTED)
                         }
                         AudioManager.AUDIOFOCUS_GAIN -> {
-                            if (interruptedByAudioFocus.compareAndSet(true, false) &&
+                            if (audioReady.get() &&
+                                interruptedByAudioFocus.compareAndSet(true, false) &&
                                 state == State.INTERRUPTED && !closed.get()
                             ) {
                                 transition(State.LISTENING)
@@ -105,6 +107,7 @@ class RealtimeAgentSession(
                     try {
                         audio.setFrameConsumer(if (microphoneEnabled) ({ pcm, length -> handleMicrophoneFrame(pcm, length) }) else null)
                         audio.start()
+                        audioReady.set(true)
                         startPlaybackWorker()
                         transition(State.LISTENING)
                     } catch (error: Throwable) {
@@ -121,7 +124,7 @@ class RealtimeAgentSession(
                 }
 
                 override fun onAudioDelta(pcm16: ByteArray, length: Int) {
-                    if (closed.get()) return
+                    if (closed.get() || interruptedByAudioFocus.get()) return
                     if (length <= 0 || length > pcm16.size || length % 2 != 0) {
                         fail("Realtime 服务返回了无效的 PCM16 音频帧", null)
                         return
@@ -138,7 +141,7 @@ class RealtimeAgentSession(
 
                 override fun onAssistantTurnFinished() {
                     if (!closed.get()) {
-                        transition(State.LISTENING)
+                        if (!interruptedByAudioFocus.get()) transition(State.LISTENING)
                         listener.onAssistantTurnFinished()
                     }
                 }
@@ -245,6 +248,8 @@ class RealtimeAgentSession(
         playbackThread?.interrupt()
         playbackThread?.let { if (it !== Thread.currentThread()) runCatching { it.join(500) } }
         playbackThread = null
+        audioReady.set(false)
+        interruptedByAudioFocus.set(false)
         runCatching { audio.close() }
         runCatching { adapter.close() }
         audioLease?.close()
