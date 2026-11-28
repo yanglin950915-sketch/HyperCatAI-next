@@ -1244,13 +1244,29 @@ private fun HyperCatApp() {
         )
     }
 
-    MaterialTheme(colorScheme = if (darkNow) darkColorScheme(
-        primary = Cyan, secondary = Color(0xFFB9A4FF), background = Bg, surface = Panel,
-        onPrimary = Color(0xFF06131B), onSurface = Color(0xFFEAF4FF)
-    ) else lightColorScheme(
-        primary = Color(0xFF168DA6), secondary = Color(0xFF7461C8), background = Bg, surface = Panel,
-        onPrimary = Color.White, onSurface = Color(0xFF142235)
-    )) {
+    val appTypography = Typography(defaultFontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif)
+    val appShapes = Shapes(
+        extraSmall = RoundedCornerShape(8.dp),
+        small = RoundedCornerShape(12.dp),
+        medium = RoundedCornerShape(16.dp),
+        large = RoundedCornerShape(20.dp),
+        extraLarge = RoundedCornerShape(24.dp)
+    )
+    MaterialTheme(
+        colorScheme = if (darkNow) darkColorScheme(
+            primary = Color(0xFFD7DCE2), secondary = Color(0xFFAEB8C5), background = Bg, surface = Panel,
+            onPrimary = Color(0xFF17191C), onSurface = Color(0xFFF1F2F4),
+            surfaceVariant = Color(0xFF202226), onSurfaceVariant = Color(0xFFB7BBC2),
+            outline = Color(0xFF34383E)
+        ) else lightColorScheme(
+            primary = Color(0xFF3F596B), secondary = Color(0xFF667887), background = Bg, surface = Panel,
+            onPrimary = Color.White, onSurface = Color(0xFF202328),
+            surfaceVariant = Color(0xFFEDEFF1), onSurfaceVariant = Color(0xFF626A72),
+            outline = Color(0xFFD9DDE1)
+        ),
+        typography = appTypography,
+        shapes = appShapes
+    ) {
         Scaffold(containerColor = Bg) { padding ->
             when (page) {
                 Page.CHAT -> ChatPage(
@@ -4808,14 +4824,16 @@ private fun SettingsAction(icon: String, title: String, subtitle: String, onClic
         color = Panel, shape = RoundedCornerShape(15.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
     ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, fontSize = 18.sp, color = Cyan, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(subtitle, color = Muted, fontSize = 11.sp, maxLines = 2)
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Cyan.copy(alpha = if (appDarkState) .12f else .09f)), contentAlignment = Alignment.Center) {
+                Text(icon, fontSize = 17.sp, color = Cyan, fontWeight = FontWeight.Medium)
             }
-            Text("›", color = Muted, fontSize = 20.sp, fontWeight = FontWeight.Light)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.Medium, lineHeight = 19.sp)
+                Text(subtitle, color = Muted, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2)
+            }
+            Text("›", color = Muted, fontSize = 19.sp, fontWeight = FontWeight.Normal)
         }
     }
 }
