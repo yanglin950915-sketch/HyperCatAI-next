@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class RealtimeAudioEngine(
     private val listener: Listener,
-    private val sampleRate: Int = DEFAULT_SAMPLE_RATE,
+    val sampleRate: Int = DEFAULT_SAMPLE_RATE,
 ) : Closeable {
 
     interface Listener {
