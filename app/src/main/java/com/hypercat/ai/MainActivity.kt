@@ -1244,7 +1244,7 @@ private fun HyperCatApp() {
         )
     }
 
-    val appTypography = Typography(defaultFontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif)
+    val appTypography = Typography()
     val appShapes = Shapes(
         extraSmall = RoundedCornerShape(8.dp),
         small = RoundedCornerShape(12.dp),
