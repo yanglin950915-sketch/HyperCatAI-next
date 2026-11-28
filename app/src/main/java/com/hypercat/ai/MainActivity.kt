@@ -3046,7 +3046,15 @@ private fun ChatPage(
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
         LazyColumn(state = chatListState, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)).background(Bg).padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
-            items(messages.mapIndexed { index, message -> index to message }) { (messageIndex, line) ->
+            // Use the indexed lazy-list API directly. Building messages.mapIndexed on every
+            // recomposition allocated and traversed the entire conversation even though
+            // LazyColumn only composes the visible rows.
+            items(
+                count = messages.size,
+                key = { index -> index },
+                contentType = { "chat-message" }
+            ) { messageIndex ->
+                val line = messages[messageIndex]
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.isSystemEvent) Arrangement.Center else if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
                     if (selectedMessageIndices.isNotEmpty() && !line.isSystemEvent) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
                     Surface(modifier = (if (line.isSystemEvent) Modifier else if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (!line.isSystemEvent && selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { if (!line.isSystemEvent) selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.isSystemEvent) Panel2 else if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices && !line.isSystemEvent) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices && !line.isSystemEvent) Cyan else GlassBorder), shape = if (line.isSystemEvent) RoundedCornerShape(50) else RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
@@ -3290,7 +3298,7 @@ private fun ChatPage(
                         Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 7.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 10.sp) }) } }
                         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 8.dp)) {
                             if (orderedRecent.isEmpty()) item { Column(Modifier.fillMaxWidth().padding(top = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("暂无历史对话", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold); Text("开始聊天后，记录会显示在这里", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp)) } }
-                            items(orderedRecent) { prompt ->
+                            items(orderedRecent, key = { prompt -> prompt }, contentType = { "recent-chat" }) { prompt ->
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(vertical = 6.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f).clickable { onOpenRecentSession(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 5.dp)) { Text(prompt, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 2); Text("与 " + avatarName + " 的对话", color = Muted, fontSize = 10.sp) }
                                     IconButton(onClick = { onShareRecentSession(prompt) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Share, contentDescription = "分享完整对话", tint = Cyan, modifier = Modifier.size(17.dp)) }
