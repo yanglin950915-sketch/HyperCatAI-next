@@ -31,13 +31,17 @@ class AudioSessionCoordinator private constructor(context: Context) {
     private var previousSpeaker = false
     private var focusRequest: AudioFocusRequest? = null
 
-    fun acquire(owner: Owner, speakerphone: Boolean = false): Lease {
+    fun acquire(
+        owner: Owner,
+        speakerphone: Boolean = false,
+        onAudioFocusChange: ((Int) -> Unit)? = null,
+    ): Lease {
         synchronized(lock) {
             check(activeLease == null) { "音频设备正在被 ${activeOwner} 使用，请先结束当前音频会话" }
             previousMode = audioManager.mode
             previousSpeaker = audioManager.isSpeakerphoneOn
             val listener = AudioManager.OnAudioFocusChangeListener { change ->
-                if (change <= AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) onFocusLost?.invoke(change)
+                onAudioFocusChange?.invoke(change)
             }
             var request: AudioFocusRequest? = null
             try {
@@ -74,7 +78,6 @@ class AudioSessionCoordinator private constructor(context: Context) {
         }
     }
 
-    @Volatile var onFocusLost: ((Int) -> Unit)? = null
 
     private fun abandonFocus(
         listener: AudioManager.OnAudioFocusChangeListener,

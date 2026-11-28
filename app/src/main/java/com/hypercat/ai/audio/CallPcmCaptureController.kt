@@ -103,7 +103,9 @@ class CallPcmCaptureController(
             }, "HyperCat-CallMicCapture").apply { start() }
         } catch (error: Throwable) {
             running = false
+            releaseAudioEffects()
             runCatching { input?.release() }
+            if (recorder === input) recorder = null
             if (lease === acquired) lease = null
             acquired.close()
             throw error
@@ -122,7 +124,10 @@ class CallPcmCaptureController(
             while (running && enabled && !Thread.currentThread().isInterrupted) {
                 val count = input.read(frame, 0, frame.size, AudioRecord.READ_BLOCKING)
                 if (count < 0) {
-                    if (running) onError("AudioRecord.read 失败：$count", null)
+                    if (running) {
+                        running = false
+                        onError("AudioRecord.read 失败：$count", null)
+                    }
                     break
                 }
                 if (count == 0) continue
@@ -173,7 +178,10 @@ class CallPcmCaptureController(
                 }
             }
         } catch (error: Throwable) {
-            if (running && enabled) onError("麦克风实时采集异常：${error.message}", error)
+            if (running && enabled) {
+                running = false
+                onError("麦克风实时采集异常：${error.message}", error)
+            }
         } finally {
             if (collecting && utteranceBytes >= MIN_UTTERANCE_BYTES) dispatchUtterance(utterance.toByteArray())
         }

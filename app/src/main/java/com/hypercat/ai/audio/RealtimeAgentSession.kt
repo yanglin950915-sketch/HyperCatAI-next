@@ -1,6 +1,7 @@
 package com.hypercat.ai.audio
 
 import android.content.Context
+import android.media.AudioManager
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.ArrayBlockingQueue
@@ -31,6 +32,7 @@ class RealtimeAgentSession(
     private val failureReported = AtomicBoolean(false)
     @Volatile private var state = State.IDLE
     @Volatile private var audioLease: AudioSessionCoordinator.Lease? = null
+    private val interruptedByAudioFocus = AtomicBoolean(false)
     private val playbackQueue = ArrayBlockingQueue<ByteArray>(16)
     @Volatile private var playbackThread: Thread? = null
     @Volatile private var microphoneEnabled = true
@@ -71,15 +73,32 @@ class RealtimeAgentSession(
                 require(audio.sampleRate == expected) { "当前音频引擎为 ${audio.sampleRate} Hz，但所选 Realtime 协议要求 ${expected} Hz PCM；请使用匹配采样率的引擎" }
             }
             val coordinator = AudioSessionCoordinator.get(appContext)
-            audioLease = coordinator.acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true)
-            coordinator.onFocusLost = { _ ->
-                if (!closed.get()) {
-                    playbackQueue.clear()
-                    audio.interruptPlayback()
-                    adapter.cancelResponse()
-                    transition(State.INTERRUPTED)
-                }
-            }
+            audioLease = coordinator.acquire(
+                AudioSessionCoordinator.Owner.REALTIME_CALL,
+                speakerphone = true,
+                onAudioFocusChange = { change ->
+                    if (closed.get()) return@acquire
+                    when (change) {
+                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+                        AudioManager.AUDIOFOCUS_LOSS -> {
+                            interruptedByAudioFocus.set(true)
+                            playbackQueue.clear()
+                            audio.interruptPlayback()
+                            adapter.cancelResponse()
+                            transition(State.INTERRUPTED)
+                        }
+                        AudioManager.AUDIOFOCUS_GAIN -> {
+                            if (interruptedByAudioFocus.compareAndSet(true, false) &&
+                                state == State.INTERRUPTED && !closed.get()
+                            ) {
+                                transition(State.LISTENING)
+                            }
+                        }
+                        // Ducking is not a full interruption; keep the conversation alive.
+                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> Unit
+                    }
+                },
+            )
             adapter.connect(object : RealtimeModelAdapter.Events {
                 override fun onReady() {
                     if (closed.get()) return
@@ -228,7 +247,6 @@ class RealtimeAgentSession(
         playbackThread = null
         runCatching { audio.close() }
         runCatching { adapter.close() }
-        AudioSessionCoordinator.get(appContext).onFocusLost = null
         audioLease?.close()
         audioLease = null
         transition(State.CLOSED)

@@ -2594,6 +2594,8 @@ private fun ChatPage(
                     if (callActive) {
                         speechStatus = message
                         isListening = false
+                        micEnabled = false
+                        callPcmCaptureController?.setEnabled(false)
                         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                     }
                 }
