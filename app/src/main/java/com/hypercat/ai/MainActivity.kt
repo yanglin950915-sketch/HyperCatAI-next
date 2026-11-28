@@ -2632,6 +2632,8 @@ private fun ChatPage(
                         recognitionStartJob?.cancel()
                         recognitionSessionActive = false
                         speechAudioLease?.close(); speechAudioLease = null
+                        realtimeCallSession?.close(); realtimeCallSession = null
+                        realtimeAssistantDraft = ""
                         runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
                         agentPlaybackUntilMs = 0L
                         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
