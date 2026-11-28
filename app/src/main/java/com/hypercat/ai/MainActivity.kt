@@ -1224,7 +1224,7 @@ private fun HyperCatApp() {
         if (isThinking) avatarMood = "thinking"
     }
 
-    LaunchedEffect(avatarName, avatarId, avatarMood, avatarReply, rearAvatarState.updatedAt, rearAvatarState.reply) {
+    LaunchedEffect(avatarName, avatarId, avatarMood, avatarReply) {
         // Name/mood changes are presentation updates, not fresh replies. Only a changed
         // reply is a new event; otherwise preserve the stored interaction timestamp.
         val isNewReplyEvent = avatarReply != rearAvatarState.reply
