@@ -4170,13 +4170,18 @@ private fun SettingsPage(
         Spacer(Modifier.height(10.dp))
         Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                Text("模型工作台", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("按能力配置服务，互不干扰；选择分类后管理对应模型。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     listOf("推理模型", "语音模型", "视觉模型", "实时语音").forEach { tab ->
-                        FilterChip(
-                            selected = modelSettingsTab == tab,
-                            onClick = { modelSettingsTab = tab },
-                            label = { Text(tab, fontSize = 11.sp, maxLines = 1) }
-                        )
+                        Surface(
+                            modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { modelSettingsTab = tab },
+                            color = if (modelSettingsTab == tab) Cyan.copy(alpha = if (appDarkState) .18f else .10f) else Panel2.copy(alpha = .55f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (modelSettingsTab == tab) Cyan.copy(alpha = .55f) else GlassBorder)
+                        ) {
+                            Text(tab, color = if (modelSettingsTab == tab) Cyan else Muted, fontSize = 11.sp, fontWeight = if (modelSettingsTab == tab) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp))
+                        }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -4342,11 +4347,46 @@ private fun SettingsPage(
                                     }, enabled = visionProfileName.isNotBlank() && visionEndpoint.isNotBlank() && visionModel.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存视觉模型") }
                 }
                 if (modelSettingsTab == "实时语音") {
-                                    Text("原生实时语音服务（可选）", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("用于低延迟双向语音连接。它与普通 TTS 不同，也不等同于推理模型的 HTTP 接口。", color = Muted, fontSize = 10.sp)
-                                    Text("在推理模型详情中为对应模型开启 Realtime 并填写 WebSocket 地址。不同推理模型可以分别保存 Realtime 配置。", color = Muted, fontSize = 11.sp)
-                                    Text("当前协议：${if (profileRealtimeProtocol == "openai_realtime") "OpenAI Realtime" else "组合语音模式"}", color = Cyan, fontSize = 12.sp)
-                                    Text("Realtime 地址：${profileRealtimeEndpoint.ifBlank { "未配置" }}", color = Muted, fontSize = 10.sp, maxLines = 2)
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column {
+                            Text("实时语音方案", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("还没有配置原生 Realtime？可以先使用下方的组合语音方案，不需要额外购买一个全能语音模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
+                        }
+                        Surface(color = if (appDarkState) Color(0xFF142322) else Color(0xFFEAF7F3), shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Cyan.copy(alpha = .28f))) {
+                            Column(Modifier.fillMaxWidth().padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("推荐入门方案", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Surface(color = Cyan.copy(alpha = .16f), shape = RoundedCornerShape(20.dp)) { Text("无需原生 Realtime", color = Cyan, fontSize = 9.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) }
+                                }
+                                Text("ASR 识别  →  推理模型  →  TTS 合成", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text("麦克风音频先转成文字，交给当前选中的推理模型处理，再由 TTS 把回复读出来。三个环节可以来自不同服务商。", color = Muted, fontSize = 10.sp)
+                                Divider(color = GlassBorder)
+                                Text("① ASR · 语音识别", color = MainText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("选择支持中文的语音转文字模型，例如 Whisper、豆包语音识别或 MiMo ASR。优先选支持流式识别、低延迟的服务。", color = Muted, fontSize = 10.sp)
+                                Text("② LLM · 推理与对话", color = MainText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("直接使用上方「推理模型」中已选中的模型，例如 DeepSeek、豆包、GPT 或其他 OpenAI 兼容模型。", color = Muted, fontSize = 10.sp)
+                                Text("③ TTS · 语音合成", color = MainText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("选择支持中文、流式输出的语音合成服务，例如火山引擎 TTS、MiMo TTS、CosyVoice 或其他兼容服务；也可以先用系统语音。", color = Muted, fontSize = 10.sp)
+                                Text("建议：ASR 与 TTS 可以使用不同厂商；确认接口协议、音频格式、语言和模型权限匹配，不要只看模型名称。", color = Muted, fontSize = 9.sp)
+                            }
+                        }
+                        Surface(color = Panel2.copy(alpha = .55f), shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+                            Column(Modifier.fillMaxWidth().padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Text("进阶方案 · 原生 Realtime", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("单个语音模型直接接收音频并生成语音，通常延迟更低、对话更连贯，也更适合自然插话。", color = Muted, fontSize = 10.sp)
+                                Text("可关注模型类型：OpenAI Realtime、兼容 Realtime WebSocket 协议的语音模型，以及服务商提供的端到端 Speech-to-Speech 模型。", color = Muted, fontSize = 10.sp)
+                                Text("注意：普通 Chat Completions 模型、ASR 模型或 TTS 模型不能直接当作 Realtime 模型使用；必须确认服务商支持相同的 Realtime 协议与事件格式。", color = Muted, fontSize = 9.sp)
+                            }
+                        }
+                        Surface(color = Panel, shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
+                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("当前配置状态", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("当前模式：${if (profileRealtimeProtocol == "openai_realtime") "原生 Realtime" else "ASR + 推理模型 + TTS 组合模式"}", color = Cyan, fontSize = 11.sp)
+                                Text("Realtime WebSocket：${profileRealtimeEndpoint.ifBlank { "未配置（可继续使用组合语音模式）" }}", color = Muted, fontSize = 10.sp, maxLines = 3)
+                                Text("配置入口：推理模型 → 选择对应模型 → 开启 Realtime → 填写服务商提供的 wss:// 地址。", color = Muted, fontSize = 10.sp)
+                            }
+                        }
+                    }
                 }
                 Text("密钥目前保存在应用私有配置中；模型推理请求与密钥加密存储仍需后续接入。", color = Muted, fontSize = 10.sp)
                 Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) { Text("保存模型配置", fontWeight = FontWeight.Bold) }
