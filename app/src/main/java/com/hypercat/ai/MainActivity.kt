@@ -211,13 +211,13 @@ private fun applyPlatformNightMode(context: Context, mode: String) {
     }
 }
 
-private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF7F7F8)
-private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFF0F1F2)
-private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFE8EAED)
-private val Cyan get() = if (appDarkState) Color(0xFFE6E6E6) else Color(0xFF2563EB)
-private val Muted get() = if (appDarkState) Color(0xFFA0A0A0) else Color(0xFF77766F)
-private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f) else Color(0xFFE5E2DA)
-private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF262521)
+private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFFFFFFF)
+private val Panel get() = if (appDarkState) Color(0xFF0D0D0D) else Color(0xFFFFFFFF)
+private val Panel2 get() = if (appDarkState) Color(0xFF191919) else Color(0xFFF4F4F4)
+private val Cyan get() = if (appDarkState) Color(0xFFF2F2F2) else Color(0xFF171717)
+private val Muted get() = if (appDarkState) Color(0xFF9A9A9A) else Color(0xFF777777)
+private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .14f) else Color(0xFFE6E6E6)
+private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF171717)
 
 class MainActivity : ComponentActivity() {
 
@@ -1246,23 +1246,23 @@ private fun HyperCatApp() {
 
     val appTypography = Typography()
     val appShapes = Shapes(
-        extraSmall = RoundedCornerShape(8.dp),
-        small = RoundedCornerShape(12.dp),
-        medium = RoundedCornerShape(16.dp),
-        large = RoundedCornerShape(20.dp),
-        extraLarge = RoundedCornerShape(24.dp)
+        extraSmall = RoundedCornerShape(6.dp),
+        small = RoundedCornerShape(10.dp),
+        medium = RoundedCornerShape(12.dp),
+        large = RoundedCornerShape(16.dp),
+        extraLarge = RoundedCornerShape(20.dp)
     )
     MaterialTheme(
         colorScheme = if (darkNow) darkColorScheme(
-            primary = Color(0xFFD7DCE2), secondary = Color(0xFFAEB8C5), background = Bg, surface = Panel,
-            onPrimary = Color(0xFF17191C), onSurface = Color(0xFFF1F2F4),
-            surfaceVariant = Color(0xFF202226), onSurfaceVariant = Color(0xFFB7BBC2),
-            outline = Color(0xFF34383E)
+            primary = Color(0xFFF2F2F2), secondary = Color(0xFFBDBDBD), background = Bg, surface = Panel,
+            onPrimary = Color(0xFF111111), onSurface = Color(0xFFF5F5F5),
+            surfaceVariant = Color(0xFF191919), onSurfaceVariant = Color(0xFFB0B0B0),
+            outline = Color(0xFF333333)
         ) else lightColorScheme(
-            primary = Color(0xFF3F596B), secondary = Color(0xFF667887), background = Bg, surface = Panel,
-            onPrimary = Color.White, onSurface = Color(0xFF202328),
-            surfaceVariant = Color(0xFFEDEFF1), onSurfaceVariant = Color(0xFF626A72),
-            outline = Color(0xFFD9DDE1)
+            primary = Color(0xFF171717), secondary = Color(0xFF666666), background = Bg, surface = Panel,
+            onPrimary = Color.White, onSurface = Color(0xFF171717),
+            surfaceVariant = Color(0xFFF4F4F4), onSurfaceVariant = Color(0xFF666666),
+            outline = Color(0xFFE2E2E2)
         ),
         typography = appTypography,
         shapes = appShapes
