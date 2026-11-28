@@ -25,6 +25,17 @@ import androidx.compose.runtime.collectAsState
 
 data class Live2DRenderState(val ready: Boolean = false, val error: String? = null, val fps: Int = 0)
 
+enum class RealtimeAvatarPhase {
+    IDLE, CONNECTING, LISTENING, RESPONDING, INTERRUPTED, FAILED
+}
+
+/** Shared Realtime state for all Live2D surfaces, including rear-screen rendering. */
+object RealtimeAvatarStateStore {
+    private val mutable = kotlinx.coroutines.flow.MutableStateFlow(RealtimeAvatarPhase.IDLE)
+    val state = mutable.asStateFlow()
+    fun set(phase: RealtimeAvatarPhase) { mutable.value = phase }
+}
+
 /** WebGL Live2D host. The default Cubism model is bundled into the APK assets. */
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 @Composable
