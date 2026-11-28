@@ -75,20 +75,21 @@ class CallPcmCaptureController(
         val acquired = coordinator.acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true)
         var input: AudioRecord? = null
         try {
-            input = AudioRecord(
+            val startedRecorder = AudioRecord(
                 MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
                 maxOf(minBuffer * 2, FRAME_BYTES * 8)
             )
-            check(input.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord 初始化失败，无法打开麦克风" }
-            input.startRecording()
-            check(input.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "麦克风未进入录音状态" }
-            recorder = input
+            input = startedRecorder
+            check(startedRecorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord 初始化失败，无法打开麦克风" }
+            startedRecorder.startRecording()
+            check(startedRecorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "麦克风未进入录音状态" }
+            recorder = startedRecorder
             lease = acquired
             running = true
-            captureThread = Thread({ captureLoop(input) }, "HyperCat-CallMicCapture").apply {
+            captureThread = Thread({ captureLoop(startedRecorder) }, "HyperCat-CallMicCapture").apply {
                 priority = Process.THREAD_PRIORITY_AUDIO
                 start()
             }
