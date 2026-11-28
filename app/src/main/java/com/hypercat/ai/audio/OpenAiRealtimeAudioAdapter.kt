@@ -100,8 +100,25 @@ class OpenAiRealtimeAudioAdapter(
         if (!sent && !closed.get()) fail("Realtime 音频帧发送失败")
     }
 
-    /** Server VAD commits user turns; explicit commit is intentionally not sent. */
+    /** Server VAD commits microphone turns; explicit commit is intentionally not sent. */
     override fun endUserTurn() = Unit
+
+    override fun sendTextPrompt(text: String) {
+        if (closed.get()) return
+        val clean = text.trim()
+        if (clean.isEmpty()) return
+        val itemSent = socket?.send(JSONObject()
+            .put("type", "conversation.item.create")
+            .put("item", JSONObject()
+                .put("type", "message")
+                .put("role", "user")
+                .put("content", org.json.JSONArray().put(JSONObject()
+                    .put("type", "input_text")
+                    .put("text", clean)))).toString()) ?: false
+        if (!itemSent) { fail("Realtime 文本消息发送失败"); return }
+        val responseSent = socket?.send(JSONObject().put("type", "response.create").toString()) ?: false
+        if (!responseSent) fail("Realtime 回复请求发送失败")
+    }
 
     override fun cancelResponse() {
         if (!closed.get()) socket?.send(JSONObject().put("type", "response.cancel").toString())
@@ -114,8 +131,6 @@ class OpenAiRealtimeAudioAdapter(
             "session.updated" -> { if (readyDelivered.compareAndSet(false, true) && !closed.get()) sink.onReady() }
             "input_audio_buffer.speech_started" -> sink.onInterrupted()
             "input_audio_buffer.committed" -> Unit
-            "conversation.item.input_audio_transcription.delta" ->
-                event.optString("delta").takeIf { it.isNotEmpty() }?.let(sink::onTextDelta)
             "conversation.item.input_audio_transcription.completed" -> {
                 val transcript = event.optString("transcript").trim()
                 if (transcript.isNotEmpty()) sink.onUserTranscript(transcript)
