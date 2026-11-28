@@ -1215,6 +1215,12 @@ private fun HyperCatApp() {
                     messages = messages,
                     callMessages = callMessages,
                     callThinking = callThinking,
+                    onCallStart = {
+                        callReplyJob?.cancel()
+                        callReplyGeneration++
+                        callMessages.clear()
+                        callThinking = false
+                    },
                     isThinking = isThinking,
                     recentPrompts = recentPrompts,
                     onDeleteRecentPrompt = { prompt -> recentPrompts = recentPrompts.filterNot { it == prompt }; chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).remove("chat_session_$prompt").apply() },
@@ -1743,7 +1749,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: List<ChatLine>, callThinking: Boolean, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: List<ChatLine>, callThinking: Boolean, onCallStart: () -> Unit, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>, Boolean, String?, Long) -> Unit, onCallInitiative: (String) -> Unit,
     onRealtimeUserTranscript: (String) -> Unit, onRealtimeAssistantReply: (String) -> Unit,
     openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
@@ -2369,10 +2375,6 @@ private fun ChatPage(
             videoEnabled = false
             showCallInfo = true
             // Do not replay the last normal-chat reply when the call dialog opens.
-            callReplyJob?.cancel()
-            callReplyGeneration++
-            callMessages.clear()
-            callThinking = false
             lastCallSpokenText = callMessages.lastOrNull { !it.fromUser }?.text.orEmpty()
             isListening = true
             isSpeaking = false
@@ -2480,11 +2482,8 @@ private fun ChatPage(
     }
     fun startUnifiedCall() {
         if (!configured) { Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show(); return }
-        // Every call starts with its own clean transcript, including OpenAI Realtime calls.
-        callReplyJob?.cancel()
-        callReplyGeneration++
-        callMessages.clear()
-        callThinking = false
+        // Reset the call-only transcript before requesting microphone permission or starting Realtime.
+        onCallStart()
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             callMicPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         } else {
