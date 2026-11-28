@@ -33,8 +33,8 @@
         <WebViewCommand target="wv" command="runjs" params="'__setAgentJson('+@resultJson+')'" delay="250"/>
     </Function>
 
-    <!-- Local offline Live2D renderer; full-panel background with an 18% top camera-safe avatar area. -->
-    <WebView name="wv" x="0" y="0" w="#view_width" h="#view_height" local="true" cachePage="false" uri="web/live2d/render.html">
+    <!-- Original Mi Rear AI Pet runtime; Agent state and gestures are bridged through the MAML host. -->
+    <WebView name="wv" x="0" y="0" w="#view_width" h="#view_height" local="true" cachePage="false" uri="web/index.html">
         <Triggers>
             <Trigger action="avatar_touch">
                 <IntentCommand action="com.hypercat.ai.rear.AVATAR_INTERACTION" package="com.hypercat.ai" broadcast="true">

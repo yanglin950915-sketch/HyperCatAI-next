@@ -44,16 +44,13 @@ import java.util.Locale
 import android.speech.tts.UtteranceProgressListener
 import com.hypercat.ai.avatar.AvatarDeviceStateStore
 import com.hypercat.ai.avatar.AvatarStatusBadges
-import com.hypercat.ai.avatar.Live2DModelStore
-import com.hypercat.ai.avatar.Live2DView
-import com.hypercat.ai.avatar.Live2DControllerHub
 
-/** Direct rear-display host. Uses the same Live2D renderer and Agent state as the main screen. */
+/** Direct rear-display host. Runs the upstream Mi Rear AI Pet runtime with the shared Agent state. */
 class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var listening by mutableStateOf(false)
-    private var live2dSpeaking by mutableStateOf(false)
+    private var rearSpeaking by mutableStateOf(false)
     private var lastSpokenReply = ""
     private var pendingPermission = false
     private var rearWebView: WebView? = null
@@ -161,25 +158,7 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         setContent {
             val avatar by AvatarStateStore.state.collectAsState()
             val deviceState by AvatarDeviceStateStore.state.collectAsState()
-            val live2dModel = androidx.compose.runtime.remember { Live2DModelStore.currentRear(this@RearAvatarActivity) }
             Box(Modifier.fillMaxSize().background(runCatching { Color(android.graphics.Color.parseColor(avatar.backgroundColor)) }.getOrDefault(Color(0xFF05070D)))) {
-                if (live2dModel != null) {
-                    Live2DView(
-                        model = live2dModel,
-                        modifier = Modifier.fillMaxSize().zIndex(0f),
-                        mood = avatar.mood,
-                        speaking = live2dSpeaking,
-                        musicPlaying = deviceState.music,
-                        halfBody = false,
-                        safeTopRatio = rearSafeTopRatio,
-                        safeLeftRatio = rearSafeLeftRatio,
-                        safeRightRatio = rearSafeRightRatio,
-                        safeBottomRatio = rearSafeBottomRatio,
-                        rearDisplay = true,
-                        showInterface = false,
-                        onGesture = { action, _ -> RearAgentInteractionDispatcher.enqueue(this@RearAvatarActivity, action) }
-                    )
-                } else {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { context ->
@@ -197,20 +176,19 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             webViewClient = object : WebViewClient() {
                                 override fun onPageFinished(view: WebView, url: String?) {
                                     super.onPageFinished(view, url)
-                                    applyAvatarState(view, avatar.avatarName, avatar.avatarId, avatar.mood, avatar.reply, avatar.backgroundColor)
+                                    applyAvatarState(view, avatar.avatarName, avatar.avatarId, avatar.mood, avatar.reply, avatar.backgroundColor, rearSpeaking)
                                 }
                             }
                             rearWebView = this
-                            loadUrl("file:///android_asset/web/index.html")
+                            loadUrl("file:///android_asset/mi_rear_pet/index.html")
                         }
                     },
                     update = { view ->
-                        applyAvatarState(view, avatar.avatarName, avatar.avatarId, avatar.mood, avatar.reply, avatar.backgroundColor)
+                        applyAvatarState(view, avatar.avatarName, avatar.avatarId, avatar.mood, avatar.reply, avatar.backgroundColor, rearSpeaking)
                     }
                 )
-                }
                 AvatarStatusBadges(Modifier.align(Alignment.TopCenter).padding(start = 12.dp, end = 12.dp, top = 10.dp).fillMaxWidth().zIndex(2f), rearControls = true)
-                if (live2dModel == null) Button(
+                Button(
                     onClick = { startVoiceInput() },
                     modifier = Modifier.align(Alignment.TopEnd).padding(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2878F0))
@@ -231,13 +209,13 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun applyAvatarState(view: WebView, name: String, avatar: String, mood: String, reply: String, backgroundColor: String) {
+    private fun applyAvatarState(view: WebView, name: String, avatar: String, mood: String, reply: String, backgroundColor: String, speaking: Boolean) {
         val script = "window.__setAgentState && window.__setAgentState(" +
             "${org.json.JSONObject.quote(name)}," +
             "${org.json.JSONObject.quote(avatar)}," +
             "${org.json.JSONObject.quote(mood)}," +
             "${org.json.JSONObject.quote(reply)}," +
-            "${org.json.JSONObject.quote(backgroundColor)});"
+            "${org.json.JSONObject.quote(backgroundColor)}, $speaking);"
         view.evaluateJavascript(script, null)
     }
 
@@ -335,14 +313,14 @@ class RearAvatarActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             tts?.setSpeechRate(1.0f)
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
-                    runOnUiThread { live2dSpeaking = true; Live2DControllerHub.setSpeaking(true) }
+                    runOnUiThread { rearSpeaking = true }
                 }
                 override fun onDone(utteranceId: String?) {
-                    runOnUiThread { live2dSpeaking = false; Live2DControllerHub.setSpeaking(false) }
+                    runOnUiThread { rearSpeaking = false }
                 }
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
-                    runOnUiThread { live2dSpeaking = false; Live2DControllerHub.setSpeaking(false) }
+                    runOnUiThread { rearSpeaking = false }
                 }
             })
         }

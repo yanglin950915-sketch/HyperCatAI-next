@@ -4033,7 +4033,7 @@ private fun AvatarSettingsPage(
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
         Text("虚拟形象", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Text("已切换为原作者 Mi Rear AI Pet 桌宠，不再使用 Live2D 模型", color = Muted, fontSize = 12.sp,
+        Text("已切换为原作者 Mi Rear AI Pet 桌宠", color = Muted, fontSize = 12.sp,
             modifier = Modifier.padding(top = 6.dp, bottom = 16.dp))
         Surface(color = Panel, shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {

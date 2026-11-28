@@ -1,14 +1,12 @@
 package com.hypercat.ai.rear
 
 import android.content.Context
-import com.hypercat.ai.avatar.Live2DModelStore
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import java.util.zip.ZipFile
-import org.json.JSONObject
 
-/** Builds the offline MAML carrier directly from this APK's bundled rear-screen assets. */
+/** Builds the offline MAML carrier with the original upstream pet runtime and no external model bundle. */
 object RearCardPackageBuilder {
     fun build(context: Context): File {
         val outputDir = File(requireNotNull(context.getExternalFilesDir(null)), "rear-deploy")
@@ -19,9 +17,8 @@ object RearCardPackageBuilder {
             ZipOutputStream(partial.outputStream().buffered()).use { zip ->
                 addAsset(context, zip, "manifest.xml", "manifest.xml")
                 addTree(context, zip, "web", "web")
-                addImportedLive2DModel(context, zip)
             }
-            verifyPackage(partial, context)
+            verifyPackage(partial)
             if (output.exists() && !output.delete()) error("无法替换旧的背屏资源包")
             check(partial.renameTo(output)) { "无法生成背屏资源包" }
             return output
@@ -38,86 +35,14 @@ object RearCardPackageBuilder {
     }
 
     /** Reject incomplete packages before exposing them to the Xiaomi theme manager. */
-    private fun verifyPackage(file: File, context: Context) {
-        val model = Live2DModelStore.currentRear(context)
-        val root = "web/models/active/"
+    private fun verifyPackage(file: File) {
         ZipFile(file).use { archive ->
             val names = archive.entries().asSequence().map { it.name }.toHashSet()
-            fun requireFile(path: String) {
-                require(path.isNotBlank() && !path.startsWith("/") && ".." !in path.split("/")) { "模型资源路径无效：$path" }
-                require(root + path in names) { "背屏资源包缺少模型文件：$path" }
-            }
             require("manifest.xml" in names) { "背屏资源包缺少 manifest.xml" }
             require("web/index.html" in names) { "背屏资源包缺少 web/index.html" }
-            require("web/live2d/render.html" in names) { "背屏资源包缺少 Live2D 渲染器" }
-            require("web/models/active/model-entry.js" in names) { "背屏资源包缺少模型入口脚本" }
-            val expectedMarker = "window.HyperCatLive2DModel=" +
-                JSONObject().put("entry", model.entry).toString() + ";"
-            val actualMarker = archive.getInputStream(
-                archive.getEntry("web/models/active/model-entry.js")
-            ).bufferedReader().use { it.readText() }.trim()
-            require(actualMarker == expectedMarker) { "背屏模型入口与当前角色不一致" }
-            requireFile(model.entry)
-            val settings = JSONObject(archive.getInputStream(archive.getEntry(root + model.entry)).bufferedReader().use { it.readText() })
-            val refs = settings.optJSONObject("FileReferences") ?: error("模型配置缺少 FileReferences")
-            val moc = refs.optString("Moc")
-            requireFile(moc)
-            val textures = refs.optJSONArray("Textures") ?: error("模型配置缺少纹理列表")
-            require(textures.length() > 0) { "模型配置没有纹理资源" }
-            for (index in 0 until textures.length()) requireFile(textures.optString(index))
-
-            // A model can have valid MOC/textures but still fail to initialize if an
-            // auxiliary file referenced by the settings was omitted from the exported ZIP.
-            listOf("Physics", "Pose", "UserData", "DisplayInfo").forEach { key ->
-                val path = refs.optString(key)
-                if (path.isNotBlank() && path != "null") requireFile(path)
-            }
-            val expressions = refs.optJSONArray("Expressions")
-            if (expressions != null) for (index in 0 until expressions.length()) {
-                val path = expressions.optJSONObject(index)?.optString("File").orEmpty()
-                if (path.isNotBlank()) requireFile(path)
-            }
-            val motions = refs.optJSONObject("Motions")
-            if (motions != null) {
-                val groups = motions.keys()
-                while (groups.hasNext()) {
-                    val group = motions.getJSONArray(groups.next())
-                    for (index in 0 until group.length()) {
-                        val motion = group.optJSONObject(index) ?: continue
-                        val path = motion.optString("File")
-                        if (path.isNotBlank() && path != "null") requireFile(path)
-                        val sound = motion.optString("Sound")
-                        if (sound.isNotBlank() && sound != "null") requireFile(sound)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun addImportedLive2DModel(context: Context, zip: ZipOutputStream) {
-        val model = Live2DModelStore.currentRear(context)
-        val assetDirectory = model.directory
-            .removePrefix("file:///android_asset/")
-            .trim('/')
-        require(assetDirectory.startsWith("avatar/") && ".." !in assetDirectory.split("/")) {
-            "内置 Live2D 模型资源路径无效"
-        }
-        addAssetTree(context, zip, assetDirectory, "web/models/active")
-        zip.putNextEntry(ZipEntry("web/models/active/model-entry.js"))
-        val marker = "window.HyperCatLive2DModel=" + org.json.JSONObject().put("entry", model.entry).toString() + ";"
-        zip.write(marker.toByteArray(Charsets.UTF_8))
-        zip.closeEntry()
-    }
-
-    private fun addAssetTree(context: Context, zip: ZipOutputStream, assetPath: String, entryRoot: String) {
-        context.assets.list(assetPath).orEmpty().sorted().forEach { child ->
-            val nextAsset = "$assetPath/$child"
-            val nextEntry = "$entryRoot/$child"
-            if (context.assets.list(nextAsset).orEmpty().isEmpty()) {
-                addAsset(context, zip, nextAsset, nextEntry)
-            } else {
-                addAssetTree(context, zip, nextAsset, nextEntry)
-            }
+            val html = archive.getInputStream(archive.getEntry("web/index.html")).bufferedReader().use { it.readText() }
+            require("window.__setAgentState" in html && "window.__setAgentJson" in html) { "背屏桌宠缺少 Agent 状态桥接" }
+            require("maml.doAction" in html && "Mi Rear AI Pet" in html) { "背屏桌宠资源或触摸桥接不完整" }
         }
     }
 

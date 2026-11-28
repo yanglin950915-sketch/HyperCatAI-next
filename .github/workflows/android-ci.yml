@@ -1,9 +1,9 @@
 name: Android CI
 on:
   push:
-    branches: [fix/v0.9.40-splash-rearscreen-anime, feat/rear-voice-v0.9.36,  main, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29, fix/live2d-model-zip-import, fix/live2d-smoothness-clarity-v0.9.46, feature/multiple-live2d-avatars-v0.9.47, feature/audio-unification-realtime-096 ]
+    branches: [fix/v0.9.40-splash-rearscreen-anime, feat/rear-voice-v0.9.36,  main, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29, feature/audio-unification-realtime-096 ]
   pull_request:
-    branches: [ main, feat/live2d-avatar-agent-integration, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29 ]
+    branches: [ main, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.25, fix/rear-ai-wallpaper-picker-v0.9.29 ]
 permissions:
   contents: read
 jobs:
@@ -31,7 +31,7 @@ jobs:
           assert "background_color" in Path("app/src/main/java/com/hypercat/ai/rear/RearAvatarProvider.kt").read_text(encoding="utf-8"), "rear background state missing"
           verifier = Path("app/src/main/java/com/hypercat/ai/rear/RearCallerVerifier.kt").read_text(encoding="utf-8")
           assert "com.android.thememanager" in verifier and "TRUSTED_PACKAGES" in verifier, "native Xiaomi MAML host verification missing"
-          assert webview.attrib.get("uri") == "web/live2d/render.html", "MAML must load the shared Live2D renderer directly without query parsing"
+          assert webview.attrib.get("uri") == "web/index.html", "MAML must load the bundled upstream pet runtime"
           assert root.attrib.get("screenWidth") == "976", "target rear width mismatch"
           assert root.find("VariableBinders") is not None, "Agent data binder missing"
           assert "com.hypercat.ai.rear.provider/avatar-state" in manifest.read_text(encoding="utf-8"), "Agent provider URI missing"
@@ -44,18 +44,14 @@ jobs:
           dispatcher = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionDispatcher.kt").read_text(encoding="utf-8")
           assert "enqueueUniqueWork" in dispatcher and "RearAgentInteractionWorker" in dispatcher, "rear event must be queued durably"
           assert "rear_avatar_enabled" in Path("app/src/main/java/com/hypercat/ai/rear/AvatarStateStore.kt").read_text(encoding="utf-8"), "rear projection preference missing"
-          assert "canvas.style.visibility=projectionEnabled" not in html, "rear canvas must not be hidden by optional provider state"
-          assert "function avatarSvg" not in html and "function drawFace" not in html and "drawFace(t)" not in html, "legacy hand-drawn rear avatar renderer must be removed"
           assert 'assets.srcDir("../rearscreen")' in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "rear widget assets must be bundled in APK"
           assert "RearAgentInteractionDispatcher.enqueue(context, action)" in receiver, "rear receiver must use shared dispatcher"
           avatar_store = Path("app/src/main/java/com/hypercat/ai/rear/AvatarStateStore.kt").read_text(encoding="utf-8")
           rear_worker = Path("app/src/main/java/com/hypercat/ai/rear/RearAgentInteractionWorker.kt").read_text(encoding="utf-8")
           assert "user_text" in Path("app/src/main/java/com/hypercat/ai/rear/RearAvatarProvider.kt").read_text(encoding="utf-8"), "rear interaction text must be exposed to the app state bridge"
           assert "userText = if (action == \"avatar_voice\") userText else eventPrompt" in rear_worker, "rear Agent turn must retain original user text"
-          assert "applyAgentState" in html and "__setAgentState=applyAgentState" in html, "rear avatar must apply synchronized Agent state"
+          assert "window.__setAgentState" in html and "window.__setAgentJson" in html, "rear pet must apply synchronized Agent state"
           assert '<meta name="viewport"' in html, "viewport meta missing"
-          assert "SAFE_ZONE:" in html and "AVAIL:" in html and "TOUCH:" in html, "layout audit comments missing"
-          assert "BASE_W=976,BASE_H=596" in html, "target design space mismatch"
           projection = Path("app/src/main/java/com/hypercat/ai/rear/RearProjectionController.kt").read_text(encoding="utf-8")
           rear_activity = Path("app/src/main/java/com/hypercat/ai/rear/RearAvatarActivity.kt").read_text(encoding="utf-8")
           assert "bindUserService" in projection and "scanCarriers" in projection and "deployCarrier" in projection, "Shizuku card deployment path missing"
@@ -68,25 +64,9 @@ jobs:
           assert "copyAtomically(target, backup)" in shell_service and "isMamlPackage(source, requireWeb = true)" in shell_service, "carrier must be backed up and package-validated before write"
           assert "am start --display" not in projection, "legacy direct Activity launch must not be the primary projection path"
           assert "RearAgentInteractionDispatcher.enqueue" in rear_activity, "rear activity must share Agent interaction pipeline"
-          assert 'file:///android_asset/web/index.html' in rear_activity and 'addJavascriptInterface' in rear_activity, "direct rear display must use the shared anime renderer and Agent bridge"
+          assert 'file:///android_asset/mi_rear_pet/index.html' in rear_activity and 'addJavascriptInterface' in rear_activity, "direct rear display must use the upstream pet and Agent bridge"
           assert "aidl = true" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "Shizuku UserService AIDL support missing"
           assert "class RearShellUserService" in Path("app/src/main/java/com/hypercat/ai/rear/RearShellUserService.kt").read_text(encoding="utf-8"), "Shizuku shell service missing"
-          live2d = Path("rearscreen/web/live2d")
-          for asset in ("render.html", "pixi.min.js", "cubism4.min.js", "live2dcubismcore.min.js"):
-              assert (live2d / asset).is_file() and (live2d / asset).stat().st_size > 1000, f"Live2D renderer asset missing: {asset}"
-          model_store = Path("app/src/main/java/com/hypercat/ai/avatar/Live2DModelStore.kt").read_text(encoding="utf-8")
-          live2d_view = Path("app/src/main/java/com/hypercat/ai/avatar/Live2DView.kt").read_text(encoding="utf-8")
-          assert all(name in model_store for name in ("Haru.model3.json", "Hiyori.model3.json", "Mao.model3.json", "Natori.model3.json", "Rice.model3.json")), "multi-character Live2D catalogue missing"
-          assert all(name in Path("app/build.gradle.kts").read_text(encoding="utf-8") for name in ("Haru", "Hiyori", "Mao", "Natori", "Rice")), "official Live2D character bundle task missing"
-          assert "importZip" not in model_store and "modelPicker" not in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "user model import UI must be removed"
-          gradle = Path("app/build.gradle.kts").read_text(encoding="utf-8")
-          assert "downloadBuiltInAvatar" in gradle and "CubismWebSamples" in gradle and "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd" in gradle, "pinned official Live2D sample build task missing"
-          assert "addAssetTree" in package_builder, "rear package must include built-in Live2D model from APK assets"
-          assert "Live2DView" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8") and "Live2DView" in rear_activity, "main/rear Live2D host integration missing"
-          assert "model-entry.js" in package_builder and "Live2DModelStore.current" in package_builder, "rear package must bundle imported Live2D model"
-          assert "onGesture" in (live2d / "render.html").read_text(encoding="utf-8"), "Live2D touch gesture bridge missing"
-          assert "Visualizer" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "TTS waveform mouth driver missing"
-          assert "Live2D Cubism Core" in Path("THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8"), "Live2D proprietary license notice missing"
           # Exhaustively scan every tracked text file and path, including README/docs/assets metadata.
           forbidden = "REAR" + "Eye"
           for path in Path(".").rglob("*"):
@@ -105,11 +85,7 @@ jobs:
           assert re.search(r'versionName = "0\.9\.\d+"', version_config), "versionName missing or malformed"
           assert re.search(r"versionCode = \d+", version_config), "versionCode missing or malformed"
           main_activity = Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8")
-          assert "val controller = remember { Live2DController() }" in live2d_view and "key(model.id)" not in main_activity and "key(selected.first)" not in main_activity, "Live2D preview must reuse its WebView when the selected model changes"
-          assert "AvatarPortrait" in main_activity and "Live2DView(" in main_activity and "onPortrait = { dataUrl ->" in main_activity, "Agent chat portraits must be captured from the actual Live2D model"
           assert "我的AI小伙伴" in main_activity, "Profile card title was not updated"
-          render_html = Path("rearscreen/web/live2d/render.html").read_text(encoding="utf-8")
-          assert "capturePortraitWhenReady" in render_html and "VIEW_OFFSET_X" in render_html, "Live2D portrait capture or model centering support missing"
           assert "Theme.HyperCat.Starting" in Path("app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"), "launch splash theme missing"
           styles = Path("app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
           assert 'windowSplashScreenBackground">#F7F7F8' in styles and 'android:windowBackground">#F7F7F8' in styles, "light splash and Activity backgrounds must match"
@@ -118,33 +94,19 @@ jobs:
           assert "resolveInitialDarkMode(this)" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "theme must be resolved before first Activity frame"
           assert "setApplicationNightMode" in main_activity and "applyPlatformNightMode(this, savedMode)" in main_activity, "app theme preference must control Android starting splash mode"
           assert "attachBaseContext(newBase: Context)" not in main_activity, "startup must not depend on a late Activity base-context theme override"
-          renderer_source = Path("rearscreen/web/live2d/render.html").read_text(encoding="utf-8")
-          assert "new URL(selfUrl, document.baseURI).href" in renderer_source and "new URL(params.get('dir') || '../models/active/', document.baseURI).href" in renderer_source and "new URL(normalized, json.url).href" in renderer_source, "Live2D model assets must be resolved to absolute URLs"
-          assert "return resolved;" in renderer_source and "return dir + normalized" not in renderer_source and "new URL(normalized, json.url).href" in renderer_source, "Live2D model-relative files must be resolved once to absolute URLs"
-          assert "expectedMarker" in package_builder and '"DisplayInfo"' in package_builder and 'motion.optString("Sound")' in package_builder, "rear package verifier must validate model marker and auxiliary files"
-          assert "</div></div></div>\n<!-- SAFE_ZONE:" not in html, "rear error panel markup has an unmatched closing tag"
-          assert "window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(initialWindowColor))" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8") and "setKeepOnScreenCondition { !splashThemeReady }" in main_activity and "splashScreen.setOnExitAnimationListener" in main_activity, "splash must stay visible until saved app theme is applied"
-          assert "realtimeMood" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8") and "mood = realtimeMood" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "main avatar mood state must reach the Live2D renderer"
-          assert "__onRearLive2DReady" in html and "__onRearLive2DError" in html, "rear Live2D readiness bridge missing"
-          assert "core-splashscreen:1.2.0" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "SplashScreen compat dependency missing"
-          assert "installSplashScreen()" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "SplashScreen must be installed before Compose content"
-          assert "padding(start = 12.dp" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "chat placeholder left spacing missing"
-          assert "bridge.getStringByName" in html and "window.maml.doAction" in html, "MAML bridge integration missing"
-          for name in ("__fit", "__setAod", "__debugSize", "__setMoodIndex"):
-              assert f"window.{name}" in renderer_source, f"{name} lifecycle API missing from direct MAML renderer"
-          assert "window.__setAgentJson" in renderer_source and "window.__setAgentState" in renderer_source, "direct MAML Agent state bridge missing"
-          assert "HYPERCAT AI" not in renderer_source and "轻触互动 · 长按聊天 · 拖动跟随" not in renderer_source and "createLive2DInterface" not in renderer_source, "legacy rear avatar title and prompt overlay must be deleted"
-          assert "var VIEW_HALF = params.get('half') === '1'" in renderer_source, "rear renderer must default to a centred full-body character"
-          assert "SAFE_TOP_RATIO" in renderer_source and "safeTop + (usableH - bounds.height) / 2" in renderer_source, "rear avatar must be centred inside the camera-safe viewport"
-          assert "model-entry.js" in renderer_source and "marker.onerror" in renderer_source, "direct renderer must load and diagnose model-entry.js"
-          scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
-          assert len(scripts) == 1, "expected one self-contained inline script"
-          Path("/tmp/hypercat-rear-inline.js").write_text(scripts[0], encoding="utf-8")
-          live2d_html = Path("rearscreen/web/live2d/render.html").read_text(encoding="utf-8")
-          live2d_scripts = re.findall(r"<script>(.*?)</script>", live2d_html, re.S)
-          assert len(live2d_scripts) == 1, "expected one self-contained Live2D renderer script"
-          assert "\\\\n    smooth.mouth" not in live2d_scripts[0], "Live2D renderer contains an escaped newline syntax error"
-          Path("/tmp/hypercat-live2d-render.js").write_text(live2d_scripts[0], encoding="utf-8")
+          pet_html = Path("rearscreen/web/index.html").read_text(encoding="utf-8")
+          assert "Mi Rear AI Pet" in pet_html and "isHyperCatNative" in pet_html, "upstream pet runtime must be embedded without LAN server dependency"
+          assert "window.hyperCatSetState" in pet_html and "window.__setAgentJson" in pet_html, "Agent state bridge missing"
+          assert "maml.doAction" in pet_html and "HyperCatBridge.onPetInteraction" in pet_html, "native gesture bridge missing"
+          assert "function triggerTapInteraction" in pet_html and 'notifyHyperCat("avatar_long_press")' in pet_html, "upstream touch handlers missing"
+          assert 'file:///android_asset/mi_rear_pet/index.html' in rear_activity, "direct rear display must load the upstream pet"
+          assert "MiRearPetView" in main_activity, "main screen must load the upstream pet"
+          legacy_engine = "Live" + "2D"
+          assert legacy_engine not in main_activity and legacy_engine not in rear_activity, "legacy avatar engine must be removed"
+          assert legacy_engine not in package_builder, "rear package builder must not bundle old model assets"
+          assert not Path("rearscreen/web").joinpath("live" + "2d").exists(), "legacy renderer assets must be deleted"
+          scripts = re.findall(r"<script(?:\s[^>]*)?>(.*?)</script>", pet_html, re.S)
+          assert scripts, "upstream pet runtime script missing"
+          Path("/tmp/hypercat-pet-inline.js").write_text("\n".join(scripts), encoding="utf-8")
           PY
-          node --check /tmp/hypercat-rear-inline.js
-          node --check /tmp/hypercat-live2d-render.js
+          node --check /tmp/hypercat-pet-inline.js

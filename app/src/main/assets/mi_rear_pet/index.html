@@ -1301,15 +1301,6 @@
         },
       };
 
-      // Native HyperCat Agent state bridge.
-      window.hyperCatSetState = function(mood, speaking) {
-        const mapped = ({ thinking: "running", happy: "completed_unread", sad: "failed",
-          shy: "waiting_user", sleepy: "idle", normal: "idle" })[mood] || "idle";
-        liveData = { ...liveData, hub_online: true, combined: speaking ? "running" : mapped,
-          providers: { ...(liveData.providers || {}), hypercat: speaking ? "running" : mapped } };
-        if (typeof renderBadges === "function") renderBadges();
-      };
-
       function getActiveState() {
         if (simMode !== "live") return SIM_PRESETS[simMode] || liveData;
         const nowPerf = performance.now();
@@ -1609,7 +1600,6 @@
           pressTimer = setTimeout(() => {
             if (activePointers.size === 1) {
               longPressed = true;
-              try { window.HyperCatBridge?.onPetInteraction("long_press"); } catch (_) {}
               openSettingsModal();
             }
           }, 2200);
@@ -1639,7 +1629,6 @@
           const py = e.clientY - rect.top;
           const isSwipe = Math.abs(e.clientX - downX) > 28;
           triggerTapInteraction(px, py, isSwipe);
-          try { window.HyperCatBridge?.onPetInteraction(isSwipe ? "swipe" : "tap"); } catch (_) {}
         }
       });
 
