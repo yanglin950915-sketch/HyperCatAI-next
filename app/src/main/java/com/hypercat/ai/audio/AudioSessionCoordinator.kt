@@ -13,7 +13,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Speech-message capture and realtime calls must acquire the same coordinator
  * before opening their recorder, preventing concurrent microphone clients.
  */
-class AudioSessionCoordinator(context: Context) {
+class AudioSessionCoordinator private constructor(context: Context) {
+    companion object {
+        @Volatile private var instance: AudioSessionCoordinator? = null
+        fun get(context: Context): AudioSessionCoordinator = instance ?: synchronized(this) {
+            instance ?: AudioSessionCoordinator(context.applicationContext).also { instance = it }
+        }
+    }
     enum class Owner { REALTIME_CALL, VOICE_MESSAGE, LEGACY_RECOGNIZER }
 
     private val audioManager = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
