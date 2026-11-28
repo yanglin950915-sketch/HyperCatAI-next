@@ -59,7 +59,7 @@ class CallPcmCaptureController(
             }
             runCatching { startCapture() }.onFailure { onError("恢复麦克风采集失败：${it.message}", it) }
         } else {
-            stopCapture()
+            stopCapture(releaseLease = false)
         }
     }
 
@@ -72,7 +72,7 @@ class CallPcmCaptureController(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
         )
         check(minBuffer > 0) { "设备不支持 16kHz PCM 麦克风采集（$minBuffer）" }
-        val acquired = coordinator.acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true)
+        val acquired = lease ?: coordinator.acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true).also { lease = it }
         var input: AudioRecord? = null
         try {
             val startedRecorder = AudioRecord(
@@ -96,6 +96,7 @@ class CallPcmCaptureController(
         } catch (error: Throwable) {
             running = false
             runCatching { input?.release() }
+            if (lease === acquired) lease = null
             acquired.close()
             throw error
         }
@@ -186,9 +187,12 @@ class CallPcmCaptureController(
         return if (samples == 0) 0.0 else sqrt(sum / samples)
     }
 
-    private fun stopCapture() {
+    private fun stopCapture(releaseLease: Boolean) {
         synchronized(lock) {
-            if (!running && recorder == null) return
+            if (!running && recorder == null) {
+                if (releaseLease) { lease?.close(); lease = null }
+                return
+            }
             running = false
             runCatching { recorder?.stop() }
             val thread = captureThread
@@ -196,15 +200,14 @@ class CallPcmCaptureController(
             captureThread = null
             runCatching { recorder?.release() }
             recorder = null
-            lease?.close()
-            lease = null
+            if (releaseLease) { lease?.close(); lease = null }
         }
     }
 
     override fun close() {
         if (!disposed.compareAndSet(false, true)) return
         enabled = false
-        stopCapture()
+        stopCapture(releaseLease = true)
     }
 
     companion object {
