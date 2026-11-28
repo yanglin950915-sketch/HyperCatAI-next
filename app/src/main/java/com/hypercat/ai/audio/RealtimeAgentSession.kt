@@ -37,8 +37,15 @@ class RealtimeAgentSession(
         closed.set(false)
         transition(State.CONNECTING)
         try {
-            audioLease = AudioSessionCoordinator.get(appContext)
-                .acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true)
+            val coordinator = AudioSessionCoordinator.get(appContext)
+            audioLease = coordinator.acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true)
+            coordinator.onFocusLost = {
+                if (!closed.get()) {
+                    audio.interruptPlayback()
+                    adapter.cancelResponse()
+                    transition(State.INTERRUPTED)
+                }
+            }
             adapter.connect(object : RealtimeModelAdapter.Events {
                 override fun onReady() {
                     if (closed.get()) return
@@ -123,6 +130,7 @@ class RealtimeAgentSession(
         audio.setFrameConsumer(null)
         runCatching { audio.close() }
         runCatching { adapter.close() }
+        AudioSessionCoordinator.get(appContext).onFocusLost = null
         audioLease?.close()
         audioLease = null
         transition(State.CLOSED)
