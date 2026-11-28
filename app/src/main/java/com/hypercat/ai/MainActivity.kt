@@ -1,5 +1,7 @@
 package com.hypercat.ai
 
+import com.hypercat.ai.audio.OpenAiCompatibleStreamClient
+
 import android.content.Context
 import android.app.DownloadManager
 import android.media.MediaPlayer
