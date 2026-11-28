@@ -2254,8 +2254,7 @@ private fun ChatPage(
     }
     fun startPcmCallCapture() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            speechStatus = "尚未获得麦克风录音权限，正在请求授权…"
-            callMicPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            speechStatus = "尚未获得麦克风录音权限，请先授权后再开始通话"
             return
         }
         val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
