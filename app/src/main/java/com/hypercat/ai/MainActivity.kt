@@ -1170,6 +1170,16 @@ private fun HyperCatApp() {
                             }
                         }
                     },
+                    onRealtimeUserTranscript = { text ->
+                        messages.add(ChatLine(text, true))
+                        avatarReply = text
+                        avatarMood = "thinking"
+                    },
+                    onRealtimeAssistantReply = { text ->
+                        messages.add(ChatLine(text, false))
+                        avatarReply = text
+                        avatarMood = "happy"
+                    },
                     onCallInitiative = { prompt ->
                         if (saved && endpoint.isNotBlank() && model.isNotBlank() && !isThinking) {
                             val requestHistory = messages.toList() + ChatLine(prompt, true)
@@ -1569,7 +1579,9 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @Composable
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
-    onSend: (String, List<Uri>, List<Bitmap>, Boolean) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
+    onSend: (String, List<Uri>, List<Bitmap>, Boolean) -> Unit, onCallInitiative: (String) -> Unit,
+    onRealtimeUserTranscript: (String) -> Unit, onRealtimeAssistantReply: (String) -> Unit,
+    openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
     avatarMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
     ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit, onAvatarInteraction: (String) -> Unit, onAvatarNameChange: (String) -> Unit,
     showSettingsOnEnter: Boolean,
@@ -1578,6 +1590,7 @@ private fun ChatPage(
     avatarSettingsContent: @Composable (Modifier, Boolean) -> Unit
 ) {
     val context: Context = LocalContext.current
+    val realtimePrefs = remember(context) { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     val live2dModel by Live2DModelStore.state.collectAsState()
     LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -1872,15 +1885,17 @@ private fun ChatPage(
         }
     }
     fun startRealtimeCallIfConfigured(): Boolean {
-        val prefs = chatPrefs
+        val prefs = realtimePrefs
         if (prefs.getString("active_realtime_protocol", "none") != "openai_realtime") return false
         val realtimeEndpoint = prefs.getString("active_realtime_endpoint", "")?.trim().orEmpty()
+        val realtimeModel = prefs.getString("model", "")?.trim().orEmpty()
+        val realtimeApiKey = prefs.getString("api_key", "")?.trim().orEmpty()
         if (!realtimeEndpoint.startsWith("wss://", ignoreCase = true)) {
             Toast.makeText(context, "Realtime 档案缺少有效的 wss:// WebSocket 地址", Toast.LENGTH_LONG).show()
             speechStatus = "Realtime 地址无效，请在模型档案中检查 WebSocket 地址"
             return true
         }
-        if (model.isBlank() || apiKey.isBlank()) {
+        if (realtimeModel.isBlank() || realtimeApiKey.isBlank()) {
             Toast.makeText(context, "Realtime 通话需要模型名称和 API Key", Toast.LENGTH_LONG).show()
             speechStatus = "Realtime 配置不完整：请检查当前模型档案的模型名称与 API Key"
             return true
@@ -1899,7 +1914,7 @@ private fun ChatPage(
                 else Handler(Looper.getMainLooper()).post { speechStatus = "实时音频引擎异常：$message" }
             }
         }, sampleRate = 24_000)
-        val adapter = OpenAiRealtimeAudioAdapter(realtimeEndpoint, apiKey, model)
+        val adapter = OpenAiRealtimeAudioAdapter(realtimeEndpoint, realtimeApiKey, realtimeModel)
         val session = RealtimeAgentSession(context, engine, adapter, object : RealtimeAgentSession.Listener {
             override fun onStateChanged(state: RealtimeAgentSession.State) {
                 Handler(Looper.getMainLooper()).post {
@@ -1924,11 +1939,7 @@ private fun ChatPage(
             }
             override fun onUserTranscript(text: String) {
                 Handler(Looper.getMainLooper()).post {
-                    if (callActive && text.isNotBlank()) {
-                        messages.add(ChatLine(text, true))
-                        avatarMood = "thinking"
-                        avatarReply = text
-                    }
+                    if (callActive && text.isNotBlank()) onRealtimeUserTranscript(text)
                 }
             }
             override fun onTextDelta(text: String) {
@@ -1940,11 +1951,7 @@ private fun ChatPage(
                 Handler(Looper.getMainLooper()).post {
                     val reply = realtimeAssistantDraft.trim()
                     realtimeAssistantDraft = ""
-                    if (callActive && reply.isNotBlank()) {
-                        messages.add(ChatLine(reply, false))
-                        avatarReply = reply
-                        avatarMood = "happy"
-                    }
+                    if (callActive && reply.isNotBlank()) onRealtimeAssistantReply(reply)
                     isSpeaking = false
                     isListening = micEnabled
                     speechStatus = if (micEnabled) "Realtime 已回答，继续聆听…" else "回答完成，麦克风已静音"
