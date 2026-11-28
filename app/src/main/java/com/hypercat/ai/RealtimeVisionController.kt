@@ -21,6 +21,7 @@ internal class RealtimeVisionController(
     private val apiKey: String,
     private val model: String,
     private val onContext: (String) -> Unit,
+    private val onNotableEvent: (String) -> Unit,
     private val onStatus: (String) -> Unit,
 ) : Closeable {
     private val executor = Executors.newSingleThreadExecutor { runnable ->
@@ -32,6 +33,7 @@ internal class RealtimeVisionController(
     @Volatile private var lastAnalysisAt = 0L
     @Volatile private var lastSuccessAt = 0L
     @Volatile private var lastErrorAt = 0L
+    @Volatile private var lastProactiveEventAt = 0L
 
     fun offerFrame(jpeg: ByteArray) {
         if (closed.get() || jpeg.isEmpty() || inFlight.get()) return
@@ -50,17 +52,22 @@ internal class RealtimeVisionController(
         executor.execute {
             try {
                 if (closed.get()) return@execute
-                val observation = VisionModelClient.describeFrame(
+                val observation = VisionModelClient.observeRealtimeFrame(
                     endpoint = endpoint,
                     apiKey = apiKey,
                     model = model,
-                    jpeg = snapshot,
-                    question = "这是持续视频通话中的一帧。请只提供简短、客观的场景观察摘要，包含可确认的人物/物品/环境以及相较常见静态场景明显的动作或变化；不要猜测身份、意图或不可见细节，不要向用户提问，不要生成对话式回答。控制在80字以内。"
-                ).trim()
-                if (observation.isNotBlank() && !closed.get()) {
+                    jpeg = snapshot
+                )
+                if (observation.summary.isNotBlank() && !closed.get()) {
                     lastHash = hash
-                    lastSuccessAt = SystemClock.elapsedRealtime()
-                    onContext("摄像头画面观察（自动更新，仅作为当前通话上下文，不需要单独回复）：$observation")
+                    val observedAt = SystemClock.elapsedRealtime()
+                    lastSuccessAt = observedAt
+                    onContext("摄像头画面观察（自动更新，仅作为当前通话上下文，不需要单独回复）：${observation.summary}")
+                    val event = observation.notableEvent
+                    if (!event.isNullOrBlank() && observedAt - lastProactiveEventAt >= PROACTIVE_EVENT_COOLDOWN_MS) {
+                        lastProactiveEventAt = observedAt
+                        onNotableEvent(event)
+                    }
                     onStatus("视觉感知已更新 · 正在持续观察画面")
                 }
             } catch (error: Throwable) {
@@ -115,5 +122,6 @@ internal class RealtimeVisionController(
         private const val MIN_ANALYSIS_INTERVAL_MS = 3_500L
         private const val FORCE_REFRESH_INTERVAL_MS = 12_000L
         private const val ERROR_REPORT_INTERVAL_MS = 30_000L
+        private const val PROACTIVE_EVENT_COOLDOWN_MS = 45_000L
     }
 }
