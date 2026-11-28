@@ -49,13 +49,13 @@ class AudioSessionCoordinator(context: Context) {
             activeOwner = owner
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             audioManager.isSpeakerphoneOn = speakerphone
-            return Lease(owner)
+            return Lease(owner, listener)
         }
     }
 
     @Volatile var onFocusLost: ((Int) -> Unit)? = null
 
-    inner class Lease internal constructor(private val owner: Owner) : Closeable {
+    inner class Lease internal constructor(private val owner: Owner, private val listener: AudioManager.OnAudioFocusChangeListener) : Closeable {
         private val released = AtomicBoolean(false)
         override fun close() {
             if (!released.compareAndSet(false, true)) return
@@ -64,7 +64,7 @@ class AudioSessionCoordinator(context: Context) {
                 if (Build.VERSION.SDK_INT >= 26) focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
                 else {
                     @Suppress("DEPRECATION")
-                    audioManager.abandonAudioFocus(null)
+                    audioManager.abandonAudioFocus(listener)
                 }
                 focusRequest = null
                 audioManager.isSpeakerphoneOn = previousSpeaker
