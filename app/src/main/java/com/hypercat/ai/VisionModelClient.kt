@@ -20,7 +20,9 @@ internal object VisionModelClient {
         question: String
     ): String {
         require(endpoint.isNotBlank()) { "视觉服务地址为空" }
-        require(apiKey.isNotBlank()) { "视觉 API Key 为空" }
+        val normalizedApiKey = apiKey.trim()
+            .removePrefix("Bearer ").removePrefix("bearer ").trim()
+        require(normalizedApiKey.isNotBlank()) { "视觉 API Key 为空" }
         require(model.isNotBlank()) { "视觉模型名称为空" }
         require(jpeg.isNotEmpty()) { "没有可用的摄像头画面" }
 
@@ -48,7 +50,7 @@ internal object VisionModelClient {
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("Authorization", "Bearer $apiKey")
+            connection.setRequestProperty("Authorization", "Bearer $normalizedApiKey")
             connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
             val code = connection.responseCode
             val responseText = (if (code in 200..299) connection.inputStream else connection.errorStream)
@@ -57,7 +59,8 @@ internal object VisionModelClient {
                 val detail = runCatching {
                     JSONObject(responseText).optJSONObject("error")?.optString("message")
                 }.getOrNull().orEmpty()
-                throw IllegalStateException("视觉模型请求失败（HTTP $code）" + detail.takeIf { it.isNotBlank() }?.let { "：$it" }.orEmpty())
+                val hint = if (code == 401) "；请确认视觉模型 API Key 属于当前服务商、未过期且未重复填写 Bearer 前缀" else ""
+                throw IllegalStateException("视觉模型请求失败（HTTP $code）" + detail.takeIf { it.isNotBlank() }?.let { "：$it" }.orEmpty() + hint)
             }
             val message = JSONObject(responseText)
                 .optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
