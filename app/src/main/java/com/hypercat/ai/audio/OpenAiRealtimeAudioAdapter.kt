@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
 import okhttp3.HttpUrl.Companion.toHttpUrl\nimport okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -52,12 +53,20 @@ class OpenAiRealtimeAudioAdapter(
         .build()
     private val closed = AtomicBoolean(false)
     private val speaking = AtomicBoolean(false)
-    private val engine = RealtimeAudioEngine(this)
+    private val engine = RealtimeAudioEngine(this, sampleRate = 24_000)
+    private val playbackQueue = Channel<ByteArray>(Channel.UNLIMITED)
     @Volatile private var socket: WebSocket? = null
     @Volatile private var speechOnsetAt = 0L
     @Volatile private var lastSpeechAt = 0L
 
     fun connect() {
+        scope.launch {
+            for (chunk in playbackQueue) {
+                if (closed.get()) break
+                runCatching { engine.writePlayback(chunk) }
+                    .onFailure { if (!closed.get()) fail("音频播放失败：${it.message}") }
+            }
+        }
         require(endpoint.startsWith("wss://", ignoreCase = true)) {
             "Realtime endpoint must be an explicit wss:// URL"
         }
@@ -203,7 +212,7 @@ class OpenAiRealtimeAudioAdapter(
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        engine.stop()
+        playbackQueue.close()\n        engine.stop()
         socket?.close(1000, "HyperCat session closed")
         socket = null
         scope.cancel()
