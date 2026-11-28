@@ -146,7 +146,7 @@ fun Live2DView(
         val rearSafeLeft = if (rearDisplay) safeLeftRatio.coerceIn(0f, 0.95f) else 0f
         val rearSafeRight = if (rearDisplay) safeRightRatio.coerceIn(0f, 0.95f) else 0f
         val rearSafeBottom = if (rearDisplay) safeBottomRatio.coerceIn(0f, 0.95f) else 0f
-        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&safeTop=$rearSafeTop&safeLeft=$rearSafeLeft&safeRight=$rearSafeRight&safeBottom=$rearSafeBottom&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=0&rear=${if (rearDisplay) 1 else 0}&lyrics=${if (showLyrics || rearDisplay) 1 else 0}"
+        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&safeTop=$rearSafeTop&safeLeft=$rearSafeLeft&safeRight=$rearSafeRight&safeBottom=$rearSafeBottom&fps=45&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=0&rear=${if (rearDisplay) 1 else 0}&lyrics=${if (showLyrics || rearDisplay) 1 else 0}"
         webView.stopLoading()
         webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         webView.loadUrl("about:blank")

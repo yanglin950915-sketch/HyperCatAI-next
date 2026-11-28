@@ -429,7 +429,7 @@
       backgroundAlpha: 0,
       antialias: true,
       autoDensity: true,
-      resolution: Math.min(window.devicePixelRatio || 1, 3.0),
+      resolution: Math.min(window.devicePixelRatio || 1, 2.0),
       clearBeforeRender: true,
       powerPreference: 'high-performance'
     });
@@ -446,7 +446,7 @@
     log('L2D fps cap=' + MAX_FPS);
 
     // 只做 FPS 统计；参数写入全部交给 onBeforeModelUpdate。
-    var fpsAcc = 0, fpsLast = 0;
+    var fpsAcc = 0, fpsLast = 0, lastReportedFps = -1;
     PIXI.Ticker.shared.add(function () {
       if (!model) return;
       fpsAcc++;
@@ -454,7 +454,7 @@
       if (now - fpsLast > 1000) {
         if (fpsLast > 0) {
           var fps = Math.round(fpsAcc * 1000 / (now - fpsLast));
-          if (NATIVE && NATIVE.onFps) NATIVE.onFps(fps);
+          if (fps !== lastReportedFps && NATIVE && NATIVE.onFps) { NATIVE.onFps(fps); lastReportedFps = fps; }
         }
         fpsAcc = 0;
         fpsLast = now;
