@@ -116,7 +116,7 @@ class OpenAiRealtimeAudioAdapter(
                 event.optString("delta").takeIf { it.isNotEmpty() }?.let(sink::onTextDelta)
             "conversation.item.input_audio_transcription.completed" -> {
                 val transcript = event.optString("transcript").trim()
-                if (transcript.isNotEmpty()) sink.onTextDelta(transcript)
+                if (transcript.isNotEmpty()) sink.onUserTranscript(transcript)
             }
             "response.text.delta", "response.output_text.delta" ->
                 event.optString("delta").takeIf { it.isNotEmpty() }?.let(sink::onTextDelta)
