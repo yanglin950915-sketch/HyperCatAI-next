@@ -351,10 +351,10 @@ private fun VoiceMessageBubble(path: String, durationMs: Long, fromUser: Boolean
     }
 }
 
-/** Transcribe a captured WAV with Xiaomi MiMo ASR, using the selected TTS profile's own endpoint and API key. */
-private fun transcribeCapturedPcm(ttsEndpoint: String, ttsApiKey: String, pcm16: ByteArray, sampleRate: Int = 16_000): String {
+/** MiMo ASR streams transcript events over SSE; the public endpoint still accepts a complete WAV per request. */
+private fun transcribeCapturedPcm(ttsEndpoint: String, ttsApiKey: String, pcm16: ByteArray, sampleRate: Int = 16_000, onPartial: (String) -> Unit = {}): String {
     require(pcm16.size >= sampleRate / 2) { "录音时长不足 0.5 秒，未发送给 AI" }
-    require(ttsApiKey.isNotBlank()) { "当前 TTS 配置没有 API Key，请检查小米 MiMo TTS 档案" }
+    require(ttsApiKey.isNotBlank()) { "当前语音识别配置没有 API Key，请检查语音服务档案" }
     val wav = ByteArrayOutputStream().also { out ->
         val dataSize = pcm16.size
         fun writeInt(v: Int) { out.write(byteArrayOf(v.toByte(), (v shr 8).toByte(), (v shr 16).toByte(), (v shr 24).toByte())) }
@@ -365,50 +365,55 @@ private fun transcribeCapturedPcm(ttsEndpoint: String, ttsApiKey: String, pcm16:
         out.write("data".toByteArray()); writeInt(dataSize); out.write(pcm16)
     }.toByteArray()
     val configured = ttsEndpoint.trim().trimEnd('/')
-    require(configured.startsWith("https://") || configured.startsWith("http://")) { "TTS 服务地址无效，请检查 MiMo TTS 档案" }
+    require(configured.startsWith("https://") || configured.startsWith("http://")) { "语音识别服务地址无效，请检查服务档案" }
     val parsed = URL(configured)
-    val path = parsed.path.trimEnd('/')
-        .removeSuffix("/chat/completions")
-        .removeSuffix("/audio/speech")
-    val url = if (parsed.host.equals("api.xiaomimimo.com", ignoreCase = true)) {
-        "https://api.xiaomimimo.com/v1/chat/completions"
-    } else {
+    val path = parsed.path.trimEnd('/').removeSuffix("/chat/completions").removeSuffix("/audio/speech")
+    val url = if (parsed.host.equals("api.xiaomimimo.com", ignoreCase = true)) "https://api.xiaomimimo.com/v1/chat/completions" else {
         val versioned = if (path.endsWith("/v1")) path else "$path/v1"
         URL(parsed.protocol, parsed.host, parsed.port, "$versioned/chat/completions").toString()
     }
     val encoded = android.util.Base64.encodeToString(wav, android.util.Base64.NO_WRAP)
-    require(encoded.length <= 10 * 1024 * 1024) { "录音文件超过 MiMo ASR 的 10 MB 限制，请缩短录音时长" }
-    val contentPart = JSONObject()
-        .put("type", "input_audio")
-        .put("input_audio", JSONObject().put("data", "data:audio/wav;base64,$encoded"))
-    val content = org.json.JSONArray().put(contentPart)
-    val messages = org.json.JSONArray().put(JSONObject().put("role", "user").put("content", content))
-    val payload = JSONObject()
-        .put("model", "mimo-v2.5-asr")
-        .put("messages", messages)
-        .put("asr_options", JSONObject().put("language", "zh"))
-        .toString()
+    require(encoded.length <= 10 * 1024 * 1024) { "录音文件超过 ASR 服务的 10 MB 限制，请缩短录音时长" }
+    val part = JSONObject().put("type", "input_audio").put("input_audio", JSONObject().put("data", "data:audio/wav;base64,$encoded"))
+    val messages = org.json.JSONArray().put(JSONObject().put("role", "user").put("content", org.json.JSONArray().put(part)))
+    val payload = JSONObject().put("model", "mimo-v2.5-asr").put("messages", messages).put("asr_options", JSONObject().put("language", "zh")).put("stream", true)
     val connection = (URL(url).openConnection() as HttpURLConnection).apply {
         requestMethod = "POST"; connectTimeout = 20000; readTimeout = 90000; doOutput = true
         setRequestProperty("Content-Type", "application/json; charset=utf-8")
-        setRequestProperty("Accept", "application/json")
-        setRequestProperty("api-key", ttsApiKey.trim())
+        setRequestProperty("Accept", "text/event-stream, application/json")
+        setRequestProperty("api-key", ttsApiKey.trim()); setRequestProperty("Cache-Control", "no-cache")
     }
     try {
-        connection.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
         val code = connection.responseCode
-        val body = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
         if (code !in 200..299) {
-            val detail = runCatching {
-                val error = JSONObject(body).optJSONObject("error")
-                error?.optString("message")?.takeIf { it.isNotBlank() }
-                    ?: JSONObject(body).optString("message").takeIf { it.isNotBlank() }
-            }.getOrNull()
-            throw IllegalStateException("MiMo ASR 识别失败（HTTP $code）" + (detail ?: body.take(240)))
+            val body = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val detail = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
+            throw IllegalStateException("MiMo ASR 识别失败（HTTP $code）" + (detail?.takeIf { it.isNotBlank() } ?: body.take(240)))
         }
-        val choices = JSONObject(body).optJSONArray("choices")
-        val transcript = choices?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty().trim()
-        return transcript.also { if (it.isBlank()) throw IllegalStateException("MiMo ASR 已收到录音，但没有返回识别文字") }
+        val result = StringBuilder()
+        fun appendDelta(value: String) { if (value.isNotEmpty()) { result.append(value); runCatching { onPartial(result.toString()) } } }
+        if (connection.contentType.orEmpty().contains("text/event-stream", ignoreCase = true)) {
+            connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (!line.startsWith("data:")) continue
+                    val data = line.removePrefix("data:").trim()
+                    if (data.isEmpty() || data == "[DONE]") continue
+                    val event = runCatching { JSONObject(data) }.getOrNull() ?: continue
+                    event.optJSONObject("error")?.let { throw IllegalStateException(it.optString("message", "MiMo ASR 流式识别失败")) }
+                    val choice = event.optJSONArray("choices")?.optJSONObject(0)
+                    val delta = choice?.optJSONObject("delta")?.optString("content").orEmpty()
+                    val text = delta.ifBlank { choice?.optJSONObject("message")?.optString("content").orEmpty() }.ifBlank { event.optString("text").takeIf { it != "null" }.orEmpty() }
+                    appendDelta(text)
+                }
+            }
+        } else {
+            val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val json = JSONObject(body)
+            appendDelta(json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty().ifBlank { json.optString("text").takeIf { it != "null" }.orEmpty() })
+        }
+        return result.toString().trim().also { if (it.isBlank()) throw IllegalStateException("MiMo ASR 已收到录音，但没有返回识别文字") }
     } finally { connection.disconnect() }
 }
 private fun createCallSpeechRecognizer(context: Context): SpeechRecognizer {
@@ -2282,7 +2287,7 @@ private fun ChatPage(
                         check(endpoint.isNotBlank() && apiKey.isNotBlank()) {
                             "当前没有可用的 MiMo ASR 服务配置，请检查语音消息使用的 TTS 服务地址和 API Key"
                         }
-                        val transcript = transcribeCapturedPcm(endpoint, apiKey, pcm, 16_000)
+                        val transcript = transcribeCapturedPcm(endpoint, apiKey, pcm, 16_000) { partial -> Handler(Looper.getMainLooper()).post { if (callActive && micEnabled) speechStatus = "正在流式识别：$partial" } }
                         Log.i("HyperCatVoice", "CALL_PCM_ASR_SUCCESS bytes=${pcm.size} chars=${transcript.length}")
                         withContext(Dispatchers.Main) {
                             if (callActive && micEnabled && transcript.isNotBlank()) {
