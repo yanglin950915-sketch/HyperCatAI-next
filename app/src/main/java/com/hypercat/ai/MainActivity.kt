@@ -1076,7 +1076,7 @@ private fun HyperCatApp() {
                     },
                     onAvatarNameChange = { value -> val clean = value.trim().take(16).ifBlank { "小橘" }; avatarName = clean; chatPrefs.edit().putString("avatar_name", clean).apply() },
                     modelProfiles = modelProfiles.toList(), ttsProfiles = ttsProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
-                    onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
+                    onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).putString("active_realtime_protocol",p.realtimeProtocol).putString("active_realtime_endpoint",p.realtimeEndpoint).apply() },
                     savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
                     onDeleteNote = { note -> savedNotes = savedNotes.filterNot { it == note }; chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
                     draft = draft,
@@ -1330,8 +1330,8 @@ private fun HyperCatApp() {
                             modelProfiles = modelProfiles.toList(),
                             ttsProfiles = ttsProfiles.toList(),
                             onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey).put("realtimeProtocol",x.realtimeProtocol).put("realtimeEndpoint",x.realtimeEndpoint)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
-                            onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
-                            onDeleteProfile = { p -> modelProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                            onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).putString("active_realtime_protocol",p.realtimeProtocol).putString("active_realtime_endpoint",p.realtimeEndpoint).apply() },
+                            onDeleteProfile = { p -> modelProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey).put("realtimeProtocol",x.realtimeProtocol).put("realtimeEndpoint",x.realtimeEndpoint)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
                             onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey)) }; ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; chatPrefs.edit().putString("tts_profiles",a.toString()).putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() },
                             onSelectTtsProfile = { p -> ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; chatPrefs.edit().putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() },
                             onDeleteTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply(); if (ttsProfileName==p.name) { ttsProfileName=""; ttsMode="system"; chatPrefs.edit().putString("tts_profile_name","").putString("tts_mode","system").apply() } },
@@ -3182,8 +3182,8 @@ private fun SettingsPage(
     var taskTitle by remember { mutableStateOf("") }
     var taskDelayMinutes by remember { mutableStateOf("30") }
     var profileName by remember { mutableStateOf("") }
-    var profileRealtimeEndpoint by remember { mutableStateOf("") }
-    var profileRealtimeProtocol by remember { mutableStateOf("none") }
+    var profileRealtimeEndpoint by remember { mutableStateOf(context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).getString("active_realtime_endpoint", "") ?: "") }
+    var profileRealtimeProtocol by remember { mutableStateOf(context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).getString("active_realtime_protocol", "none") ?: "none") }
     var modelSettingsTab by remember { mutableStateOf("推理模型") }
     var pluginEnabled by remember { mutableStateOf(false) }
     var pluginName by remember { mutableStateOf("") }
@@ -3353,7 +3353,7 @@ private fun SettingsPage(
                                     if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
                                     else modelProfiles.forEach { p ->
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f).clickable { onSelectProfile(p); profileRealtimeProtocol = p.realtimeProtocol; profileRealtimeEndpoint = p.realtimeEndpoint }.padding(vertical = 9.dp, horizontal = 4.dp)) { Text(p.name, color = MainText, fontSize = 13.sp); Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp); Text(if (p.realtimeProtocol == "openai_realtime" && p.realtimeEndpoint.isNotBlank()) "Realtime 已配置" else "使用兼容语音模式", color = Muted, fontSize = 9.sp) }
+                                            Column(Modifier.weight(1f).clickable { onSelectProfile(p); profileRealtimeProtocol = p.realtimeProtocol; profileRealtimeEndpoint = p.realtimeEndpoint; context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit().putString("active_realtime_protocol", p.realtimeProtocol).putString("active_realtime_endpoint", p.realtimeEndpoint).apply() }.padding(vertical = 9.dp, horizontal = 4.dp)) { Text(p.name, color = MainText, fontSize = 13.sp); Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp); Text(if (p.realtimeProtocol == "openai_realtime" && p.realtimeEndpoint.isNotBlank()) "Realtime 已配置" else "使用兼容语音模式", color = Muted, fontSize = 9.sp) }
                                             Text("设为当前", color = Cyan, fontSize = 11.sp)
                                             IconButton(onClick = { onDeleteProfile(p) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除推理模型", tint = Color(0xFFE07878)) }
                                         }
@@ -3370,7 +3370,7 @@ private fun SettingsPage(
                                         ConfigField("Realtime WebSocket 地址", profileRealtimeEndpoint, { profileRealtimeEndpoint = it }, "wss://服务商提供的实时语音地址")
                                         Text("需要独立的 Realtime 模型服务和 API Key。启用前请确认服务端支持 session.update、input_audio_buffer.append 和 response 音频事件。", color = Muted, fontSize = 10.sp)
                                     }
-                                    Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank()) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey, profileRealtimeProtocol, profileRealtimeEndpoint.trim())); profileName = "" } },
+                                    Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank() && (profileRealtimeProtocol != "openai_realtime" || profileRealtimeEndpoint.startsWith("wss://"))) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey, profileRealtimeProtocol, profileRealtimeEndpoint.trim())); profileName = "" } },
                                         enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank() && (profileRealtimeProtocol != "openai_realtime" || profileRealtimeEndpoint.startsWith("wss://")), modifier = Modifier.fillMaxWidth()) { Text("保存为模型档案") }
                                     Spacer(Modifier.height(8.dp))
                 }
