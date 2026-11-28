@@ -4311,6 +4311,7 @@ private fun SettingsPage(
     var weatherProvider by remember { mutableStateOf(prefs.getString("weather_provider", "openmeteo") ?: "openmeteo") }
     var amapWeatherKey by remember { mutableStateOf(prefs.getString("amap_weather_key", "") ?: "") }
     var caiyunWeatherToken by remember { mutableStateOf(prefs.getString("caiyun_weather_token", "") ?: "") }
+    var weatherDefaultPlace by remember { mutableStateOf(prefs.getString("weather_default_place", "西安市") ?: "西安市") }
     val pluginImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("无法读取插件清单")
@@ -4560,6 +4561,10 @@ private fun SettingsPage(
             }
         }
         Spacer(Modifier.height(22.dp))
+        Text("默认天气城市", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        ConfigField("默认天气城市", weatherDefaultPlace, { weatherDefaultPlace = it; prefs.edit().putString("weather_default_place", it.trim()).apply() }, "例如：西安市；可随时修改")
+        Text("未在问题中指定城市时，优先使用这里设置的城市，避免错误定位或旧坐标影响天气结果。", color = Muted, fontSize = 10.sp)
+        Spacer(Modifier.height(14.dp))
         Text("天气服务", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Text("三种天气服务共存，独立保存配置；选择后 Agent 会使用对应服务查询天气。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
         Surface(color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
