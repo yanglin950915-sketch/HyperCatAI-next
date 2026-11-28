@@ -224,7 +224,11 @@ class OpenAiRealtimeAudioAdapter(
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        playbackQueue.close()\n        engine.stop()
+        playbackQueue.close()
+        engine.stop()
+        audioSessions.onFocusLost = null
+        audioLease?.close()
+        audioLease = null
         socket?.close(1000, "HyperCat session closed")
         socket = null
         scope.cancel()
