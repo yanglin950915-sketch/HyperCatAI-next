@@ -2197,7 +2197,7 @@ private fun ChatPage(
                 voiceCaptureLease?.close(); voiceCaptureLease = null
                 val pcm = voiceCapturePcm ?: ByteArray(0)
                 voiceCapturePcm = null
-                val profile = modelProfiles.firstOrNull { it.name == activeModel }
+                val profile = modelProfiles.firstOrNull { it.model == activeModel }
                 if (profile == null) { speechStatus = "录音已采集（${pcm.size} 字节），但找不到当前模型档案"; return@launch }
                 if (pcm.size < 16_000) { speechStatus = "麦克风已启动，但有效录音不足 0.5 秒；请按住麦克风说完整句子"; return@launch }
                 try {
