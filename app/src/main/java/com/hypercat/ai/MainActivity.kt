@@ -2449,6 +2449,17 @@ private fun ChatPage(
                 apiKey = visionApiKey,
                 model = visionModel,
                 onContext = { observation -> sessionRef?.sendContextUpdate(observation) },
+                onNotableEvent = { event ->
+                    val activeSession = sessionRef
+                    // Never interrupt the user or an assistant turn.
+                    if (activeSession?.currentState() == RealtimeAgentSession.State.LISTENING &&
+                        !activeSession.isUserSpeaking()
+                    ) {
+                        activeSession.sendTextPrompt(
+                            "视觉观察发现一个值得自然回应的明显变化：$event。请结合当前对话，用一句简短、友好的中文主动回应；不要声称看到了超出摘要的细节，也不要提及后台视觉模型。"
+                        )
+                    }
+                },
                 onStatus = { status ->
                     Handler(Looper.getMainLooper()).post {
                         if (callActive) cameraVisionStatus = status
