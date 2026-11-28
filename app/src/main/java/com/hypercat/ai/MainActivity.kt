@@ -3345,13 +3345,13 @@ private fun ChatPage(
                     Surface(Modifier.requiredSize(36.dp).clickable { showComposerActions = !showComposerActions }, color = Panel2, shape = CircleShape) {
                         Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Add, contentDescription = "更多操作", tint = Cyan, modifier = Modifier.size(21.dp)) }
                     }
-                    Box(Modifier.weight(1f)) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                         BasicTextField(value = draft, onValueChange = onDraft,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp, max = 132.dp).padding(start = 10.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = 42.dp, max = 132.dp).padding(start = 10.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
                             textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
                             decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$avatarName…", color = Muted, fontSize = 14.sp); inner() })
-                        if (draft.length > 80) IconButton(onClick = { showFullScreenEditor = true }, modifier = Modifier.align(Alignment.TopEnd).size(28.dp)) {
-                            Icon(Icons.Outlined.OpenInFull, contentDescription = "全屏编辑", tint = Muted, modifier = Modifier.size(16.dp))
+                        if (draft.length > 80) IconButton(onClick = { showFullScreenEditor = true }, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Outlined.OpenInFull, contentDescription = "展开输入框", tint = Muted, modifier = Modifier.size(16.dp))
                         }
                     }
                     VoiceInputButton(isListening = isListening, onPressStart = { startInAppRecognition() }, onPressEnd = { stopInAppRecognition() })
