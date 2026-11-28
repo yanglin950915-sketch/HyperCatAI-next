@@ -1851,6 +1851,7 @@ private fun ChatPage(
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val latestOnSend by rememberUpdatedState(onSend)
     val latestOnDraft by rememberUpdatedState(onDraft)
+    val latestDraft by rememberUpdatedState(draft)
     val latestCallActive by rememberUpdatedState(callActive)
     val latestMicEnabled by rememberUpdatedState(micEnabled)
     val latestOnCallInitiative by rememberUpdatedState(onCallInitiative)
@@ -1986,7 +1987,7 @@ private fun ChatPage(
                         val playbackActive = isSpeaking || SystemClock.elapsedRealtime() <= agentPlaybackUntilMs
                         if (playbackActive && looksLikeAgentEcho(spoken, lastCallSpokenText)) {
                             speechStatus = "已识别并过滤 Agent 自己的播报回声，继续聆听…"
-                        } else latestOnSend(spoken, emptyList(), emptyList(), true)
+                        } else latestOnSend(spoken, emptyList(), emptyList(), true, null, 0L)
                     } else if (!latestCallActive) {
                         latestOnDraft(if (latestDraft.isBlank()) spoken else "${latestDraft} ${spoken}")
                     }
