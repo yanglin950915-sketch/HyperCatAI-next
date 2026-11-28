@@ -32,6 +32,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/hypercat-signing"
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/hypercat-signing/hypercat-release.jks"
           test -s "$RUNNER_TEMP/hypercat-signing/hypercat-release.jks"
+      - name: Run JVM unit tests
+        env:
+          HYPERCAT_KEYSTORE_PATH: ${{ runner.temp }}/hypercat-signing/hypercat-release.jks
+          HYPERCAT_KEYSTORE_PASSWORD: ${{ secrets.HYPERCAT_KEYSTORE_PASSWORD }}
+          HYPERCAT_KEY_ALIAS: ${{ secrets.HYPERCAT_KEY_ALIAS }}
+          HYPERCAT_KEY_PASSWORD: ${{ secrets.HYPERCAT_KEY_PASSWORD }}
+        run: gradle --no-daemon :app:testDebugUnitTest
       - name: Build debug APK with stable signature
         env:
           HYPERCAT_KEYSTORE_PATH: ${{ runner.temp }}/hypercat-signing/hypercat-release.jks
