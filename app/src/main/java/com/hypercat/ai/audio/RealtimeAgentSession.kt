@@ -41,6 +41,9 @@ class RealtimeAgentSession(
         closed.set(false)
         transition(State.CONNECTING)
         try {
+            adapter.requiredSampleRate?.let { expected ->
+                require(audio.sampleRate == expected) { "当前音频引擎为 ${audio.sampleRate} Hz，但所选 Realtime 协议要求 ${expected} Hz PCM；请使用匹配采样率的引擎" }
+            }
             val coordinator = AudioSessionCoordinator.get(appContext)
             audioLease = coordinator.acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true)
             coordinator.onFocusLost = { _ ->
@@ -170,6 +173,8 @@ class RealtimeAgentSession(
 
 /** Provider-specific wire protocols implement this interface. */
 interface RealtimeModelAdapter : Closeable {
+    /** Null when the provider accepts a negotiated or implementation-defined PCM rate. */
+    val requiredSampleRate: Int? get() = null
     interface Events {
         fun onReady()
         fun onUserTranscript(text: String)
