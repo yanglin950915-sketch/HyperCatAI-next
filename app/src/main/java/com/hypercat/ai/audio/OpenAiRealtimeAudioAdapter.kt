@@ -25,6 +25,8 @@ class OpenAiRealtimeAudioAdapter(
     private val model: String,
 ) : RealtimeModelAdapter {
 
+    override val requiredSampleRate: Int = 24_000
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
