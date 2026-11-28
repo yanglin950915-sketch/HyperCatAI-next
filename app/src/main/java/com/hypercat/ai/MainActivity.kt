@@ -275,15 +275,12 @@ class MainActivity : ComponentActivity() {
 }
 
 private fun createCallSpeechRecognizer(context: Context): SpeechRecognizer {
-    // Prefer Android's on-device recognizer when available. On some OEM builds the
-    // default network recognizer advertises availability but immediately returns
-    // ERROR_CLIENT; on-device recognition avoids that broken default service path.
-    if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
-        runCatching { SpeechRecognizer.createOnDeviceSpeechRecognizer(context) }
-            .getOrNull()?.let { return it }
-    }
+    // Use Android's configured default RecognitionService. Keyboard voice input
+    // working on the same device strongly suggests the OEM default provider is
+    // healthy; forcing createOnDeviceSpeechRecognizer can bind a different,
+    // unsupported provider and produce ERROR_CLIENT (5) on some OEM ROMs.
     check(SpeechRecognizer.isRecognitionAvailable(context)) {
-        "设备未安装可用的语音识别服务"
+        "设备未安装可用的系统语音识别服务"
     }
     return SpeechRecognizer.createSpeechRecognizer(context)
 }
@@ -1867,14 +1864,9 @@ private fun ChatPage(
             Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
             return
         }
-        if (speechAudioLease == null) {
-            speechAudioLease = runCatching {
-                audioSessionCoordinator.acquire(AudioSessionCoordinator.Owner.LEGACY_RECOGNIZER, speakerphone = callActive)
-            }.getOrElse {
-                speechStatus = it.message ?: "无法获取麦克风音频焦点"
-                return
-            }
-        }
+        // SpeechRecognizer owns its input route/focus through the system RecognitionService.
+        // Do not preempt it with AudioSessionCoordinator or MODE_IN_COMMUNICATION:
+        // some OEM recognizers terminate the client with ERROR_CLIENT (5) in that state.
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
@@ -2001,8 +1993,8 @@ private fun ChatPage(
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             previousAudioMode = audioManager.mode
             previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            audioManager.isSpeakerphoneOn = true
+            // Realtime sessions acquire their own communication audio route.
+            // The legacy SpeechRecognizer path must retain the normal system route.
             if (!startRealtimeCallIfConfigured()) {
                 callActive = true; micEnabled = true; videoEnabled = false
                 showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
