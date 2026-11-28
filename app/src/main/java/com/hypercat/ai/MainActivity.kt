@@ -3400,14 +3400,14 @@ private fun ChatPage(
                 val latestCallInput = callMessages.lastOrNull { it.fromUser }?.text.orEmpty()
                 Surface(Modifier.fillMaxWidth().heightIn(max = 128.dp), color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                     Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (latestCallInput.isNotBlank()) Text("你：$latestCallInput", color = Color(0xFFADB8C8), fontSize = 11.sp)
+                        if (latestCallInput.isNotBlank()) Text("你：$latestCallInput", color = Muted, fontSize = 11.sp)
                         if (latestCallReply.isNotBlank()) Text("AI：$latestCallReply", color = MainText, fontSize = 12.sp, lineHeight = 18.sp)
-                        if (latestCallReply.isBlank() && latestCallInput.isBlank()) Text("说话后，识别内容和 AI 回复会显示在这里", color = Color(0xFFADB8C8), fontSize = 11.sp)
+                        if (latestCallReply.isBlank() && latestCallInput.isBlank()) Text("说话后，识别内容和 AI 回复会显示在这里", color = Muted, fontSize = 11.sp)
                     }
                 }
                 Spacer(Modifier.height(15.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    CallControl(if (micEnabled) "麦克风开启" else "已静音", if (micEnabled) Icons.Outlined.Mic else Icons.Outlined.MicOff, active = micEnabled) {
+                    CallControl(if (micEnabled) "麦克风" else "静音", if (micEnabled) Icons.Outlined.Mic else Icons.Outlined.MicOff, active = micEnabled, minimal = true) {
                         micEnabled = !micEnabled
                         if (!micEnabled) {
                             isListening = false
@@ -3426,7 +3426,7 @@ private fun ChatPage(
                             }
                         }
                     }
-                    CallControl(if (videoEnabled) "关闭视频" else "开启视频", Icons.Outlined.Videocam, active = videoEnabled) { toggleVideo() }
+                    CallControl("视频", Icons.Outlined.Videocam, active = videoEnabled, minimal = true) { toggleVideo() }
                     if (videoEnabled) CallControl("翻转摄像头", Icons.Outlined.FlipCameraAndroid) { useFrontCamera = !useFrontCamera }
                     CallControl("挂断", Icons.Outlined.CallEnd, danger = true) {
                         onCallEnd()
@@ -3447,8 +3447,8 @@ private fun ChatPage(
                 Text(if (videoEnabled) "摄像头已开启：支持图像输入的 Realtime 模型会直接接收画面；其他通话模式会在你询问画面时调用独立视觉模型分析。" else "语音通话已启动。点击摄像头按钮可开启视频，点击麦克风按钮可静音。",
                     color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
                 if (videoEnabled && cameraVisionStatus.isNotBlank()) Text(cameraVisionStatus, color = if (cameraVisionStatus.startsWith("AI 视觉")) Cyan else Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
-                if (speechStatus.isNotBlank()) Text(speechStatus, color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
-                if (callActive && micEnabled) Text("麦克风输入电平：${micRmsDb.toInt()} dB · 识别持续运行", color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                if (speechStatus.isNotBlank()) Text(speechStatus, color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                if (callActive && micEnabled) Text("麦克风输入电平：${micRmsDb.toInt()} dB · 识别持续运行", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
             }
         }
     }
@@ -3572,19 +3572,42 @@ private fun ImageProxy.toVisionJpeg(): ByteArray? {
 }
 
 @Composable
-private fun CallControl(label: String, icon: ImageVector, enabled: Boolean = true, active: Boolean = false, danger: Boolean = false, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(76.dp)) {
+private fun CallControl(
+    label: String,
+    icon: ImageVector,
+    enabled: Boolean = true,
+    active: Boolean = false,
+    danger: Boolean = false,
+    minimal: Boolean = false,
+    onClick: () -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(if (minimal) 64.dp else 76.dp)) {
         Surface(
-            modifier = Modifier.size(56.dp).clickable(enabled = enabled, onClick = onClick),
-            color = when { danger -> Color(0xFFB3261E); active -> Cyan; else -> Panel2 },
+            modifier = Modifier.size(if (minimal) 48.dp else 54.dp).clickable(enabled = enabled, onClick = onClick),
+            color = when {
+                danger -> Color(0xFFB3261E)
+                active -> Cyan
+                else -> Panel2
+            },
             shape = CircleShape,
-            border = if (danger || active) null else androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+            border = if (minimal || danger || active) null else androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = label, tint = if (danger || active) Bg else MainText, modifier = Modifier.size(23.dp))
+                Icon(
+                    icon,
+                    contentDescription = label,
+                    tint = if (danger || active) Bg else MainText,
+                    modifier = Modifier.size(if (minimal) 21.dp else 22.dp)
+                )
             }
         }
-        Text(label, color = if (danger) Color(0xFFB3261E) else MainText, fontSize = 11.sp, modifier = Modifier.padding(top = 7.dp), maxLines = 1)
+        Text(
+            label,
+            color = if (danger) Color(0xFFB3261E) else Muted,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(top = 5.dp),
+            maxLines = 1
+        )
     }
 }
 
