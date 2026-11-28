@@ -64,8 +64,12 @@ class OpenAiRealtimeAudioAdapter(
         require(model.isNotBlank()) { "Realtime model name is required" }
         require(apiKey.isNotBlank()) { "Realtime API key is required" }
         listener.onState(State.CONNECTING)
+        val parsedEndpoint = endpoint.toHttpUrl()
+        val realtimeUrl = if (parsedEndpoint.queryParameter("model") == null) {
+            parsedEndpoint.newBuilder().addQueryParameter("model", model).build()
+        } else parsedEndpoint
         val request = Request.Builder()
-            .url(endpoint)
+            .url(realtimeUrl)
             .header("Authorization", "Bearer $apiKey")
             .header("OpenAI-Beta", "realtime=v1")
             .build()
