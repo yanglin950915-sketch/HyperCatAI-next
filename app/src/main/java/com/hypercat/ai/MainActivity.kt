@@ -477,7 +477,7 @@ private fun buildOpenAiStreamingPayload(model: String, history: List<ChatLine>, 
     val system = if (memoryContext.isBlank()) baseSystemPrompt else "$baseSystemPrompt\n可参考的用户记忆：\n$memoryContext"
     messages.put(JSONObject().put("role", "system").put("content", system))
     history.forEach { line ->
-        if (line.text.isNotBlank()) messages.put(JSONObject().put("role", if (line.fromUser) "user" else "assistant").put("content", line.text))
+        if (!line.isSystemEvent && line.text.isNotBlank()) messages.put(JSONObject().put("role", if (line.fromUser) "user" else "assistant").put("content", line.text))
     }
     return JSONObject().put("model", model).put("messages", messages).put("temperature", 0.7)
 }
@@ -802,13 +802,13 @@ private fun exportRearWidgetPackage(context: Context) {
     }
 }
 
-private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "", val voiceAudioPath: String? = null, val voiceDurationMs: Long = 0L)
+private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "", val voiceAudioPath: String? = null, val voiceDurationMs: Long = 0L, val isSystemEvent: Boolean = false)
 
 private fun serializeChatHistory(messages: List<ChatLine>): String = org.json.JSONArray().apply {
     messages.forEach { line ->
         put(JSONObject().put("text", line.text).put("fromUser", line.fromUser).put("reasoning", line.reasoning)
             .put("attachments", org.json.JSONArray(line.attachments))
-            .put("voiceAudioPath", line.voiceAudioPath.orEmpty()).put("voiceDurationMs", line.voiceDurationMs))
+            .put("voiceAudioPath", line.voiceAudioPath.orEmpty()).put("voiceDurationMs", line.voiceDurationMs).put("isSystemEvent", line.isSystemEvent))
     }
 }.toString()
 
@@ -825,7 +825,8 @@ private fun loadChatHistory(context: Context, title: String): List<ChatLine> {
                 attachments = (0 until files.length()).map { files.optString(it) },
                 reasoning = item.optString("reasoning"),
                 voiceAudioPath = item.optString("voiceAudioPath").takeIf { it.isNotBlank() },
-                voiceDurationMs = item.optLong("voiceDurationMs"))
+                voiceDurationMs = item.optLong("voiceDurationMs"),
+                isSystemEvent = item.optBoolean("isSystemEvent", false))
         }
     }.getOrDefault(emptyList())
 }
@@ -836,7 +837,7 @@ private fun formatChatForSharing(title: String, messages: List<ChatLine>): Strin
     append("\n\n")
     messages.forEach { line ->
         if (line.text.isNotBlank()) {
-            append(if (line.fromUser) "我：" else "Agent：").append(line.text).append("\n\n")
+            append(if (line.isSystemEvent) "系统：" else if (line.fromUser) "我：" else "Agent：").append(line.text).append("\n\n")
         }
         if (line.attachments.isNotEmpty()) append("附件：").append(line.attachments.joinToString("、")).append("\n\n")
     }
@@ -1070,6 +1071,7 @@ private fun HyperCatApp() {
     }
     val messages = remember { mutableStateListOf<ChatLine>() }
     var agentAutoReadPending by remember { mutableStateOf(false) }
+    var agentAutoReadTargetIndex by remember { mutableIntStateOf(-1) }
     // Voice-call turns are intentionally isolated from the normal Agent conversation until hangup.
     val callMessages = remember { mutableStateListOf<ChatLine>() }
     var callThinking by remember { mutableStateOf(false) }
@@ -1244,25 +1246,26 @@ private fun HyperCatApp() {
                         callReplyGeneration++
                         callThinking = false
                         val completedCall = callMessages.filter { it.fromUser || it.text.isNotBlank() }
-                        if (completedCall.isNotEmpty()) {
-                            if (currentSessionTitle.isBlank()) {
-                                currentSessionTitle = completedCall.firstOrNull { it.fromUser }?.text
-                                    ?.trim()?.take(42)?.ifBlank { "AI通话" } ?: "AI通话"
-                                recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
-                                chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
-                            }
-                            messages.addAll(completedCall)
+                        if (currentSessionTitle.isBlank()) {
+                            currentSessionTitle = completedCall.firstOrNull { it.fromUser }?.text
+                                ?.trim()?.take(42)?.ifBlank { "AI通话" } ?: "AI通话"
+                            recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
+                            chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
                         }
+                        if (completedCall.isNotEmpty()) messages.addAll(completedCall)
+                        // This is a UI/system event, not a user prompt: it is never sent to the model.
+                        messages.add(ChatLine("你已结束 AI 通话", fromUser = false, isSystemEvent = true))
                         callMessages.clear()
                         agentAutoReadPending = false
+                        agentAutoReadTargetIndex = -1
                     },
                     isThinking = isThinking,
                     recentPrompts = recentPrompts,
                     onDeleteRecentPrompt = { prompt -> recentPrompts = recentPrompts.filterNot { it == prompt }; chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).remove("chat_session_$prompt").apply() },
-                    onOpenRecentSession = { prompt -> messages.clear(); messages.addAll(loadChatHistory(context, prompt)); currentSessionTitle = prompt },
+                    onOpenRecentSession = { prompt -> agentAutoReadPending = false; agentAutoReadTargetIndex = -1; messages.clear(); messages.addAll(loadChatHistory(context, prompt)); currentSessionTitle = prompt },
                     onShareRecentSession = { prompt -> shareChatText(context, formatChatForSharing(prompt, loadChatHistory(context, prompt))) },
                     onShareCurrentSession = { shareChatText(context, formatChatForSharing(currentSessionTitle, messages)) },
-                    onClearCurrentSession = { currentSessionTitle = "" },
+                    onClearCurrentSession = { agentAutoReadPending = false; agentAutoReadTargetIndex = -1; currentSessionTitle = "" },
                     currentSessionTitle = currentSessionTitle,
                     onAvatarInteraction = { action ->
                         if (action in setOf("avatar_touch", "avatar_long_press", "avatar_drag")) {
@@ -1285,6 +1288,7 @@ private fun HyperCatApp() {
                             if (currentSessionTitle.isBlank() && value.isNotBlank()) currentSessionTitle = value.trim().take(42)
                             val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") }, voiceAudioPath = voiceAudioPath, voiceDurationMs = voiceDurationMs)
                             messages.add(userLine)
+                            agentAutoReadTargetIndex = if (autoReadReplies) messages.lastIndex else -1
                             if (value.isNotBlank()) {
                                 if (currentSessionTitle == value.trim().take(42)) recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
                                 chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
@@ -2646,10 +2650,10 @@ private fun ChatPage(
         }
         // A pending read belongs to an explicit Agent send, not to avatar gestures or call state changes.
         // Keep it pending while a request is running, while the reply has not arrived, or while TTS initializes.
-        if (!agentAutoReadPending || callActive || drawerSection == "settings") return@LaunchedEffect
-        val lastUserIndex = messages.indexOfLast { it.fromUser }
-        val lastAssistantIndex = messages.indexOfLast { !it.fromUser }
-        if (lastAssistantIndex <= lastUserIndex) return@LaunchedEffect
+        if (!agentAutoReadPending || callActive || isThinking || drawerSection == "settings") return@LaunchedEffect
+        if (agentAutoReadTargetIndex < 0) return@LaunchedEffect
+        val lastAssistantIndex = messages.indexOfLast { !it.fromUser && !it.isSystemEvent }
+        if (lastAssistantIndex <= agentAutoReadTargetIndex) return@LaunchedEffect
         val reply = messages.getOrNull(lastAssistantIndex)?.text.orEmpty()
         if (reply.isBlank() || !canSpeak) return@LaunchedEffect
         val messageKey = "$currentSessionTitle:$lastAssistantIndex:${reply.hashCode()}"
@@ -2805,8 +2809,8 @@ private fun ChatPage(
             }
             items(messages.mapIndexed { index, message -> index to message }) { (messageIndex, line) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
-                    if (selectedMessageIndices.isNotEmpty()) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
-                    Surface(modifier = (if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices) Cyan else GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
+                    if (selectedMessageIndices.isNotEmpty() && !line.isSystemEvent) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
+                    Surface(modifier = (if (line.isSystemEvent) Modifier else if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (!line.isSystemEvent && selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { if (!line.isSystemEvent) selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.isSystemEvent) Panel2 else if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices && !line.isSystemEvent) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices && !line.isSystemEvent) Cyan else GlassBorder), shape = if (line.isSystemEvent) RoundedCornerShape(50) else RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
                             if (line.reasoning.startsWith("方法摘要：") && !line.fromUser && shouldShowReasoning(messages.take(messageIndex))) {
                                 var reasoningExpanded by remember(line) { mutableStateOf(true) }
@@ -2823,7 +2827,9 @@ private fun ChatPage(
                                 }
                                 Spacer(Modifier.height(9.dp))
                             }
-                            if (line.text.isNotBlank()) {
+                            if (line.isSystemEvent && line.text.isNotBlank()) {
+                                Text(line.text, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                            } else if (line.text.isNotBlank()) {
                                 MarkdownMessage(line.text, if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), clipboardManager)
                                 if (!line.fromUser) {
                                     val downloadableLinks = remember(line.text) { extractGeneratedDownloadLinks(line.text) }
