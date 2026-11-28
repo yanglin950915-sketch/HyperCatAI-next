@@ -46,7 +46,9 @@ class RealtimeAgentSession(
     fun supportsImageInput(): Boolean = adapter.supportsImageInput
 
     private fun handleMicrophoneFrame(pcm: ByteArray, length: Int) {
-        if (closed.get() || !microphoneEnabled) return
+        // Do not upload microphone frames while the OS has suspended this
+        // session's audio focus.
+        if (closed.get() || !microphoneEnabled || interruptedByAudioFocus.get()) return
         when (localVad.process(pcm, length)) {
             PcmVoiceActivityDetector.Event.SPEECH_STARTED -> {
                 userSpeechActive = true
@@ -151,7 +153,9 @@ class RealtimeAgentSession(
                         playbackQueue.clear()
                         audio.interruptPlayback()
                         transition(State.INTERRUPTED)
-                        transition(State.LISTENING)
+                        // A server cancellation caused by audio-focus loss is
+                        // not a user barge-in. Stay interrupted until focus returns.
+                        if (!interruptedByAudioFocus.get()) transition(State.LISTENING)
                     }
                 }
 
