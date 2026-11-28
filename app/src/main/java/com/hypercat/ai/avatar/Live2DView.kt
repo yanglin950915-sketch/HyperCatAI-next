@@ -22,8 +22,20 @@ import androidx.compose.ui.viewinterop.AndroidView
 import java.util.concurrent.CopyOnWriteArraySet
 import org.json.JSONObject
 import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.flow.asStateFlow
 
 data class Live2DRenderState(val ready: Boolean = false, val error: String? = null, val fps: Int = 0)
+
+enum class RealtimeAvatarPhase {
+    IDLE, CONNECTING, LISTENING, RESPONDING, INTERRUPTED, FAILED
+}
+
+/** Shared Realtime state for all Live2D surfaces, including rear-screen rendering. */
+object RealtimeAvatarStateStore {
+    private val mutable = kotlinx.coroutines.flow.MutableStateFlow(RealtimeAvatarPhase.IDLE)
+    val state = mutable.asStateFlow()
+    fun set(phase: RealtimeAvatarPhase) { mutable.value = phase }
+}
 
 /** WebGL Live2D host. The default Cubism model is bundled into the APK assets. */
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
@@ -134,7 +146,7 @@ fun Live2DView(
         val rearSafeLeft = if (rearDisplay) safeLeftRatio.coerceIn(0f, 0.95f) else 0f
         val rearSafeRight = if (rearDisplay) safeRightRatio.coerceIn(0f, 0.95f) else 0f
         val rearSafeBottom = if (rearDisplay) safeBottomRatio.coerceIn(0f, 0.95f) else 0f
-        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&safeTop=$rearSafeTop&safeLeft=$rearSafeLeft&safeRight=$rearSafeRight&safeBottom=$rearSafeBottom&fps=60&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=0&rear=${if (rearDisplay) 1 else 0}&lyrics=${if (showLyrics || rearDisplay) 1 else 0}"
+        val targetUrl = "file:///android_asset/web/live2d/render.html?dir=$dir&entry=$entry&half=" + (if (halfBody) 1 else 0) + "&ratio=0.55&safeTop=$rearSafeTop&safeLeft=$rearSafeLeft&safeRight=$rearSafeRight&safeBottom=$rearSafeBottom&fps=45&portrait=1&ui=${if (showInterface) 1 else 0}&offsetX=0&rear=${if (rearDisplay) 1 else 0}&lyrics=${if (showLyrics || rearDisplay) 1 else 0}"
         webView.stopLoading()
         webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         webView.loadUrl("about:blank")

@@ -1,9 +1,18 @@
 package com.hypercat.ai
 
+import com.hypercat.ai.audio.OpenAiCompatibleStreamClient
+import com.hypercat.ai.audio.AudioSessionCoordinator
+import com.hypercat.ai.audio.RealtimeAudioEngine
+import com.hypercat.ai.audio.RealtimeAgentSession
+import com.hypercat.ai.audio.OpenAiRealtimeAudioAdapter
+import com.hypercat.ai.audio.CallPcmCaptureController
+
 import android.content.Context
 import android.app.DownloadManager
 import android.media.MediaPlayer
 import android.media.AudioManager
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.media.AudioAttributes
 import android.media.audiofx.Visualizer
 import android.widget.Toast
@@ -14,6 +23,7 @@ import android.os.SystemClock
 import android.graphics.Matrix
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.ByteArrayOutputStream
@@ -22,10 +32,9 @@ import android.os.Bundle
 import android.os.Environment
 import android.content.Intent
 import android.net.Uri
+import android.provider.MediaStore
 import java.io.File
 import java.io.FileOutputStream
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.RecognitionListener
@@ -45,8 +54,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -56,24 +65,29 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.AttachFile
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.MicOff
+import androidx.compose.material.icons.outlined.Photo
+import androidx.compose.material.icons.outlined.OpenInFull
+import androidx.compose.material.icons.outlined.VolumeOff
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.FlipCameraAndroid
+import androidx.compose.material.icons.outlined.CallEnd
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
@@ -82,7 +96,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -97,18 +110,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -118,6 +129,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -125,6 +137,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
@@ -132,17 +145,19 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URL
 import android.webkit.URLUtil
 import com.hypercat.ai.rear.AvatarStateStore
 import com.hypercat.ai.rear.RearAgentInteractionDispatcher
 import com.hypercat.ai.rear.RearProjectionController
-import com.hypercat.ai.rear.RearCardPackageBuilder
 import com.hypercat.ai.rear.RearCard
 import com.hypercat.ai.avatar.Live2DModel
 import com.hypercat.ai.avatar.AvatarDeviceStateStore
@@ -150,6 +165,8 @@ import com.hypercat.ai.avatar.AvatarStatusBadges
 import com.hypercat.ai.avatar.Live2DModelStore
 import com.hypercat.ai.avatar.Live2DView
 import com.hypercat.ai.avatar.Live2DControllerHub
+import com.hypercat.ai.avatar.RealtimeAvatarPhase
+import com.hypercat.ai.avatar.RealtimeAvatarStateStore
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
@@ -194,13 +211,13 @@ private fun applyPlatformNightMode(context: Context, mode: String) {
     }
 }
 
-private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFF7F7F8)
-private val Panel get() = if (appDarkState) Color(0xFF101010) else Color(0xFFF0F1F2)
-private val Panel2 get() = if (appDarkState) Color(0xFF1B1B1B) else Color(0xFFE8EAED)
-private val Cyan get() = if (appDarkState) Color(0xFFE6E6E6) else Color(0xFF2563EB)
-private val Muted get() = if (appDarkState) Color(0xFFA0A0A0) else Color(0xFF77766F)
-private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .12f) else Color(0xFFE5E2DA)
-private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF262521)
+private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFFFFFFF)
+private val Panel get() = if (appDarkState) Color(0xFF0D0D0D) else Color(0xFFFFFFFF)
+private val Panel2 get() = if (appDarkState) Color(0xFF191919) else Color(0xFFF4F4F4)
+private val Cyan get() = if (appDarkState) Color(0xFFF2F2F2) else Color(0xFF171717)
+private val Muted get() = if (appDarkState) Color(0xFF9A9A9A) else Color(0xFF777777)
+private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .14f) else Color(0xFFE6E6E6)
+private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF171717)
 
 class MainActivity : ComponentActivity() {
 
@@ -268,14 +285,194 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun createCallSpeechRecognizer(context: Context): SpeechRecognizer =
-    if (SpeechRecognizer.isRecognitionAvailable(context)) {
-        SpeechRecognizer.createSpeechRecognizer(context)
-    } else if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
-        SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-    } else {
-        SpeechRecognizer.createSpeechRecognizer(context)
+
+
+
+private fun loadRecentImageUris(context: Context): List<Uri> {
+    val images = mutableListOf<Uri>()
+    val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+    val projection = arrayOf(MediaStore.Images.Media._ID)
+    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+    runCatching {
+        context.contentResolver.query(collection, projection, null, null, sortOrder)?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            while (cursor.moveToNext() && images.size < 12) {
+                images += Uri.withAppendedPath(collection, cursor.getLong(idColumn).toString())
+            }
+        }
     }
+    return images
+}
+
+@Composable
+private fun RecentPhotoThumbnail(uri: Uri, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val bitmap by produceState<Bitmap?>(initialValue = null, uri) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                if (Build.VERSION.SDK_INT >= 29) context.contentResolver.loadThumbnail(uri, android.util.Size(160, 160), null)
+                else context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            }.getOrNull()
+        }
+    }
+    Box(Modifier.size(54.dp).clip(RoundedCornerShape(10.dp)).background(Panel2).clickable { onClick() }, contentAlignment = Alignment.Center) {
+        if (bitmap != null) Image(bitmap = bitmap!!.asImageBitmap(), contentDescription = "最近照片", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        else Icon(Icons.Outlined.Photo, contentDescription = "照片加载中", tint = Muted)
+    }
+}
+
+private fun saveCapturedPcmAsWav(context: Context, pcm16: ByteArray, sampleRate: Int = 16_000): File {
+    val directory = File(context.filesDir, "voice_messages").apply { mkdirs() }
+    val file = File(directory, "voice_${System.currentTimeMillis()}.wav")
+    FileOutputStream(file).use { out ->
+        val dataSize = pcm16.size
+        fun writeInt(v: Int) { out.write(byteArrayOf(v.toByte(), (v shr 8).toByte(), (v shr 16).toByte(), (v shr 24).toByte())) }
+        fun writeShort(v: Int) { out.write(byteArrayOf(v.toByte(), (v shr 8).toByte())) }
+        out.write("RIFF".toByteArray()); writeInt(36 + dataSize); out.write("WAVE".toByteArray())
+        out.write("fmt ".toByteArray()); writeInt(16); writeShort(1); writeShort(1)
+        writeInt(sampleRate); writeInt(sampleRate * 2); writeShort(2); writeShort(16)
+        out.write("data".toByteArray()); writeInt(dataSize); out.write(pcm16)
+    }
+    return file
+}
+
+@Composable
+private fun VoiceMessageBubble(path: String, durationMs: Long, fromUser: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var player by remember(path) { mutableStateOf<MediaPlayer?>(null) }
+    var playing by remember(path) { mutableStateOf(false) }
+    DisposableEffect(path) {
+        onDispose {
+            runCatching { player?.stop() }
+            runCatching { player?.release() }
+            player = null
+            playing = false
+        }
+    }
+    val seconds = ((durationMs + 999L) / 1000L).coerceAtLeast(1L)
+    Row(
+        Modifier.padding(top = 5.dp).clip(RoundedCornerShape(14.dp))
+            .background(if (fromUser) Color.White.copy(alpha = .12f) else Cyan.copy(alpha = .10f))
+            .clickable {
+                if (playing) {
+                    runCatching { player?.pause() }
+                    playing = false
+                } else {
+                    runCatching { player?.release() }
+                    player = null
+                    runCatching {
+                        val next = MediaPlayer()
+                        next.setDataSource(path)
+                        next.setOnCompletionListener { completed ->
+                            playing = false
+                            runCatching { completed.release() }
+                            if (player === completed) player = null
+                        }
+                        next.prepare()
+                        next.start()
+                        player = next
+                        playing = true
+                    }.onFailure {
+                        playing = false
+                        Toast.makeText(context, "语音播放失败：${it.message ?: "文件不可用"}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(if (playing) Icons.Outlined.Stop else Icons.Outlined.VolumeUp, contentDescription = if (playing) "暂停语音" else "播放语音",
+            tint = if (fromUser) Color.White else Cyan, modifier = Modifier.size(19.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(if (playing) "正在播放" else "语音消息", color = if (fromUser) Color.White else MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.width(10.dp))
+        Text("${seconds}″", color = if (fromUser) Color.White.copy(alpha = .8f) else Muted, fontSize = 11.sp)
+        Spacer(Modifier.width(5.dp))
+        Text("▶ 〰〰〰", color = if (fromUser) Color.White.copy(alpha = .85f) else Cyan, fontSize = 11.sp)
+    }
+}
+
+private fun JSONObject.optNonNullString(key: String): String {
+    val value = opt(key) ?: return ""
+    if (value == JSONObject.NULL || value.toString().equals("null", ignoreCase = true)) return ""
+    return value as? String ?: value.toString()
+}
+
+/** MiMo ASR streams transcript events over SSE; the public endpoint still accepts a complete WAV per request. */
+private fun transcribeCapturedPcm(ttsEndpoint: String, ttsApiKey: String, pcm16: ByteArray, sampleRate: Int = 16_000, asrModel: String = "mimo-v2.5-asr", onPartial: (String) -> Unit = {}): String {
+    require(pcm16.size >= sampleRate / 2) { "录音时长不足 0.5 秒，未发送给 AI" }
+    require(ttsApiKey.isNotBlank()) { "当前语音识别配置没有 API Key，请检查语音服务档案" }
+    val wav = ByteArrayOutputStream().also { out ->
+        val dataSize = pcm16.size
+        fun writeInt(v: Int) { out.write(byteArrayOf(v.toByte(), (v shr 8).toByte(), (v shr 16).toByte(), (v shr 24).toByte())) }
+        fun writeShort(v: Int) { out.write(byteArrayOf(v.toByte(), (v shr 8).toByte())) }
+        out.write("RIFF".toByteArray()); writeInt(36 + dataSize); out.write("WAVE".toByteArray())
+        out.write("fmt ".toByteArray()); writeInt(16); writeShort(1); writeShort(1)
+        writeInt(sampleRate); writeInt(sampleRate * 2); writeShort(2); writeShort(16)
+        out.write("data".toByteArray()); writeInt(dataSize); out.write(pcm16)
+    }.toByteArray()
+    val configured = ttsEndpoint.trim().trimEnd('/')
+    require(configured.startsWith("https://") || configured.startsWith("http://")) { "语音识别服务地址无效，请检查服务档案" }
+    val parsed = URL(configured)
+    val path = parsed.path.trimEnd('/').removeSuffix("/chat/completions").removeSuffix("/audio/speech")
+    val url = if (parsed.host.equals("api.xiaomimimo.com", ignoreCase = true)) "https://api.xiaomimimo.com/v1/chat/completions" else {
+        val versioned = if (path.endsWith("/v1")) path else "$path/v1"
+        URL(parsed.protocol, parsed.host, parsed.port, "$versioned/chat/completions").toString()
+    }
+    val encoded = android.util.Base64.encodeToString(wav, android.util.Base64.NO_WRAP)
+    require(encoded.length <= 10 * 1024 * 1024) { "录音文件超过 ASR 服务的 10 MB 限制，请缩短录音时长" }
+    val part = JSONObject().put("type", "input_audio").put("input_audio", JSONObject().put("data", "data:audio/wav;base64,$encoded"))
+    val messages = org.json.JSONArray().put(JSONObject().put("role", "user").put("content", org.json.JSONArray().put(part)))
+    val payload = JSONObject().put("model", asrModel.ifBlank { "mimo-v2.5-asr" }).put("messages", messages).put("asr_options", JSONObject().put("language", "zh")).put("stream", true)
+    val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"; connectTimeout = 20000; readTimeout = 90000; doOutput = true
+        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        setRequestProperty("Accept", "text/event-stream, application/json")
+        setRequestProperty("api-key", ttsApiKey.trim()); setRequestProperty("Cache-Control", "no-cache")
+    }
+    try {
+        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+        val code = connection.responseCode
+        if (code !in 200..299) {
+            val body = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val detail = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
+            throw IllegalStateException("MiMo ASR 识别失败（HTTP $code）" + (detail?.takeIf { it.isNotBlank() } ?: body.take(240)))
+        }
+        val result = StringBuilder()
+        fun appendDelta(value: String) { if (value.isNotEmpty()) { result.append(value); runCatching { onPartial(result.toString()) } } }
+        if (connection.contentType.orEmpty().contains("text/event-stream", ignoreCase = true)) {
+            connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (!line.startsWith("data:")) continue
+                    val data = line.removePrefix("data:").trim()
+                    if (data.isEmpty() || data == "[DONE]") continue
+                    val event = runCatching { JSONObject(data) }.getOrNull() ?: continue
+                    event.optJSONObject("error")?.let { throw IllegalStateException(it.optString("message", "MiMo ASR 流式识别失败")) }
+                    val choice = event.optJSONArray("choices")?.optJSONObject(0)
+                    val delta = choice?.optJSONObject("delta")?.optNonNullString("content").orEmpty()
+                    val text = delta.ifBlank { choice?.optJSONObject("message")?.optNonNullString("content").orEmpty() }.ifBlank { event.optNonNullString("text") }
+                    appendDelta(text)
+                }
+            }
+        } else {
+            val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val json = JSONObject(body)
+            appendDelta(json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optNonNullString("content").orEmpty().ifBlank { json.optNonNullString("text") })
+        }
+        return result.toString().trim().also { if (it.isBlank()) throw IllegalStateException("MiMo ASR 已收到录音，但没有返回识别文字") }
+    } finally { connection.disconnect() }
+}
+private fun createCallSpeechRecognizer(context: Context): SpeechRecognizer {
+    // Use Android's configured default RecognitionService. Keyboard voice input
+    // working on the same device strongly suggests the OEM default provider is
+    // healthy; forcing createOnDeviceSpeechRecognizer can bind a different,
+    // unsupported provider and produce ERROR_CLIENT (5) on some OEM ROMs.
+    check(SpeechRecognizer.isRecognitionAvailable(context)) {
+        "设备未安装可用的系统语音识别服务"
+    }
+    return SpeechRecognizer.createSpeechRecognizer(context)
+}
 
 private fun createCallRecognitionIntent(context: Context) =
     Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -314,7 +511,19 @@ private fun shouldShowReasoning(history: List<ChatLine>): Boolean {
     return prompt.length >= 60 && Regex("(怎么办|如何|怎么做|为什么|分析|建议|规划|解决|处理|比较|选择)").containsMatchIn(prompt)
 }
 
-private fun requestModelReply(context: Context, endpoint: String, model: String, apiKey: String, history: List<ChatLine>, memories: List<String> = emptyList()): ModelReply {
+private fun buildOpenAiStreamingPayload(model: String, history: List<ChatLine>, memories: List<String>): JSONObject {
+    val messages = org.json.JSONArray()
+    val baseSystemPrompt = "你是 HyperCat AI 的语音伙伴。请用自然、口语化、简洁的中文回答，适合直接朗读。不要输出思路说明、Markdown 表格或冗长格式；需要步骤时用简短口语表达。"
+    val memoryContext = memories.filter { it.isNotBlank() }.take(40).joinToString("\n") { "- ${it.take(500)}" }
+    val system = if (memoryContext.isBlank()) baseSystemPrompt else "$baseSystemPrompt\n可参考的用户记忆：\n$memoryContext"
+    messages.put(JSONObject().put("role", "system").put("content", system))
+    history.forEach { line ->
+        if (!line.isSystemEvent && line.text.isNotBlank()) messages.put(JSONObject().put("role", if (line.fromUser) "user" else "assistant").put("content", line.text))
+    }
+    return JSONObject().put("model", model).put("messages", messages).put("temperature", 0.7)
+}
+
+private suspend fun requestModelReply(context: Context, endpoint: String, model: String, apiKey: String, history: List<ChatLine>, memories: List<String> = emptyList()): ModelReply {
     val base = endpoint.trim().trimEnd('/')
     val apiUrl = when { base.endsWith("/chat/completions") -> base; base.endsWith("/v1") -> "$base/chat/completions"; else -> "$base/v1/chat/completions" }
     val requestMessages = org.json.JSONArray()
@@ -322,7 +531,9 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
     val memoryContext = memories.filter { it.isNotBlank() }.take(40).joinToString("\n") { "- ${it.take(500)}" }
     val systemPrompt = if (memoryContext.isBlank()) baseSystemPrompt else "$baseSystemPrompt\n\n以下是用户明确保存的长期记忆，仅在与当前问题相关时参考；若用户当前指令与记忆冲突，以当前指令为准：\n$memoryContext"
     requestMessages.put(JSONObject().put("role", "system").put("content", systemPrompt))
-    history.forEach { line ->
+    // Keep the request context bounded: very long chat histories slow down
+    // time-to-first-token without improving most short follow-up turns.
+    history.takeLast(24).forEach { line ->
         if (line.text.isNotBlank() || line.photos.isNotEmpty() || line.imageUris.isNotEmpty()) {
             val role = if (line.fromUser) "user" else "assistant"
             if (line.fromUser && (line.photos.isNotEmpty() || line.imageUris.isNotEmpty())) {
@@ -344,35 +555,48 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
         }
     }
     val payload = JSONObject().put("model", model).put("messages", requestMessages).put("stream", false)
-    val connection = URL(apiUrl).openConnection() as HttpURLConnection
-    try {
-        connection.requestMethod = "POST"; connection.connectTimeout = 15000; connection.readTimeout = 90000; connection.doOutput = true
-        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-        connection.setRequestProperty("Accept", "application/json")
-        if (apiKey.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
-        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-        val code = connection.responseCode
-        val responseText = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if (code !in 200..299) {
-            val detail = runCatching { JSONObject(responseText).optJSONObject("error")?.optString("message") }.getOrNull()
-            throw IllegalStateException("模型请求失败（HTTP $code）${detail?.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""}")
-        }
-        val message = JSONObject(responseText).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message") ?: throw IllegalStateException("模型返回内容格式不正确")
-        val value = message.opt("content")
-        var answer = when (value) {
-            is String -> value
-            is org.json.JSONArray -> (0 until value.length()).mapNotNull { value.optJSONObject(it)?.optString("text") }.filter { it.isNotBlank() }.joinToString("\n")
-            else -> "模型已返回，但没有可显示的文字内容。"
-        }.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
-        // Only display an explicit, user-facing summary embedded in the final answer.
-        // Never surface provider-private reasoning_content / analysis fields.
-        val tagged = Regex("(?s)<思路说明>(.*?)</思路说明>").find(answer)
-        val reasoning = tagged?.groupValues?.get(1)?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?.let { "方法摘要：$it" }.orEmpty()
-        if (tagged != null) answer = answer.removeRange(tagged.range).trim()
-        return ModelReply(answer, reasoning)
-    } finally { connection.disconnect() }
+    val requestBuilder = okhttp3.Request.Builder().url(apiUrl)
+        .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+        .header("Accept", "application/json")
+    if (apiKey.isNotBlank()) requestBuilder.header("Authorization", "Bearer $apiKey")
+    val client = okhttp3.OkHttpClient.Builder()
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(100, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+    val call = client.newCall(requestBuilder.build())
+    return suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, error: java.io.IOException) {
+                if (continuation.isActive) continuation.resumeWithException(error)
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                response.use { result ->
+                    try {
+                        val responseText = result.body?.string().orEmpty()
+                        if (!result.isSuccessful) {
+                            val detail = runCatching { JSONObject(responseText).optJSONObject("error")?.optString("message") }.getOrNull()
+                            throw IllegalStateException("模型请求失败（HTTP ${result.code}）${detail?.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""}")
+                        }
+                        val message = JSONObject(responseText).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message") ?: throw IllegalStateException("模型返回内容格式不正确")
+                        val value = message.opt("content")
+                        var answer = when (value) {
+                            is String -> value
+                            is org.json.JSONArray -> (0 until value.length()).mapNotNull { value.optJSONObject(it)?.optString("text") }.filter { it.isNotBlank() }.joinToString("\\n")
+                            else -> "模型已返回，但没有可显示的文字内容。"
+                        }.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
+                        val tagged = Regex("(?s)<思路说明>(.*?)</思路说明>").find(answer)
+                        val reasoning = tagged?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }?.let { "方法摘要：$it" }.orEmpty()
+                        if (tagged != null) answer = answer.removeRange(tagged.range).trim()
+                        if (continuation.isActive) continuation.resume(ModelReply(answer, reasoning))
+                    } catch (error: Exception) {
+                        if (continuation.isActive) continuation.resumeWithException(error)
+                    }
+                }
+            }
+        })
+    }
 }
 
 
@@ -559,7 +783,7 @@ private fun safeTtsDiagnostic(error: Exception, profile: TtsProfile, model: Stri
     val safeEndpoint = (if (profile.apiKey.isNotBlank()) profile.endpoint.replace(profile.apiKey, "[API Key 已隐藏]") else profile.endpoint)
         .replace(Regex("(?i)([?&](?:api[-_]?key|token|access_token)=)[^&]+"), "$1[已隐藏]")
     return buildString {
-        appendLine("模型档案：").appendLine(profile.name)
+        appendLine("模型配置：").appendLine(profile.name)
         appendLine("TTS 模型：").appendLine(model)
         appendLine("配置的 API Base URL：").appendLine(safeEndpoint)
         appendLine()
@@ -613,33 +837,13 @@ private fun inferMood(reply: String): String = when {
     listOf("思考", "考虑", "分析", "让我想想").any { reply.contains(it) } -> "thinking"
     else -> "normal"
 }
-private fun exportRearWidgetPackage(context: Context) {
-    runCatching {
-        val built = RearCardPackageBuilder.build(context)
-        val directory = File(context.cacheDir, "rear-widget").apply { mkdirs() }
-        val archive = File(directory, "HyperCatAI-rearscreen.zip")
-        built.copyTo(archive, overwrite = true)
-        val uri = androidx.core.content.FileProvider.getUriForFile(
-            context, "${context.packageName}.fileprovider", archive
-        )
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "application/zip"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "HyperCat AI 背屏虚拟形象资源包")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(Intent.createChooser(send, "分享 HyperCat AI 背屏资源包"))
-    }.onFailure {
-        android.widget.Toast.makeText(context, "组件包导出失败：${it.message ?: "未知错误"}", android.widget.Toast.LENGTH_LONG).show()
-    }
-}
-
-private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "")
+private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "", val voiceAudioPath: String? = null, val voiceDurationMs: Long = 0L, val isSystemEvent: Boolean = false)
 
 private fun serializeChatHistory(messages: List<ChatLine>): String = org.json.JSONArray().apply {
     messages.forEach { line ->
         put(JSONObject().put("text", line.text).put("fromUser", line.fromUser).put("reasoning", line.reasoning)
-            .put("attachments", org.json.JSONArray(line.attachments)))
+            .put("attachments", org.json.JSONArray(line.attachments))
+            .put("voiceAudioPath", line.voiceAudioPath.orEmpty()).put("voiceDurationMs", line.voiceDurationMs).put("isSystemEvent", line.isSystemEvent))
     }
 }.toString()
 
@@ -654,7 +858,10 @@ private fun loadChatHistory(context: Context, title: String): List<ChatLine> {
             val files = item.optJSONArray("attachments") ?: org.json.JSONArray()
             ChatLine(item.optString("text"), item.optBoolean("fromUser"),
                 attachments = (0 until files.length()).map { files.optString(it) },
-                reasoning = item.optString("reasoning"))
+                reasoning = item.optString("reasoning"),
+                voiceAudioPath = item.optString("voiceAudioPath").takeIf { it.isNotBlank() },
+                voiceDurationMs = item.optLong("voiceDurationMs"),
+                isSystemEvent = item.optBoolean("isSystemEvent", false))
         }
     }.getOrDefault(emptyList())
 }
@@ -665,7 +872,7 @@ private fun formatChatForSharing(title: String, messages: List<ChatLine>): Strin
     append("\n\n")
     messages.forEach { line ->
         if (line.text.isNotBlank()) {
-            append(if (line.fromUser) "我：" else "Agent：").append(line.text).append("\n\n")
+            append(if (line.isSystemEvent) "系统：" else if (line.fromUser) "我：" else "Agent：").append(line.text).append("\n\n")
         }
         if (line.attachments.isNotEmpty()) append("附件：").append(line.attachments.joinToString("、")).append("\n\n")
     }
@@ -724,8 +931,9 @@ private fun appendAgentReply(context: Context, messages: MutableList<ChatLine>, 
     messages.add(ChatLine(text, false, reasoning = reasoning))
     AgentReplyNotifications.showIfBackground(context, text)
 }
-private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String)
-private data class TtsProfile(val name: String, val endpoint: String, val apiKey: String)
+private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String, val realtimeProtocol: String = "none", val realtimeEndpoint: String = "")
+private data class TtsProfile(val name: String, val endpoint: String, val apiKey: String, val model: String = "tts-1", val voice: String = "alloy")
+private data class ServiceModelProfile(val name: String, val endpoint: String, val apiKey: String, val model: String, val provider: String = "独立服务")
 private data class SkillProfile(val name: String, val description: String, val instructions: String)
 private data class ThirdPartyPlugin(val name: String, val description: String, val endpoint: String, val method: String, val apiKey: String, val enabled: Boolean = false)
 private data class ReleaseInfo(val version: String, val notes: String, val url: String)
@@ -817,6 +1025,14 @@ private fun HyperCatApp() {
     val initialRearState = remember { AvatarStateStore.read(context) }
     val rearAvatarState by AvatarStateStore.state.collectAsState()
     var page by remember { mutableStateOf(Page.CHAT) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(page) {
+        if (page != Page.CHAT) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        }
+    }
     var openSettingsDrawer by remember { mutableStateOf(false) }
     var chatDrawerExpanded by remember { mutableStateOf(false) }
     var provider by remember { mutableStateOf("OpenAI 兼容接口") }
@@ -840,6 +1056,8 @@ private fun HyperCatApp() {
     var avatarReply by remember { mutableStateOf(initialRearState.reply) }
     var avatarInteractionReply by remember { mutableStateOf("") }
     var avatarInteractionReplyId by remember { mutableLongStateOf(0L) }
+    // The first persisted rear-screen snapshot is history, not a fresh interaction.
+    var hasObservedRearAvatarSnapshot by remember { mutableStateOf(false) }
     var rearAvatarEnabled by remember { mutableStateOf(initialRearState.enabled) }
     var rearBackgroundColor by remember { mutableStateOf(initialRearState.backgroundColor) }
     var mainAvatarBackgroundColor by remember { mutableStateOf("#FFE6F0") }
@@ -898,16 +1116,37 @@ private fun HyperCatApp() {
         }
     }
     val messages = remember { mutableStateListOf<ChatLine>() }
+    var agentAutoReadPending by remember { mutableStateOf(false) }
+    var agentAutoReadTargetIndex by remember { mutableIntStateOf(-1) }
+    // A reply may finish while the user is outside the Agent screen. Never replay it on re-entry.
+    LaunchedEffect(page) {
+        if (page != Page.CHAT) {
+            agentAutoReadPending = false
+            agentAutoReadTargetIndex = -1
+        }
+    }
+    // Voice-call turns are intentionally isolated from the normal Agent conversation until hangup.
+    val callMessages = remember { mutableStateListOf<ChatLine>() }
+    // A dialog can report dismissal after the hangup action; commit call history only once.
+    var callHistoryCommitted by remember { mutableStateOf(false) }
+    var callThinking by remember { mutableStateOf(false) }
+    var callReplyGeneration by remember { mutableLongStateOf(0L) }
+    var callReplyJob by remember { mutableStateOf<Job?>(null) }
     var isThinking by remember { mutableStateOf(false) }
+    var agentReplyJob by remember { mutableStateOf<Job?>(null) }
+    var agentRequestGeneration by remember { mutableLongStateOf(0L) }
     val weatherPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
         scope.launch {
             isThinking = true
             try {
                 val hasLocation = AgentDeviceTools.hasLocationPermission(context)
                 val precise = AgentDeviceTools.hasPreciseLocationPermission(context)
-                val result = if (hasLocation) withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context) }
-                    else "未授予位置权限，无法获取当地天气。请在系统权限弹窗中允许位置访问，或直接告诉我城市名称。"
-                val display = if (hasLocation && !precise) "提示：目前只获得大致位置权限，天气区域可能不够准确。请在应用权限中开启“精确位置”。\\n$result" else result
+                val result = when {
+                    !hasLocation -> "未授予位置权限，无法获取当地天气。请允许位置访问，或直接告诉我城市名称。"
+                    !precise -> "目前仅授予了大致位置权限，系统可能把你定位到附近其他城市。为避免返回错误天气，请在系统设置中为 HyperCat AI 开启“精确位置”，然后重试。"
+                    else -> withContext(Dispatchers.IO) { AgentDeviceTools.currentWeather(context) }
+                }
+                val display = result
                 appendAgentReply(context, messages, display)
                 avatarReply = display
                 avatarMood = "happy"
@@ -970,8 +1209,8 @@ private fun HyperCatApp() {
         ttsModel = prefs.getString("tts_model", "tts-1") ?: "tts-1"
         ttsVoice = prefs.getString("tts_voice", "alloy") ?: "alloy"
         saved = endpoint.isNotBlank() && model.isNotBlank()
-        runCatching { val array = org.json.JSONArray(prefs.getString("model_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); modelProfiles.add(ModelProfile(item.optString("name"), item.optString("provider"), item.optString("endpoint"), item.optString("model"), item.optString("apiKey"))) } }
-        runCatching { val array = org.json.JSONArray(prefs.getString("tts_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); ttsProfiles.add(TtsProfile(item.optString("name"), item.optString("endpoint"), item.optString("apiKey"))) } }
+        runCatching { val array = org.json.JSONArray(prefs.getString("model_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); modelProfiles.add(ModelProfile(item.optString("name"), item.optString("provider"), item.optString("endpoint"), item.optString("model"), item.optString("apiKey"), item.optString("realtimeProtocol", "none"), item.optString("realtimeEndpoint", ""))) } }
+        runCatching { val array = org.json.JSONArray(prefs.getString("tts_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); ttsProfiles.add(TtsProfile(item.optString("name"), item.optString("endpoint"), item.optString("apiKey"), item.optString("model", ttsModel), item.optString("voice", ttsVoice))) } }
         if (ttsProfiles.isEmpty()) modelProfiles.firstOrNull { it.name == ttsProfileName }?.let { old -> val p=TtsProfile(old.name,old.endpoint,old.apiKey); ttsProfiles.add(p); ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; prefs.edit().putString("tts_profiles",org.json.JSONArray().put(JSONObject().put("name",p.name).put("endpoint",p.endpoint).put("apiKey",p.apiKey)).toString()).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() }
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
         autoReadReplies = prefs.getBoolean("auto_read_replies", false)
@@ -997,6 +1236,8 @@ private fun HyperCatApp() {
     }
 
     LaunchedEffect(rearAvatarState.updatedAt) {
+        val isInitialPersistedSnapshot = !hasObservedRearAvatarSnapshot
+        hasObservedRearAvatarSnapshot = true
         if (rearAvatarState.updatedAt > 0L) {
             avatarName = rearAvatarState.avatarName
             avatarMood = rearAvatarState.mood
@@ -1005,17 +1246,22 @@ private fun HyperCatApp() {
                 rearAvatarState.reply != avatarReply &&
                 rearAvatarState.reply !in transientRearFeedback
             ) {
-                val interactionText = rearAvatarState.userText.trim().replace("背屏互动", "互动")
-                messages.add(ChatLine(
-                    interactionText.ifBlank { "（互动）用户通过背屏和虚拟形象进行了互动。" },
-                    true
-                ))
-                messages.add(ChatLine(rearAvatarState.reply, false))
+                val interactionText = when {
+                    rearAvatarState.userText.contains("摸了摸虚拟形象") -> "你摸了摸虚拟形象"
+                    rearAvatarState.userText.contains("长按虚拟形象") -> "你长按了虚拟形象"
+                    rearAvatarState.userText.contains("拖动了虚拟形象") -> "你拖动了虚拟形象"
+                    rearAvatarState.userText.startsWith("[背屏互动") -> "你与虚拟形象进行了一次互动"
+                    else -> rearAvatarState.userText.trim()
+                }
+                // Rear-avatar interaction events stay in avatar state and are never appended to Agent chat.
             }
             avatarReply = rearAvatarState.reply
             if (rearAvatarState.userText.startsWith("[背屏互动") && rearAvatarState.reply.isNotBlank() && rearAvatarState.reply !in transientRearFeedback) {
-                avatarInteractionReply = rearAvatarState.reply
-                avatarInteractionReplyId = rearAvatarState.updatedAt
+                // Do not treat the reply loaded from storage at app startup as a new event.
+                if (!isInitialPersistedSnapshot) {
+                    avatarInteractionReply = rearAvatarState.reply
+                    avatarInteractionReplyId = rearAvatarState.updatedAt
+                }
                 isThinking = false
             }
         }
@@ -1026,30 +1272,100 @@ private fun HyperCatApp() {
     }
 
     LaunchedEffect(avatarName, avatarId, avatarMood, avatarReply) {
-        AvatarStateStore.update(context, avatarName, avatarId, avatarMood, avatarReply, userText = rearAvatarState.userText)
+        // Name/mood changes are presentation updates, not fresh replies. Only a changed
+        // reply is a new event; otherwise preserve the stored interaction timestamp.
+        val isNewReplyEvent = avatarReply != rearAvatarState.reply
+        AvatarStateStore.update(
+            context, avatarName, avatarId, avatarMood, avatarReply,
+            userText = rearAvatarState.userText,
+            updatedAt = if (isNewReplyEvent) null else rearAvatarState.updatedAt
+        )
     }
 
-    MaterialTheme(colorScheme = if (darkNow) darkColorScheme(
-        primary = Cyan, secondary = Color(0xFFB9A4FF), background = Bg, surface = Panel,
-        onPrimary = Color(0xFF06131B), onSurface = Color(0xFFEAF4FF)
-    ) else lightColorScheme(
-        primary = Color(0xFF168DA6), secondary = Color(0xFF7461C8), background = Bg, surface = Panel,
-        onPrimary = Color.White, onSurface = Color(0xFF142235)
-    )) {
-        Scaffold(containerColor = Bg) { padding ->
+    val appTypography = Typography()
+    val appShapes = Shapes(
+        extraSmall = RoundedCornerShape(6.dp),
+        small = RoundedCornerShape(10.dp),
+        medium = RoundedCornerShape(12.dp),
+        large = RoundedCornerShape(16.dp),
+        extraLarge = RoundedCornerShape(20.dp)
+    )
+    MaterialTheme(
+        colorScheme = if (darkNow) darkColorScheme(
+            primary = Color(0xFFF2F2F2), secondary = Color(0xFFBDBDBD), background = Bg, surface = Panel,
+            onPrimary = Color(0xFF111111), onSurface = Color(0xFFF5F5F5),
+            surfaceVariant = Color(0xFF191919), onSurfaceVariant = Color(0xFFB0B0B0),
+            outline = Color(0xFF333333)
+        ) else lightColorScheme(
+            primary = Color(0xFF171717), secondary = Color(0xFF666666), background = Bg, surface = Panel,
+            onPrimary = Color.White, onSurface = Color(0xFF171717),
+            surfaceVariant = Color(0xFFF4F4F4), onSurfaceVariant = Color(0xFF666666),
+            outline = Color(0xFFE2E2E2)
+        ),
+        typography = appTypography,
+        shapes = appShapes
+    ) {
+        Scaffold(
+            containerColor = Bg,
+            modifier = Modifier.pointerInput(Unit) {
+                detectTapGestures(onTap = {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                })
+            }
+        ) { padding ->
             when (page) {
                 Page.CHAT -> ChatPage(
                     modifier = Modifier,
                     contentPadding = padding,
                     onDrawerVisibility = { chatDrawerExpanded = it },
                     messages = messages,
+                    callMessages = callMessages,
+                    callThinking = callThinking,
+                    avatarInteractionReply = avatarInteractionReply,
+                    avatarInteractionReplyId = avatarInteractionReplyId,
+                    agentAutoReadPending = agentAutoReadPending,
+                    agentAutoReadTargetIndex = agentAutoReadTargetIndex,
+                    onAgentAutoReadConsumed = { agentAutoReadPending = false; agentAutoReadTargetIndex = -1 },
+                    onCallStart = {
+                        callHistoryCommitted = false
+                        callReplyJob?.cancel()
+                        callReplyGeneration++
+                        callMessages.clear()
+                        callThinking = false
+                        agentAutoReadPending = false
+                        agentAutoReadTargetIndex = -1
+                    },
+                    onCallEnd = {
+                        callReplyJob?.cancel()
+                        callReplyGeneration++
+                        callThinking = false
+                        if (!callHistoryCommitted) {
+                            callHistoryCommitted = true
+                            val completedCall = callMessages.filter { it.fromUser || it.text.isNotBlank() }
+                            if (currentSessionTitle.isBlank()) {
+                                currentSessionTitle = completedCall.firstOrNull { it.fromUser }?.text
+                                    ?.trim()?.take(42)?.ifBlank { "AI通话" } ?: "AI通话"
+                                recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
+                                chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
+                            }
+                            if (completedCall.isNotEmpty()) messages.addAll(completedCall)
+                            // This is a UI/system event, not a user prompt: it is never sent to the model.
+                            messages.add(ChatLine("你已挂断 AI 电话", fromUser = true, isSystemEvent = true))
+                            callMessages.clear()
+                        }
+                        // Call replies are not ordinary Agent replies and must never enter the auto-read queue.
+                        agentAutoReadPending = false
+                        agentAutoReadTargetIndex = -1
+                    },
                     isThinking = isThinking,
+                    onCancelThinking = { agentRequestGeneration++; agentReplyJob?.cancel(); agentReplyJob = null; isThinking = false; agentAutoReadPending = false; agentAutoReadTargetIndex = -1 },
                     recentPrompts = recentPrompts,
                     onDeleteRecentPrompt = { prompt -> recentPrompts = recentPrompts.filterNot { it == prompt }; chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).remove("chat_session_$prompt").apply() },
-                    onOpenRecentSession = { prompt -> messages.clear(); messages.addAll(loadChatHistory(context, prompt)); currentSessionTitle = prompt },
+                    onOpenRecentSession = { prompt -> agentAutoReadPending = false; agentAutoReadTargetIndex = -1; messages.clear(); messages.addAll(loadChatHistory(context, prompt)); currentSessionTitle = prompt },
                     onShareRecentSession = { prompt -> shareChatText(context, formatChatForSharing(prompt, loadChatHistory(context, prompt))) },
                     onShareCurrentSession = { shareChatText(context, formatChatForSharing(currentSessionTitle, messages)) },
-                    onClearCurrentSession = { currentSessionTitle = "" },
+                    onClearCurrentSession = { agentAutoReadPending = false; agentAutoReadTargetIndex = -1; currentSessionTitle = "" },
                     currentSessionTitle = currentSessionTitle,
                     onAvatarInteraction = { action ->
                         if (action in setOf("avatar_touch", "avatar_long_press", "avatar_drag")) {
@@ -1061,16 +1377,21 @@ private fun HyperCatApp() {
                     },
                     onAvatarNameChange = { value -> val clean = value.trim().take(16).ifBlank { "小橘" }; avatarName = clean; chatPrefs.edit().putString("avatar_name", clean).apply() },
                     modelProfiles = modelProfiles.toList(), ttsProfiles = ttsProfiles.toList(), activeModel = model.ifBlank { "未选择模型" },
-                    onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
+                    onSelectModel = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).putString("active_realtime_protocol",p.realtimeProtocol).putString("active_realtime_endpoint",p.realtimeEndpoint).apply() },
                     savedNotes = savedNotes, onSaveNote = { note -> savedNotes=(listOf(note)+savedNotes).distinct().take(100); chatPrefs.edit().putString("saved_notes",savedNotes.joinToString("\n--NOTE--\n")).apply() },
                     onDeleteNote = { note -> savedNotes = savedNotes.filterNot { it == note }; chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
                     draft = draft,
                     onDraft = { draft = it },
-                    onSend = { value, attachments, photos ->
-                        if (value.isNotBlank() || attachments.isNotEmpty() || photos.isNotEmpty()) {
+                    onSend = { value, attachments, photos, isVoiceTurn, voiceAudioPath, voiceDurationMs ->
+                        if (isVoiceTurn && value == "__HYPERCAT_ASR_FAILED_VOICE__") {
+                            // Keep the captured audio visible/playable, but do not submit a fake prompt to the Agent.
+                            messages.add(ChatLine("语音消息（未识别，可点击播放）", true, voiceAudioPath = voiceAudioPath, voiceDurationMs = voiceDurationMs))
+                        } else if (value.isNotBlank() || attachments.isNotEmpty() || photos.isNotEmpty()) {
+                            agentAutoReadPending = autoReadReplies
                             if (currentSessionTitle.isBlank() && value.isNotBlank()) currentSessionTitle = value.trim().take(42)
-                            val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") })
+                            val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") }, voiceAudioPath = voiceAudioPath, voiceDurationMs = voiceDurationMs)
                             messages.add(userLine)
+                            agentAutoReadTargetIndex = if (autoReadReplies) messages.lastIndex else -1
                             if (value.isNotBlank()) {
                                 if (currentSessionTitle == value.trim().take(42)) recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
                                 chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
@@ -1114,40 +1435,105 @@ private fun HyperCatApp() {
                                 }
                                 else {
                                     val requestHistory = messages.toList()
-                                    scope.launch {
+                                    agentReplyJob = scope.launch {
+                                        val requestGeneration = ++agentRequestGeneration
                                         isThinking = true
+                                        val streamingIndex = if (isVoiceTurn) messages.size.also { messages.add(ChatLine("", false)) } else -1
                                         try {
-                                            val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                            appendAgentReply(context, messages, reply.text, reply.reasoning.takeIf { shouldShowReasoning(requestHistory) }.orEmpty())
-                                            avatarReply = reply.text
-                                            avatarMood = inferMood(reply.text)
+                                            if (isVoiceTurn) {
+                                                val payload = buildOpenAiStreamingPayload(model, requestHistory, savedNotes)
+                                                val streamed = OpenAiCompatibleStreamClient.stream(endpoint, apiKey, payload) { delta ->
+                                                    withContext(Dispatchers.Main.immediate) {
+                                                        if (requestGeneration != agentRequestGeneration) return@withContext
+                                                        if (streamingIndex in messages.indices) {
+                                                            val previous = messages[streamingIndex]
+                                                            messages[streamingIndex] = previous.copy(text = previous.text + delta)
+                                                        }
+                                                        avatarReply += delta
+                                                        avatarMood = inferMood(avatarReply)
+                                                    }
+                                                }
+                                                if (requestGeneration != agentRequestGeneration) return@launch
+                                                val finalText = streamed.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
+                                                if (streamingIndex in messages.indices) messages[streamingIndex] = messages[streamingIndex].copy(text = finalText)
+                                                avatarReply = finalText
+                                                avatarMood = inferMood(finalText)
+                                            } else {
+                                                val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
+                                                if (requestGeneration != agentRequestGeneration) return@launch
+                                                appendAgentReply(context, messages, reply.text, reply.reasoning.takeIf { shouldShowReasoning(requestHistory) }.orEmpty())
+                                                avatarReply = reply.text
+                                                avatarMood = inferMood(reply.text)
+                                            }
+                                        } catch (cancelled: CancellationException) {
+                                            if (requestGeneration == agentRequestGeneration && streamingIndex in messages.indices && messages[streamingIndex].text.isBlank()) messages.removeAt(streamingIndex)
+                                            throw cancelled
                                         } catch (error: Exception) {
-                                            val failure = "模型请求未成功：${error.message ?: "网络或服务异常"}"
-                                            appendAgentReply(context, messages, failure)
+                                            if (requestGeneration != agentRequestGeneration) return@launch
+                                            val failure = if (isVoiceTurn) "通话模型请求未成功：${error.message ?: "网络或服务异常"}" else "模型请求未成功：${error.message ?: "网络或服务异常"}"
+                                            if (streamingIndex in messages.indices) messages[streamingIndex] = messages[streamingIndex].copy(text = failure)
+                                            else appendAgentReply(context, messages, failure)
                                             avatarReply = failure
                                             avatarMood = "sad"
-                                        } finally { isThinking = false }
+                                        } finally {
+                                            if (requestGeneration == agentRequestGeneration) {
+                                                isThinking = false
+                                                agentReplyJob = null
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     },
+                    onRealtimeUserTranscript = { text ->
+                        callMessages.add(ChatLine(text, true))
+                        avatarReply = text
+                        avatarMood = "thinking"
+                    },
+                    onRealtimeAssistantReply = { text ->
+                        callMessages.add(ChatLine(text, false))
+                        avatarReply = text
+                        avatarMood = "happy"
+                    },
                     onCallInitiative = { prompt ->
-                        if (saved && endpoint.isNotBlank() && model.isNotBlank() && !isThinking) {
-                            val requestHistory = messages.toList() + ChatLine(prompt, true)
-                            scope.launch {
-                                isThinking = true
+                        if (saved && endpoint.isNotBlank() && model.isNotBlank()) {
+                            // A new caller utterance supersedes an unfinished call reply; never block barge-in.
+                            callReplyJob?.cancel()
+                            callMessages.lastOrNull()?.let { if (!it.fromUser && it.text.isBlank()) callMessages.removeAt(callMessages.lastIndex) }
+                            val generation = ++callReplyGeneration
+                            val requestHistory = callMessages.toList() + ChatLine(prompt, true)
+                            callThinking = true
+                            callReplyJob = scope.launch {
+                                val placeholderIndex = callMessages.size
+                                callMessages.add(ChatLine("", false))
                                 try {
-                                    val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                    appendAgentReply(context, messages, reply.text, reply.reasoning.takeIf { shouldShowReasoning(requestHistory) }.orEmpty())
-                                    avatarReply = reply.text
-                                    avatarMood = inferMood(reply.text)
+                                    val payload = buildOpenAiStreamingPayload(model, requestHistory, savedNotes)
+                                    val streamed = OpenAiCompatibleStreamClient.stream(endpoint, apiKey, payload) { delta ->
+                                        withContext(Dispatchers.Main.immediate) {
+                                            if (generation == callReplyGeneration && placeholderIndex in callMessages.indices) {
+                                                callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = callMessages[placeholderIndex].text + delta)
+                                                avatarReply = callMessages[placeholderIndex].text
+                                                avatarMood = inferMood(avatarReply)
+                                            }
+                                        }
+                                    }
+                                    val finalText = streamed.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
+                                    if (generation == callReplyGeneration && placeholderIndex in callMessages.indices) {
+                                        callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = finalText)
+                                        avatarReply = finalText
+                                        avatarMood = inferMood(finalText)
+                                    }
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
                                 } catch (error: Exception) {
-                                    val failure = "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}"
-                                    appendAgentReply(context, messages, failure)
-                                    avatarReply = failure
-                                    avatarMood = "sad"
-                                } finally { isThinking = false }
+                                    if (generation == callReplyGeneration) {
+                                        val failure = "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}"
+                                        if (placeholderIndex in callMessages.indices) callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = failure)
+                                        avatarReply = failure
+                                        avatarMood = "sad"
+                                    }
+                                } finally { if (generation == callReplyGeneration) callThinking = false }
                             }
                         }
                     },
@@ -1282,12 +1668,12 @@ private fun HyperCatApp() {
                             provider = provider, onProvider = { provider = it },
                             modelProfiles = modelProfiles.toList(),
                             ttsProfiles = ttsProfiles.toList(),
-                            onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
-                            onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
-                            onDeleteProfile = { p -> modelProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
-                            onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey)) }; ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; chatPrefs.edit().putString("tts_profiles",a.toString()).putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() },
-                            onSelectTtsProfile = { p -> ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; chatPrefs.edit().putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() },
-                            onDeleteTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply(); if (ttsProfileName==p.name) { ttsProfileName=""; ttsMode="system"; chatPrefs.edit().putString("tts_profile_name","").putString("tts_mode","system").apply() } },
+                            onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey).put("realtimeProtocol",x.realtimeProtocol).put("realtimeEndpoint",x.realtimeEndpoint)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                            onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).putString("active_realtime_protocol",p.realtimeProtocol).putString("active_realtime_endpoint",p.realtimeEndpoint).apply() },
+                            onDeleteProfile = { p -> modelProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey).put("realtimeProtocol",x.realtimeProtocol).put("realtimeEndpoint",x.realtimeEndpoint)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                            onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey).put("model",x.model).put("voice",x.voice)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply() },
+                            onSelectTtsProfile = { p -> ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; ttsModel=p.model; ttsVoice=p.voice; chatPrefs.edit().putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).putString("tts_model",p.model).putString("tts_voice",p.voice).apply() },
+                            onDeleteTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey).put("model",x.model).put("voice",x.voice)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply(); if (ttsProfileName==p.name) { ttsProfileName=""; ttsMode="system"; chatPrefs.edit().putString("tts_profile_name","").putString("tts_mode","system").apply() } },
                             endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
                             model = model, onModel = { model = it; saved = false },
                             apiKey = apiKey, onApiKey = { apiKey = it; saved = false },
@@ -1361,12 +1747,12 @@ private fun HyperCatApp() {
                     provider = provider, onProvider = { provider = it },
                     modelProfiles = modelProfiles.toList(),
                     ttsProfiles = ttsProfiles.toList(),
-                    onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
-                    onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
-                    onDeleteProfile = { p -> modelProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
-                    onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey)) }; ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; chatPrefs.edit().putString("tts_profiles",a.toString()).putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() },
-                    onSelectTtsProfile = { p -> ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; chatPrefs.edit().putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() },
-                    onDeleteTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply(); if (ttsProfileName==p.name) { ttsProfileName=""; ttsMode="system"; chatPrefs.edit().putString("tts_profile_name","").putString("tts_mode","system").apply() } },
+                    onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey).put("realtimeProtocol",x.realtimeProtocol).put("realtimeEndpoint",x.realtimeEndpoint)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                    onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).putString("active_realtime_protocol",p.realtimeProtocol).putString("active_realtime_endpoint",p.realtimeEndpoint).apply() },
+                    onDeleteProfile = { p -> modelProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey).put("realtimeProtocol",x.realtimeProtocol).put("realtimeEndpoint",x.realtimeEndpoint)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                    onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey).put("model",x.model).put("voice",x.voice)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply() },
+                            onSelectTtsProfile = { p -> ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; ttsModel=p.model; ttsVoice=p.voice; chatPrefs.edit().putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).putString("tts_model",p.model).putString("tts_voice",p.voice).apply() },
+                    onDeleteTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey).put("model",x.model).put("voice",x.voice)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply(); if (ttsProfileName==p.name) { ttsProfileName=""; ttsMode="system"; chatPrefs.edit().putString("tts_profile_name","").putString("tts_mode","system").apply() } },
                     endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
                     model = model, onModel = { model = it; saved = false },
                     apiKey = apiKey, onApiKey = { apiKey = it; saved = false },
@@ -1518,8 +1904,10 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
-    onSend: (String, List<Uri>, List<Bitmap>) -> Unit, onCallInitiative: (String) -> Unit, openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: MutableList<ChatLine>, callThinking: Boolean, avatarInteractionReply: String, avatarInteractionReplyId: Long, agentAutoReadPending: Boolean, agentAutoReadTargetIndex: Int, onAgentAutoReadConsumed: () -> Unit, onCallStart: () -> Unit, onCallEnd: () -> Unit, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    onSend: (String, List<Uri>, List<Bitmap>, Boolean, String?, Long) -> Unit, onCancelThinking: () -> Unit, onCallInitiative: (String) -> Unit,
+    onRealtimeUserTranscript: (String) -> Unit, onRealtimeAssistantReply: (String) -> Unit,
+    openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
     avatarMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
     ttsMode: String, ttsProfileName: String, ttsModel: String, ttsVoice: String, autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit, onMood: (String) -> Unit, onAvatarInteraction: (String) -> Unit, onAvatarNameChange: (String) -> Unit,
     showSettingsOnEnter: Boolean,
@@ -1528,6 +1916,30 @@ private fun ChatPage(
     avatarSettingsContent: @Composable (Modifier, Boolean) -> Unit
 ) {
     val context: Context = LocalContext.current
+    val drawerKeyboardController = LocalSoftwareKeyboardController.current
+    val drawerFocusManager = LocalFocusManager.current
+    val dismissKeyboard: () -> Unit = {
+        drawerFocusManager.clearFocus(force = true)
+        drawerKeyboardController?.hide()
+    }
+    val realtimePrefs = remember(context) { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
+    val skillPromptOptions = remember {
+        listOf(
+            "查资料" to "请帮我查找这个主题的可靠资料，并整理关键结论：",
+            "深度分析" to "请从背景、原因、影响和可行方案几个方面深入分析：",
+            "写作助手" to "请根据以下要求写一份结构清晰、自然易读的内容：",
+            "代码排查" to "请检查下面的代码，定位问题并给出可直接应用的修复：",
+            "制定计划" to "请把这个目标拆解成可执行步骤，并安排优先级：",
+            "总结提炼" to "请提炼以下内容的核心观点、重要细节和行动项：",
+            "创意灵感" to "围绕这个主题提供几个有差异、有创意的思路：",
+            "解释概念" to "请用通俗易懂的方式解释这个概念，并举例说明：",
+            "翻译润色" to "请准确翻译并润色下面的内容，保持原意和语气："
+        )
+    }
+    var skillPromptShuffle by remember { mutableIntStateOf(0) }
+    val visibleSkillPrompts = remember(skillPromptShuffle) { skillPromptOptions.shuffled().take(3) }
+    val latestCameraFrame = remember { AtomicReference<ByteArray?>(null) }
+    var cameraVisionStatus by remember { mutableStateOf("") }
     val live2dModel by Live2DModelStore.state.collectAsState()
     LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -1558,6 +1970,24 @@ private fun ChatPage(
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
     var callActive by remember { mutableStateOf(false) }
+    var callGeneration by remember { mutableLongStateOf(0L) }
+    var realtimeCallSession by remember { mutableStateOf<RealtimeAgentSession?>(null) }
+    var realtimeVisionController by remember { mutableStateOf<RealtimeVisionController?>(null) }
+    LaunchedEffect(callActive) {
+        if (!callActive) {
+            realtimeVisionController?.close()
+            realtimeVisionController = null
+            RealtimeAvatarStateStore.set(RealtimeAvatarPhase.IDLE)
+        }
+    }
+    var callPcmCaptureController by remember { mutableStateOf<CallPcmCaptureController?>(null) }
+    var realtimeAssistantDraft by remember { mutableStateOf("") }
+    val audioSessionCoordinator = remember(context) { AudioSessionCoordinator.get(context) }
+    var speechAudioLease by remember { mutableStateOf<AudioSessionCoordinator.Lease?>(null) }
+    var voiceCaptureRecorder by remember { mutableStateOf<AudioRecord?>(null) }
+    var voiceCaptureJob by remember { mutableStateOf<Job?>(null) }
+    var voiceCaptureLease by remember { mutableStateOf<AudioSessionCoordinator.Lease?>(null) }
+    var voiceCapturePcm by remember { mutableStateOf<ByteArray?>(null) }
     var micEnabled by remember { mutableStateOf(true) }
     var videoEnabled by remember { mutableStateOf(false) }
     var useFrontCamera by remember { mutableStateOf(true) }
@@ -1568,6 +1998,12 @@ private fun ChatPage(
     var previousSpeakerphoneOn by remember { mutableStateOf(false) }
     var recognitionStartJob by remember { mutableStateOf<Job?>(null) }
     var isListening by remember { mutableStateOf(false) }
+    var recognitionSessionActive by remember { mutableStateOf(false) }
+    // True only after startListening has actually been dispatched to Android.
+    var recognitionStartCommandSent by remember { mutableStateOf(false) }
+    // Defer push-to-talk release until RecognitionService confirms readiness.
+    var recognitionReadyForSpeech by remember { mutableStateOf(false) }
+    var recognitionStopPending by remember { mutableStateOf(false) }
     var ttsReady by remember { mutableStateOf(false) }
     var isSpeaking by remember { mutableStateOf(false) }
     var cloudSpeechJob by remember { mutableStateOf<Job?>(null) }
@@ -1583,7 +2019,7 @@ private fun ChatPage(
         }
     }
     LaunchedEffect(ttsMode, ttsProfileName, ttsModel) {
-        if (ttsMode == "cloud") speechStatus = if (selectedTtsProfile != null && ttsModel.isNotBlank()) "云端 TTS 已配置，可测试朗读" else "请在设置中选择 TTS 模型档案并填写模型名称"
+        if (ttsMode == "cloud") speechStatus = if (selectedTtsProfile != null && ttsModel.isNotBlank()) "云端 TTS 已配置，可测试朗读" else "请在设置的语音模型中选择 TTS 模型并填写模型名称"
     }
     LaunchedEffect(ttsReady, ttsLanguage, ttsRate, ttsPitch) {
         if (ttsReady) {
@@ -1601,11 +2037,15 @@ private fun ChatPage(
                 speechEngine.setSpeechRate(ttsRate.coerceIn(0.6f, 1.6f))
                 speechEngine.setPitch(ttsPitch.coerceIn(0.7f, 1.4f))
                 speechEngine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) { isSpeaking = true; agentPlaybackUntilMs = Long.MAX_VALUE }
+                    override fun onStart(utteranceId: String?) {
+                        isSpeaking = true
+                        agentPlaybackUntilMs = Long.MAX_VALUE
+                    }
                     override fun onDone(utteranceId: String?) {
                         if (utteranceId?.endsWith("-last") == true) {
                             isSpeaking = false
                             agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 2200L
+                            if (callActive && micEnabled && realtimeCallSession == null) isListening = true
                         }
                     }
                     @Deprecated("Deprecated in Java")
@@ -1617,6 +2057,7 @@ private fun ChatPage(
                     override fun onError(utteranceId: String?, errorCode: Int) {
                         isSpeaking = false
                         agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 1200L
+                        if (callActive && micEnabled && realtimeCallSession == null) callPcmCaptureController?.setEnabled(true)
                         speechStatus = "朗读失败（错误码 $errorCode），请检查系统语音引擎"
                     }
                 })
@@ -1631,6 +2072,39 @@ private fun ChatPage(
     var recentSort by remember { mutableStateOf("最新") }
     var showModelPicker by remember { mutableStateOf(false) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
+    var showComposerActions by remember { mutableStateOf(false) }
+    var recentPhotoUris by remember { mutableStateOf(emptyList<Uri>()) }
+    val galleryPermissions = remember {
+        when {
+            Build.VERSION.SDK_INT >= 34 -> arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            )
+            Build.VERSION.SDK_INT >= 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+            else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+    }
+    val galleryPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+        val canReadImages = results.values.any { it } ||
+            galleryPermissions.any { permission ->
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            }
+        recentPhotoUris = if (canReadImages) loadRecentImageUris(context) else emptyList()
+    }
+    LaunchedEffect(showComposerActions) {
+        if (showComposerActions) {
+            val canReadImages = galleryPermissions.any { permission ->
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            }
+            if (canReadImages) {
+                recentPhotoUris = withContext(Dispatchers.IO) { loadRecentImageUris(context) }
+            } else {
+                galleryPermissionLauncher.launch(galleryPermissions)
+            }
+        }
+    }
+    var showFullScreenEditor by remember { mutableStateOf(false) }
     val latestOnSend by rememberUpdatedState(onSend)
     val latestOnDraft by rememberUpdatedState(onDraft)
     val latestDraft by rememberUpdatedState(draft)
@@ -1640,19 +2114,59 @@ private fun ChatPage(
     var pendingRecognitionStart by remember { mutableStateOf(false) }
     var pendingMicPermissionRequest by remember { mutableStateOf(false) }
     var speechRecognizer by remember(context) { mutableStateOf(createCallSpeechRecognizer(context)) }
+    val latestSpeechRecognizer by rememberUpdatedState(speechRecognizer)
     DisposableEffect(speechRecognizer) {
         val activeRecognizer = speechRecognizer
         activeRecognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) { isListening = true; speechStatus = "麦克风已启动，正在聆听…" }
-            override fun onBeginningOfSpeech() { isListening = true; speechStatus = "已检测到你的声音，正在识别…" }
+            override fun onReadyForSpeech(params: Bundle?) {
+                recognitionReadyForSpeech = true
+                recognitionSessionActive = true
+                isListening = true
+                speechStatus = "麦克风已启动，正在聆听…"
+                if (recognitionStopPending) {
+                    recognitionStopPending = false
+                    speechStatus = "正在完成本次语音识别…"
+                    runCatching { activeRecognizer.stopListening() }.onFailure {
+                        recognitionSessionActive = false
+                        recognitionStartCommandSent = false
+                        recognitionReadyForSpeech = false
+                        isListening = false
+                        speechStatus = "结束语音输入失败：" + (it.message ?: "系统语音服务异常")
+                    }
+                }
+            }
+            override fun onBeginningOfSpeech() {
+                recognitionSessionActive = true
+                isListening = true
+                if (latestCallActive && latestMicEnabled && isSpeaking) {
+                    // Stop AI playback as soon as speech is detected, not after final ASR results.
+                    runCatching { speechEngine.stop() }
+                    cloudSpeechJob?.cancel()
+                    isSpeaking = false
+                    agentPlaybackUntilMs = 0L
+                    speechStatus = "检测到你正在插话，已停止 AI 播报…"
+                } else speechStatus = if (latestCallActive) "已检测到你的声音，正在识别…" else "正在识别语音…"
+            }
             override fun onRmsChanged(rmsdB: Float) { micRmsDb = rmsdB.coerceIn(-2f, 10f) }
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { isListening = false; if (latestCallActive) speechStatus = "检测到语音结束，正在识别…" }
             override fun onError(error: Int) {
+                if (latestSpeechRecognizer !== activeRecognizer) {
+                    Log.w("HyperCatVoice", "IGNORE_STALE_RECOGNIZER_ERROR code=$error")
+                    return
+                }
+                Log.e("HyperCatVoice", "SPEECH_RECOGNIZER_ERROR code=$error callActive=$latestCallActive micEnabled=$latestMicEnabled ready=$recognitionReadyForSpeech startSent=$recognitionStartCommandSent")
+                recognitionSessionActive = false
+                recognitionStartCommandSent = false
+                recognitionReadyForSpeech = false
+                recognitionStopPending = false
+                recognitionStartJob?.cancel()
+                recognitionStartJob = null
                 isListening = false
+                if (!latestCallActive) { speechAudioLease?.close(); speechAudioLease = null }
                 val reason = when (error) {
                     SpeechRecognizer.ERROR_AUDIO -> "麦克风音频采集失败，请检查系统麦克风隐私开关或其他应用占用"
-                    SpeechRecognizer.ERROR_CLIENT -> "语音识别服务被中断"
+                    SpeechRecognizer.ERROR_CLIENT -> "语音识别客户端中断（错误码 $error）"
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "麦克风权限不足"
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "语音识别网络不可用"
                     SpeechRecognizer.ERROR_NO_MATCH -> "没有听清，请靠近麦克风再说一次"
@@ -1661,8 +2175,16 @@ private fun ChatPage(
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有检测到语音，请再次说话"
                     else -> "语音识别异常（$error）"
                 }
+                if (latestCallActive && !latestMicEnabled && error == SpeechRecognizer.ERROR_CLIENT) {
+                    speechStatus = "麦克风已关闭"
+                    return
+                }
+                if (!latestCallActive && error == SpeechRecognizer.ERROR_CLIENT) {
+                    Log.i("HyperCatVoice", "Ignore ERROR_CLIENT after call/recognition session ended")
+                    return
+                }
+                speechStatus = reason
                 if (latestCallActive) {
-                    speechStatus = reason
                     if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                         speechStatus = "系统未授予录音权限，正在请求麦克风权限…"
                         pendingMicPermissionRequest = true
@@ -1696,6 +2218,8 @@ private fun ChatPage(
                                     }
                                     if (!latestCallActive || !latestMicEnabled) return@launch
                                     speechStatus = "正在重新连接语音识别服务…"
+                                    recognitionSessionActive = true
+                                    recognitionStartCommandSent = true
                                     target.startListening(createCallRecognitionIntent(context))
                                 }.onFailure { speechStatus = "语音识别重试失败：${it.message ?: "请检查系统语音服务"}" }
                             }
@@ -1704,30 +2228,47 @@ private fun ChatPage(
                 }
             }
             override fun onResults(results: Bundle?) {
+                recognitionSessionActive = false
+                recognitionStartCommandSent = false
+                recognitionReadyForSpeech = false
+                recognitionStopPending = false
+                recognitionStartJob?.cancel()
+                recognitionStartJob = null
                 isListening = false
+                if (!latestCallActive) { speechAudioLease?.close(); speechAudioLease = null }
                 val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
                 if (spoken.isNotBlank()) {
                     if (latestCallActive && latestMicEnabled) {
                         val playbackActive = isSpeaking || SystemClock.elapsedRealtime() <= agentPlaybackUntilMs
                         if (playbackActive && looksLikeAgentEcho(spoken, lastCallSpokenText)) {
                             speechStatus = "已识别并过滤 Agent 自己的播报回声，继续聆听…"
-                        } else latestOnSend(spoken, emptyList(), emptyList())
+                        } else latestOnCallInitiative("用户在通话中说：$spoken。请直接回应用户这句话，保持自然、简洁的口语表达。")
                     } else if (!latestCallActive) {
                         latestOnDraft(if (latestDraft.isBlank()) spoken else "${latestDraft} ${spoken}")
                     }
                 } else if (latestCallActive) speechStatus = "没有识别到清晰语音，请再说一次"
+                else speechStatus = "没有识别到语音，请按住麦克风重新说一次"
                 if (latestCallActive && latestMicEnabled) pendingRecognitionStart = true
             }
             override fun onPartialResults(partialResults: Bundle?) {
                 val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                if (partial.isNotBlank() && latestCallActive) {
-                    val playbackActive = isSpeaking || SystemClock.elapsedRealtime() <= agentPlaybackUntilMs
-                    speechStatus = if (playbackActive && looksLikeAgentEcho(partial, lastCallSpokenText)) "正在过滤 Agent 播报回声…" else "正在识别你的声音：$partial"
+                if (partial.isNotBlank()) {
+                    val playbackActive = latestCallActive && (isSpeaking || SystemClock.elapsedRealtime() <= agentPlaybackUntilMs)
+                    speechStatus = if (playbackActive && looksLikeAgentEcho(partial, lastCallSpokenText)) "正在过滤 Agent 播报回声…"
+                        else if (latestCallActive) "正在识别你的声音：$partial" else "识别中：$partial"
                 }
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
-        onDispose { runCatching { activeRecognizer.cancel() }; runCatching { activeRecognizer.destroy() } }
+        onDispose {
+            // Replacing a recognizer after ERROR_CLIENT means Android has already
+            // terminated that session. Calling cancel() again during disposal can
+            // generate a second ERROR_CLIENT and race the replacement instance.
+            if (latestSpeechRecognizer === activeRecognizer && recognitionSessionActive) {
+                runCatching { activeRecognizer.cancel() }
+            }
+            runCatching { activeRecognizer.destroy() }
+        }
     }
     val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
@@ -1745,6 +2286,73 @@ private fun ChatPage(
         }
     }
     fun startInAppRecognition() {
+        // Normal push-to-talk owns the microphone directly. AI calls retain their
+        // dedicated Realtime / legacy recognition lifecycle below.
+        if (!callActive) {
+            if (voiceCaptureRecorder != null) return
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                speechStatus = "尚未获得麦克风录音权限"; micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO); return
+            }
+            val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            if (manager.isMicrophoneMute) { speechStatus = "系统麦克风隐私开关已关闭"; return }
+            try {
+                val lease = audioSessionCoordinator.acquire(AudioSessionCoordinator.Owner.VOICE_MESSAGE)
+                voiceCaptureLease = lease
+                val rate = 16_000
+                val minBuffer = AudioRecord.getMinBufferSize(rate, android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT)
+                check(minBuffer > 0) { "设备不支持 16kHz PCM 麦克风采集（$minBuffer）" }
+                val recorder = AudioRecord(MediaRecorder.AudioSource.MIC, rate,
+                    android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer * 2, 6400))
+                check(recorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord 初始化失败，无法打开麦克风" }
+                recorder.startRecording()
+                check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "麦克风未进入录音状态" }
+                voiceCaptureRecorder = recorder
+                voiceCapturePcm = null
+                isListening = true
+                speechStatus = "麦克风已启动，正在采集 PCM…"
+                Log.i("HyperCatVoice", "PCM_CAPTURE_STARTED rate=16000 state=${recorder.state} recording=${recorder.recordingState} minBuffer=$minBuffer")
+                voiceCaptureJob = speechScope.launch(Dispatchers.IO) {
+                    val output = ByteArrayOutputStream()
+                    val chunk = ByteArray(maxOf(minBuffer, 3200))
+                    var total = 0L
+                    var peak = 0
+                    var squares = 0.0
+                    var samples = 0
+                    try {
+                        while (isActive && recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                            val n = recorder.read(chunk, 0, chunk.size, AudioRecord.READ_BLOCKING)
+                            if (n > 0) {
+                                output.write(chunk, 0, n); total += n
+                                var i = 0
+                                while (i + 1 < n) {
+                                    val value = ((chunk[i + 1].toInt() shl 8) or (chunk[i].toInt() and 0xff)).toShort().toInt()
+                                    val abs = kotlin.math.abs(value); if (abs > peak) peak = abs
+                                    squares += value.toDouble() * value.toDouble(); samples++; i += 2
+                                }
+                            } else if (n < 0) throw IllegalStateException("AudioRecord.read 失败：$n")
+                        }
+                    } catch (e: Exception) { Log.e("HyperCatVoice", "PCM_CAPTURE_READ_FAILED", e) }
+                    val pcm = output.toByteArray()
+                    val rms = if (samples > 0) kotlin.math.sqrt(squares / samples) else 0.0
+                    withContext(Dispatchers.Main) {
+                        voiceCapturePcm = pcm
+                        Log.i("HyperCatVoice", "PCM_CAPTURE_FINISHED bytes=${pcm.size} peak=$peak rms=${"%.1f".format(Locale.US, rms)}")
+                    }
+                }
+            } catch (error: Exception) {
+                runCatching { voiceCaptureRecorder?.release() }
+                voiceCaptureRecorder = null; voiceCaptureLease?.close(); voiceCaptureLease = null
+                isListening = false
+                speechStatus = "麦克风启动失败：${error.message ?: "未知错误"}"
+                Log.e("HyperCatVoice", "PCM_CAPTURE_START_FAILED", error)
+            }
+            return
+        }
+        if (callActive) {
+            if (realtimeCallSession == null) callPcmCaptureController?.setEnabled(true)
+            return
+        }
+        if (recognitionSessionActive) return
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             speechStatus = "尚未获得麦克风录音权限，正在请求授权…"
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO); return
@@ -1761,6 +2369,8 @@ private fun ChatPage(
             Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
             return
         }
+        Log.i("HyperCatVoice", "start requested callActive=" + callActive + " micMuted=" + audioManager.isMicrophoneMute + " recognizerAvailable=" + SpeechRecognizer.isRecognitionAvailable(context))
+        // RecognitionService owns the input route; keep the app on the normal system audio route.
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
@@ -1772,20 +2382,355 @@ private fun ChatPage(
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
         }
         isListening = false
+        recognitionSessionActive = true
+        recognitionStartCommandSent = false
+        recognitionReadyForSpeech = false
+        recognitionStopPending = false
+        speechStatus = if (callActive) "正在启动语音识别，请开始说话…" else "正在启动语音识别…"
         if (callActive) {
             recognitionStartJob?.cancel()
-            // The previous session has already delivered onResults/onError before this restart.
-            // Avoid cancel() on an idle SpeechRecognizer: some OEM services report ERROR_CLIENT.
-            speechStatus = "正在启动语音识别，请开始说话…"
             recognitionStartJob = speechScope.launch {
                 delay(300L)
-                if (!callActive || !micEnabled) return@launch
-                runCatching { speechRecognizer.startListening(intent) }
-                    .onFailure { speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}" }
+                if (!callActive || !micEnabled || !recognitionSessionActive) {
+                    recognitionSessionActive = false
+                    return@launch
+                }
+                runCatching {
+                    recognitionStartCommandSent = true
+                    Log.i("HyperCatVoice", "dispatch startListening callActive=true")
+                    speechRecognizer.startListening(intent)
+                }.onFailure {
+                    recognitionSessionActive = false
+                    recognitionStartCommandSent = false
+                    speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}"
+                }
             }
         } else {
-            runCatching { speechRecognizer.startListening(intent) }
-                .onFailure { speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}" }
+            runCatching {
+                recognitionStartCommandSent = true
+                Log.i("HyperCatVoice", "dispatch startListening callActive=false")
+                speechRecognizer.startListening(intent)
+            }.onFailure {
+                recognitionSessionActive = false
+                recognitionStartCommandSent = false
+                speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}"
+            }
+        }
+    }
+    fun handleCallTranscript(text: String) {
+        val asksAboutScene = Regex("(看到|看见|画面|镜头|摄像头|眼前|面前|这里|这个东西|这是什么|描述一下|识别一下|读一下|数一数|有什么|发生了什么|帮我看看|看一下)").containsMatchIn(text)
+        if (!asksAboutScene) {
+            latestOnCallInitiative("请直接回应用户刚才说的话，保持自然、简洁的口语表达。")
+            return
+        }
+        // Realtime already responds to the user's speech turn. The passive
+        // vision observer has been feeding recent scene summaries into that
+        // same conversation; do not start a competing second response here.
+        if (realtimeCallSession != null) {
+            cameraVisionStatus = if (realtimeVisionController != null) {
+                "正在结合最近的摄像头观察回答"
+            } else {
+                "实时视觉感知未配置：请到设置 → 视觉模型配置独立视觉模型"
+            }
+            return
+        }
+        val frame = latestCameraFrame.get()
+        if (frame == null) {
+            cameraVisionStatus = "尚未取得摄像头画面，请开启摄像头后再询问画面内容"
+            latestOnCallInitiative("用户询问摄像头画面，但目前没有可用画面。请如实告知用户开启摄像头后再试。")
+            return
+        }
+        val prefs = realtimePrefs
+        val visionProvider = prefs.getString("vision_provider", "独立视觉模型") ?: "独立视觉模型"
+        val visionEndpoint = if (visionProvider == "独立视觉模型") prefs.getString("vision_endpoint", "https://ark.cn-beijing.volces.com/api/v3").orEmpty() else prefs.getString("endpoint", "").orEmpty()
+        val visionKey = if (visionProvider == "独立视觉模型") prefs.getString("vision_api_key", "").orEmpty() else prefs.getString("api_key", "").orEmpty()
+        val visionModel = if (visionProvider == "独立视觉模型") prefs.getString("vision_model", "doubao-seed-2-1-pro").orEmpty() else prefs.getString("model", "").orEmpty()
+        if (visionEndpoint.isBlank() || visionKey.isBlank() || visionModel.isBlank()) {
+            cameraVisionStatus = "视觉模型尚未配置完整，请到设置 → 视觉模型添加服务"
+            latestOnCallInitiative("用户询问摄像头画面，但视觉模型没有配置完整。请告知用户先配置视觉模型。")
+            return
+        }
+        cameraVisionStatus = "正在调用视觉模型分析画面…"
+        speechStatus = "正在分析摄像头画面…"
+        speechScope.launch(Dispatchers.IO) {
+            try {
+                val description = VisionModelClient.describeFrame(visionEndpoint, visionKey, visionModel, frame, text)
+                withContext(Dispatchers.Main) {
+                    if (callActive) {
+                        cameraVisionStatus = "画面识别完成 · 正在组织语音回答"
+                        val realtime = realtimeCallSession
+                        if (realtime != null) {
+                            realtime.sendTextPrompt("用户刚才询问摄像头画面。视觉模型根据当前画面得到以下结果：$description。请基于该结果直接、自然地用语音回答用户；不要提及后台视觉模型或内部处理过程。")
+                        } else {
+                            onRealtimeAssistantReply(description)
+                        }
+                    }
+                }
+            } catch (error: Throwable) {
+                withContext(Dispatchers.Main) {
+                    if (callActive) {
+                        val detail = (error.message ?: error.javaClass.simpleName).take(140)
+                        cameraVisionStatus = "视觉识别失败：$detail"
+                        speechStatus = "视觉识别失败，请检查视觉模型配置"
+                        Log.e("HyperCatVision", "Call vision fallback failed", error)
+                    }
+                }
+            }
+        }
+    }
+    fun startRealtimeCallIfConfigured(): Boolean {
+        val prefs = realtimePrefs
+        if (prefs.getString("active_realtime_protocol", "none") != "openai_realtime") return false
+        val realtimeEndpoint = prefs.getString("active_realtime_endpoint", "")?.trim().orEmpty()
+        val realtimeModel = prefs.getString("model", "")?.trim().orEmpty()
+        val realtimeApiKey = prefs.getString("api_key", "")?.trim().orEmpty()
+        if (!realtimeEndpoint.startsWith("wss://", ignoreCase = true)) {
+            Toast.makeText(context, "Realtime 档案缺少有效的 wss:// WebSocket 地址", Toast.LENGTH_LONG).show()
+            speechStatus = "Realtime 地址无效，请在推理模型配置中检查 WebSocket 地址"
+            return true
+        }
+        if (realtimeModel.isBlank() || realtimeApiKey.isBlank()) {
+            Toast.makeText(context, "Realtime 通话需要模型名称和 API Key", Toast.LENGTH_LONG).show()
+            speechStatus = "Realtime 配置不完整：请检查当前推理模型的模型名称与 API Key"
+            return true
+        }
+        callActive = true; micEnabled = true; videoEnabled = false
+        RealtimeAvatarStateStore.set(RealtimeAvatarPhase.CONNECTING)
+        showCallInfo = true
+        // Snapshot the last historical reply before call startup so call TTS cannot replay chat history.
+        lastCallSpokenText = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
+        realtimeAssistantDraft = ""
+        isListening = false; isSpeaking = false
+        speechStatus = "正在连接 Realtime 语音服务…"
+        var greetingSent = false
+        var sessionRef: RealtimeAgentSession? = null
+        val engine = RealtimeAudioEngine(object : RealtimeAudioEngine.Listener {
+            override fun onAudioFrame(pcm16: ByteArray, length: Int) = Unit
+            override fun onError(message: String, cause: Throwable?) {
+                val activeSession = sessionRef
+                if (activeSession != null) activeSession.reportAudioFailure("实时音频引擎异常：$message", cause)
+                else Handler(Looper.getMainLooper()).post { speechStatus = "实时音频引擎异常：$message" }
+            }
+        }, sampleRate = 24_000)
+        val adapter = OpenAiRealtimeAudioAdapter(realtimeEndpoint, realtimeApiKey, realtimeModel)
+        val session = RealtimeAgentSession(context, engine, adapter, object : RealtimeAgentSession.Listener {
+            override fun onStateChanged(state: RealtimeAgentSession.State) {
+                Handler(Looper.getMainLooper()).post {
+                    RealtimeAvatarStateStore.set(
+                        when (state) {
+                            RealtimeAgentSession.State.CONNECTING -> RealtimeAvatarPhase.CONNECTING
+                            RealtimeAgentSession.State.LISTENING -> RealtimeAvatarPhase.LISTENING
+                            RealtimeAgentSession.State.RESPONDING -> RealtimeAvatarPhase.RESPONDING
+                            RealtimeAgentSession.State.INTERRUPTED -> RealtimeAvatarPhase.INTERRUPTED
+                            RealtimeAgentSession.State.FAILED -> RealtimeAvatarPhase.FAILED
+                            RealtimeAgentSession.State.CLOSING, RealtimeAgentSession.State.CLOSED,
+                            RealtimeAgentSession.State.IDLE -> RealtimeAvatarPhase.IDLE
+                        }
+                    )
+                    when (state) {
+                        RealtimeAgentSession.State.CONNECTING -> speechStatus = "正在连接 Realtime…"
+                        RealtimeAgentSession.State.LISTENING -> {
+                            isListening = micEnabled
+                            isSpeaking = false
+                            speechStatus = if (micEnabled) "Realtime 已连接，正在聆听…" else "Realtime 已连接，麦克风已静音"
+                            if (!greetingSent) {
+                                greetingSent = true
+                                sessionRef?.sendTextPrompt("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+                            }
+                        }
+                        RealtimeAgentSession.State.RESPONDING -> { isListening = false; isSpeaking = true; speechStatus = "AI 正在实时语音回答…" }
+                        RealtimeAgentSession.State.INTERRUPTED -> { isSpeaking = false; isListening = micEnabled; speechStatus = "检测到插话，已中断 AI 播报" }
+                        RealtimeAgentSession.State.FAILED -> { isListening = false; isSpeaking = false }
+                        RealtimeAgentSession.State.CLOSING, RealtimeAgentSession.State.CLOSED -> { isListening = false; isSpeaking = false }
+                        RealtimeAgentSession.State.IDLE -> Unit
+                    }
+                }
+            }
+            override fun onUserTranscript(text: String) {
+                Handler(Looper.getMainLooper()).post {
+                    if (callActive && text.isNotBlank()) onRealtimeUserTranscript(text)
+                }
+                handleCallTranscript(text)
+            }
+            override fun onTextDelta(text: String) {
+                Handler(Looper.getMainLooper()).post {
+                    if (callActive) realtimeAssistantDraft += text
+                }
+            }
+            override fun onAssistantTurnFinished() {
+                Handler(Looper.getMainLooper()).post {
+                    val reply = realtimeAssistantDraft.trim()
+                    realtimeAssistantDraft = ""
+                    if (callActive && reply.isNotBlank()) onRealtimeAssistantReply(reply)
+                    isSpeaking = false
+                    isListening = micEnabled
+                    speechStatus = if (micEnabled) "Realtime 已回答，继续聆听…" else "回答完成，麦克风已静音"
+                }
+            }
+            override fun onFailure(message: String, cause: Throwable?) {
+                Handler(Looper.getMainLooper()).post {
+                    callActive = false; micEnabled = false
+                    isListening = false; isSpeaking = false
+                    realtimeCallSession = null
+                    realtimeAssistantDraft = ""
+                    speechStatus = "Realtime 通话失败：$message"
+                    Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+                }
+            }
+        })
+        sessionRef = session
+        realtimeCallSession = session
+        val visionProvider = prefs.getString("vision_provider", "独立视觉模型") ?: "独立视觉模型"
+        val visionEndpoint = if (visionProvider == "独立视觉模型") {
+            prefs.getString("vision_endpoint", "").orEmpty()
+        } else {
+            prefs.getString("endpoint", "").orEmpty()
+        }
+        val visionApiKey = if (visionProvider == "独立视觉模型") {
+            prefs.getString("vision_api_key", "").orEmpty()
+        } else {
+            prefs.getString("api_key", "").orEmpty()
+        }
+        val visionModel = if (visionProvider == "独立视觉模型") {
+            prefs.getString("vision_model", "").orEmpty()
+        } else {
+            prefs.getString("model", "").orEmpty()
+        }
+        realtimeVisionController?.close()
+        realtimeVisionController = if (visionEndpoint.isNotBlank() && visionApiKey.isNotBlank() && visionModel.isNotBlank()) {
+            RealtimeVisionController(
+                endpoint = visionEndpoint,
+                apiKey = visionApiKey,
+                model = visionModel,
+                onContext = { observation -> sessionRef?.sendContextUpdate(observation) },
+                onNotableEvent = { event ->
+                    val activeSession = sessionRef
+                    // Never interrupt the user or an assistant turn.
+                    if (activeSession?.currentState() == RealtimeAgentSession.State.LISTENING &&
+                        !activeSession.isUserSpeaking()
+                    ) {
+                        activeSession.sendTextPrompt(
+                            "视觉观察发现一个值得自然回应的明显变化：$event。请结合当前对话，用一句简短、友好的中文主动回应；不要声称看到了超出摘要的细节，也不要提及后台视觉模型。"
+                        )
+                    }
+                },
+                onStatus = { status ->
+                    Handler(Looper.getMainLooper()).post {
+                        if (callActive) cameraVisionStatus = status
+                    }
+                }
+            )
+        } else {
+            cameraVisionStatus = "实时视觉感知未配置：请到设置 → 视觉模型配置独立视觉模型"
+            null
+        }
+        runCatching { session.start() }.onFailure {
+            speechStatus = "Realtime 启动失败：${it.message ?: "未知错误"}"
+            session.close()
+        }
+        return true
+    }
+    fun startPcmCallCapture() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            speechStatus = "尚未获得麦克风录音权限，请先授权后再开始通话"
+            return
+        }
+        val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        if (manager.isMicrophoneMute) {
+            speechStatus = "系统麦克风隐私开关已关闭，请先开启麦克风访问"
+            Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+            return
+        }
+        val thisCallGeneration = callGeneration + 1L
+        callGeneration = thisCallGeneration
+        val controller = CallPcmCaptureController(
+            context = context,
+            onUtterance = { pcm ->
+                speechScope.launch(Dispatchers.IO) {
+                    if (callGeneration != thisCallGeneration) return@launch
+                    try {
+                        val prefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+                        val endpoint = prefs.getString("asr_endpoint", "").orEmpty().ifBlank { prefs.getString("tts_endpoint", "").orEmpty() }
+                        val apiKey = prefs.getString("asr_api_key", "").orEmpty().ifBlank { prefs.getString("tts_api_key", "").orEmpty() }
+                        val asrModel = prefs.getString("asr_model", "mimo-v2.5-asr").orEmpty()
+                        check(endpoint.isNotBlank() && apiKey.isNotBlank()) {
+                            "当前没有可用的 ASR 语音识别配置，请在设置的语音模型中填写 ASR 服务地址和 API Key"
+                        }
+                        val transcript = transcribeCapturedPcm(endpoint, apiKey, pcm, 16_000, asrModel) { partial -> Handler(Looper.getMainLooper()).post { if (callActive && micEnabled) speechStatus = "正在识别：$partial" } }
+                        Log.i("HyperCatVoice", "CALL_PCM_ASR_SUCCESS bytes=${pcm.size} chars=${transcript.length}")
+                        withContext(Dispatchers.Main) {
+                            if (callGeneration == thisCallGeneration && callActive && micEnabled && transcript.isNotBlank()) {
+                                speechStatus = "已识别，正在发送给 AI…"
+                                // Persist the real recognized words; the instruction prompt stays internal.
+                                callMessages.add(ChatLine(transcript, true))
+                                handleCallTranscript(transcript)
+                            }
+                        }
+                    } catch (error: Exception) {
+                        Log.e("HyperCatVoice", "CALL_PCM_ASR_FAILED bytes=${pcm.size}", error)
+                        withContext(Dispatchers.Main) {
+                            if (callActive) speechStatus = "录音已采集并发送识别，但 AI 语音识别失败：${error.message ?: "服务异常"}"
+                        }
+                    }
+                }
+            },
+            onSpeechStarted = {
+                Handler(Looper.getMainLooper()).post {
+                    if (callActive && micEnabled && isSpeaking) {
+                        Log.i("HyperCatVoice", "CALL_BARGE_IN detected by continuous PCM VAD")
+                        cloudSpeechJob?.cancel()
+                        cloudSpeechJob = null
+                        runCatching { speechEngine.stop() }
+                        isSpeaking = false
+                        agentPlaybackUntilMs = 0L
+                        speechStatus = "检测到你正在插话，已立即停止 AI 播报…"
+                    }
+                }
+            },
+            onLevel = { level ->
+                Handler(Looper.getMainLooper()).post {
+                    if (callActive && micEnabled) {
+                        micRmsDb = if (level > 0.00001) (20.0 * kotlin.math.log10(level)).toFloat().coerceIn(-60f, 0f) else -60f
+                        isListening = true
+                    }
+                }
+            },
+            onError = { message, error ->
+                Log.e("HyperCatVoice", "CALL_PCM_CAPTURE_ERROR: $message", error)
+                Handler(Looper.getMainLooper()).post {
+                    if (callActive) {
+                        speechStatus = message
+                        isListening = false
+                        micEnabled = false
+                        callPcmCaptureController?.setEnabled(false)
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        )
+        try {
+            controller.start()
+            callPcmCaptureController?.close()
+            callPcmCaptureController = controller
+            callActive = true
+            micEnabled = true
+            videoEnabled = false
+            showCallInfo = true
+            // Do not replay the last normal-chat reply when the call dialog opens.
+            lastCallSpokenText = callMessages.lastOrNull { !it.fromUser }?.text.orEmpty()
+            isListening = true
+            isSpeaking = false
+            speechStatus = "麦克风已启动，正在实时采集 PCM；检测到语句后自动发送给 AI"
+            Log.i("HyperCatVoice", "CALL_PCM_CAPTURE_STARTED sampleRate=16000 source=VOICE_COMMUNICATION")
+            latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+        } catch (error: Exception) {
+            controller.close()
+            callActive = false
+            micEnabled = false
+            isListening = false
+            speechStatus = "麦克风启动失败：${error.message ?: "未知错误"}"
+            Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+            Log.e("HyperCatVoice", "CALL_PCM_CAPTURE_START_FAILED", error)
         }
     }
     val callMicPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -1793,49 +2738,137 @@ private fun ChatPage(
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             previousAudioMode = audioManager.mode
             previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            audioManager.isSpeakerphoneOn = true
-            callActive = true; micEnabled = true; videoEnabled = false
-            showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
-            latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+            // Realtime sessions acquire their own communication audio route.
+            // The legacy SpeechRecognizer path must retain the normal system route.
+            if (!startRealtimeCallIfConfigured()) {
+                startPcmCallCapture()
+            }
         } else Toast.makeText(context, "AI 通话需要麦克风录音权限，请在系统设置中允许", Toast.LENGTH_LONG).show()
     }
     LaunchedEffect(pendingRecognitionStart) {
         if (pendingRecognitionStart) {
             pendingRecognitionStart = false
             delay(350L)
-            if (callActive && micEnabled) startInAppRecognition()
+            if (callActive && micEnabled && realtimeCallSession == null) callPcmCaptureController?.setEnabled(true)
         }
     }
-    fun stopInAppRecognition() { if (isListening) runCatching { speechRecognizer.stopListening() } }
+    fun stopInAppRecognition() {
+        if (!callActive && voiceCaptureRecorder != null) {
+            val recorder = voiceCaptureRecorder ?: return
+            voiceCaptureRecorder = null
+            isListening = false
+            speechStatus = "录音已采集，正在上传 AI 识别…"
+            runCatching { if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) recorder.stop() }
+            runCatching { recorder.release() }
+            val captureJob = voiceCaptureJob
+            voiceCaptureJob = null
+            speechScope.launch {
+                captureJob?.join()
+                voiceCaptureLease?.close(); voiceCaptureLease = null
+                val pcm = voiceCapturePcm ?: ByteArray(0)
+                voiceCapturePcm = null
+                if (pcm.size < 16_000) { speechStatus = "麦克风已启动，但有效录音不足 0.5 秒；请按住麦克风说完整句子"; return@launch }
+                // Persist the recording before contacting ASR so recognition failures never discard the user's audio.
+                val voiceFile = withContext(Dispatchers.IO) { saveCapturedPcmAsWav(context, pcm) }
+                val durationMs = (pcm.size * 1000L / (16_000L * 2L)).coerceAtLeast(1L)
+                fun keepUntranscribedVoice(reason: String) {
+                    latestOnSend("__HYPERCAT_ASR_FAILED_VOICE__", emptyList(), emptyList(), true, voiceFile.absolutePath, durationMs)
+                    speechStatus = "语音已保存到聊天，可点击播放；本次未能转写：$reason"
+                }
+                val voicePrefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+                val asrEndpoint = voicePrefs.getString("asr_endpoint", "").orEmpty().ifBlank { voicePrefs.getString("tts_endpoint", "").orEmpty() }
+                val asrApiKey = voicePrefs.getString("asr_api_key", "").orEmpty().ifBlank { voicePrefs.getString("tts_api_key", "").orEmpty() }
+                val asrModel = voicePrefs.getString("asr_model", "mimo-v2.5-asr").orEmpty()
+                if (asrEndpoint.isBlank() || asrApiKey.isBlank()) {
+                    keepUntranscribedVoice("未配置 ASR 服务地址或 API Key")
+                    return@launch
+                }
+                try {
+                    speechStatus = "PCM 已采集 ${pcm.size} 字节，正在使用 MiMo ASR 识别…"
+                    val transcript = withContext(Dispatchers.IO) { transcribeCapturedPcm(asrEndpoint, asrApiKey, pcm, asrModel = asrModel) }
+                    if (transcript.isBlank()) {
+                        keepUntranscribedVoice("识别服务未返回文字")
+                        return@launch
+                    }
+                    Log.i("HyperCatVoice", "AI_TRANSCRIPTION_SUCCESS chars=${transcript.length}")
+                    speechStatus = "AI 识别成功"
+                    latestOnSend(transcript, emptyList(), emptyList(), false, voiceFile.absolutePath, durationMs)
+                } catch (error: Exception) {
+                    Log.e("HyperCatVoice", "AI_TRANSCRIPTION_FAILED pcmBytes=${pcm.size}", error)
+                    keepUntranscribedVoice(error.message ?: "识别服务异常")
+                }
+            }
+            return
+        }
+        if (!recognitionSessionActive) return
+        if (!recognitionStartCommandSent) {
+            recognitionStartJob?.cancel()
+            recognitionStartJob = null
+            recognitionSessionActive = false
+            isListening = false
+            speechStatus = "已结束本次语音输入"
+            return
+        }
+        if (!recognitionStartCommandSent || !recognitionReadyForSpeech) {
+            // Calling stopListening before onReadyForSpeech can make some OEM
+            // RecognitionService implementations terminate with ERROR_CLIENT (5).
+            recognitionStopPending = true
+            speechStatus = "正在启动麦克风，等待系统就绪…"
+            return
+        }
+        recognitionStopPending = false
+        speechStatus = "正在完成本次语音识别…"
+        runCatching { speechRecognizer.stopListening() }
+            .onFailure {
+                recognitionSessionActive = false
+                recognitionStartCommandSent = false
+                recognitionReadyForSpeech = false
+                isListening = false
+                speechStatus = "停止语音识别失败：" + (it.message ?: "系统语音服务异常")
+            }
+    }
     var cameraError by remember { mutableStateOf<String?>(null) }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) { cameraError = null; videoEnabled = true; speechStatus = "摄像头预览已启动" }
+        if (granted) { cameraError = null; videoEnabled = true; cameraVisionStatus = if (realtimeCallSession?.supportsImageInput() == true) "摄像头已就绪，正在持续发送画面，提问时 AI 可读取最近画面" else "摄像头已就绪：提问画面内容时将调用独立视觉模型分析，并交给推理模型回答"; speechStatus = "摄像头预览已启动" }
         else { videoEnabled = false; Toast.makeText(context, "未获得摄像头权限，语音通话仍可继续", Toast.LENGTH_SHORT).show() }
     }
     fun startUnifiedCall() {
         if (!configured) { Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show(); return }
+        // Reset the call-only transcript before requesting microphone permission or starting Realtime.
+        onCallStart()
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             callMicPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         } else {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             previousAudioMode = audioManager.mode
             previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            audioManager.isSpeakerphoneOn = true
-            callActive = true; micEnabled = true; videoEnabled = false
-            showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
-            latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+            // Legacy SpeechRecognizer keeps the normal system audio route.
+            // Realtime manages its communication route inside RealtimeAudioEngine.
+            if (!startRealtimeCallIfConfigured()) {
+                startPcmCallCapture()
+            }
         }
     }
     fun toggleVideo() {
-        if (videoEnabled) { videoEnabled = false; cameraError = null }
-        else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        else { cameraError = null; videoEnabled = true }
+        if (videoEnabled) {
+            videoEnabled = false
+            cameraError = null
+            cameraVisionStatus = "摄像头已关闭"
+        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        } else {
+            cameraError = null
+            videoEnabled = true
+            cameraVisionStatus = if (realtimeCallSession != null) {
+                if (realtimeVisionController != null) "摄像头已开启 · 独立视觉模型将持续观察画面" else "摄像头已开启，但请先配置独立视觉模型"
+            } else {
+                "摄像头已开启 · 询问画面内容时调用视觉模型分析"
+            }
+        }
     }
-    LaunchedEffect(callActive, messages.size, isThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak) {
-        if (callActive && !isThinking) {
-            val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
+    LaunchedEffect(callActive, callMessages.size, callThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak, realtimeCallSession) {
+        if (callActive && realtimeCallSession == null && !callThinking) {
+            val reply = callMessages.lastOrNull { !it.fromUser }?.text.orEmpty()
             if (reply.isNotBlank() && reply != lastCallSpokenText) {
                 lastCallSpokenText = reply
                 val spokenText = speechText(reply)
@@ -1846,31 +2879,41 @@ private fun ChatPage(
                     if (ttsMode == "cloud") {
                         val profile = selectedTtsProfile
                         if (profile != null) {
-                            isSpeaking = true; speechStatus = "正在请求云端语音…"
-                            try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate, AudioAttributes.USAGE_VOICE_COMMUNICATION); speechStatus = "云端语音播报完成" }
-                            catch (cancelled: CancellationException) {
-                                speechStatus = "已停止朗读"
-                                throw cancelled
-                            } catch (error: Exception) {
-                                speechStatus = "云端 TTS 失败，点击查看完整诊断"
-                                ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
+                            cloudSpeechJob?.cancel()
+                            cloudSpeechJob = speechScope.launch {
+                                isSpeaking = true
+                                if (callActive && realtimeCallSession == null) isListening = micEnabled
+                                speechStatus = "正在请求云端语音…"
+                                try {
+                                    speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate, AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                                    speechStatus = "云端语音播报完成"
+                                } catch (cancelled: CancellationException) {
+                                    speechStatus = "已停止朗读"
+                                    throw cancelled
+                                } catch (error: Exception) {
+                                    speechStatus = "云端 TTS 失败，点击查看完整诊断"
+                                    ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
+                                } finally {
+                                    isSpeaking = false
+                                    agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 900L
+                                    if (callActive && micEnabled && realtimeCallSession == null) isListening = true
+                                }
                             }
-                            finally { isSpeaking = false; agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 2200L }
                         }
                     } else {
                         isSpeaking = true
                         agentPlaybackUntilMs = Long.MAX_VALUE
-                        val result = speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${messages.size}-last")
+                        val result = speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${callMessages.size}-last")
                         if (result == TextToSpeech.ERROR) { isSpeaking = false; agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 1200L; speechStatus = "通话语音播报失败，请检查系统 TTS 语音数据" }
                     }
                 }
             }
         }
     }
-    LaunchedEffect(callActive, messages.size, isThinking, isSpeaking, isListening) {
-        if (callActive && !isThinking && !isSpeaking && !isListening) {
+    LaunchedEffect(callActive, callMessages.size, callThinking, isSpeaking, isListening, realtimeCallSession) {
+        if (callActive && realtimeCallSession == null && !callThinking && !isSpeaking && !isListening) {
             delay(Random.nextLong(22000L, 42000L))
-            if (callActive && !isThinking && !isSpeaking && !isListening) {
+            if (callActive && !callThinking && !isSpeaking && !isListening) {
                 val followUps = listOf(
                     "通话中用户暂时没有说话。请结合刚才的聊天内容，自然地问一个轻松、相关的问题，避免催促。",
                     "用户可能正在思考。请用一句简短、友好的话自然延续刚才的话题，不要重复之前的开场白。",
@@ -1880,53 +2923,103 @@ private fun ChatPage(
             }
         }
     }
-    var lastAutoReadText by remember { mutableStateOf("") }
-    var autoReadPendingReply by remember { mutableStateOf(false) }
-    LaunchedEffect(autoReadReplies, callActive, messages.size, isThinking, drawerSection, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate) {
-        // Do not replay a historical reply just because the avatar/settings page opens.
-        // Keep auto-read enabled for a fresh avatar touch interaction (isThinking sets the pending flag).
-        if (drawerSection == "settings" ||
-            (drawerSection == "avatar_settings" && !isThinking && !autoReadPendingReply)) {
-            autoReadPendingReply = false
+    var lastAvatarAutoReadId by remember { mutableLongStateOf(avatarInteractionReplyId) }
+    LaunchedEffect(autoReadReplies, avatarInteractionReplyId, avatarInteractionReply, callActive, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, ttsReady, canSpeak) {
+        if (avatarInteractionReplyId <= 0L || avatarInteractionReplyId == lastAvatarAutoReadId) return@LaunchedEffect
+        if (!autoReadReplies) {
+            lastAvatarAutoReadId = avatarInteractionReplyId
             return@LaunchedEffect
         }
-        // Only auto-read a reply produced by a request in the active chat.
-        // Opening/restoring a conversation must never replay its historical last message.
-        if (isThinking) {
-            if (autoReadReplies && !callActive) autoReadPendingReply = true
+        if (callActive) {
+            // Consume avatar-state updates produced by live-call replies while the call is active.
+            lastAvatarAutoReadId = avatarInteractionReplyId
             return@LaunchedEffect
         }
-        if (!autoReadReplies || callActive) {
-            autoReadPendingReply = false
+        if (avatarInteractionReply.isBlank() || !canSpeak) return@LaunchedEffect
+        // A call reply is copied into the chat transcript on hangup. Do not replay it as
+        // a separate avatar interaction if its state-store update arrives just after hangup.
+        val latestChatReply = messages.lastOrNull { !it.fromUser && !it.isSystemEvent }?.text.orEmpty()
+        if (latestChatReply == avatarInteractionReply) {
+            lastAvatarAutoReadId = avatarInteractionReplyId
             return@LaunchedEffect
         }
-        if (!autoReadPendingReply) return@LaunchedEffect
-        autoReadPendingReply = false
-        val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
-        if (reply.isNotBlank() && reply != lastAutoReadText) {
-            lastAutoReadText = reply
-            val spokenText = speechText(reply)
-            if (spokenText.isNotBlank()) {
-                if (ttsMode == "cloud") {
-                    val profile = selectedTtsProfile
-                    if (profile != null) {
-                        cloudSpeechJob?.cancel()
-                        cloudSpeechJob = speechScope.launch {
-                            isSpeaking = true
-                            try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "自动朗读完成" }
-                            catch (cancelled: CancellationException) { speechStatus = "已停止朗读"; throw cancelled }
-                            catch (error: Exception) { speechStatus = "自动朗读失败：${error.message ?: "TTS 服务异常"}"; ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel) }
-                            finally { isSpeaking = false }
-                        }
-                    } else speechStatus = "自动朗读未启动：请先选择 TTS 模型"
-                } else if (ttsReady) {
-                    val chunks = splitSpeechText(spokenText)
-                    val prefix = "hypercat-auto-${System.nanoTime()}"
-                    isSpeaking = true
-                    chunks.forEachIndexed { index, chunk ->
-                        val id = prefix + if (index == chunks.lastIndex) "-last" else "-${index}"
-                        speechEngine.speak(chunk, if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id)
+        lastAvatarAutoReadId = avatarInteractionReplyId
+        val spokenText = speechText(avatarInteractionReply)
+        if (spokenText.isBlank()) return@LaunchedEffect
+        if (ttsMode == "cloud") {
+            val profile = selectedTtsProfile ?: return@LaunchedEffect
+            cloudSpeechJob?.cancel()
+            cloudSpeechJob = speechScope.launch {
+                isSpeaking = true
+                try {
+                    speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate)
+                    speechStatus = "虚拟形象互动朗读完成"
+                } catch (cancelled: CancellationException) {
+                    speechStatus = "已停止朗读"
+                    throw cancelled
+                } catch (error: Exception) {
+                    speechStatus = "虚拟形象互动朗读失败：${error.message ?: "TTS 服务异常"}"
+                    ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
+                } finally { isSpeaking = false }
+            }
+        } else if (ttsReady) {
+            val chunks = splitSpeechText(spokenText)
+            val prefix = "hypercat-avatar-auto-${avatarInteractionReplyId}"
+            isSpeaking = true
+            chunks.forEachIndexed { index, chunk ->
+                val id = prefix + if (index == chunks.lastIndex) "-last" else "-${index}"
+                val result = speechEngine.speak(chunk, if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id)
+                if (result == TextToSpeech.ERROR) {
+                    isSpeaking = false
+                    speechStatus = "虚拟形象互动朗读请求失败，请检查系统 TTS 引擎"
+                }
+            }
+        }
+    }
+
+    var lastAutoReadKey by remember { mutableStateOf("") }
+    LaunchedEffect(autoReadReplies, agentAutoReadPending, callActive, messages.size, isThinking, drawerSection, currentSessionTitle, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, ttsReady, canSpeak) {
+        if (!autoReadReplies || drawerSection == "settings") {
+            // Disabling auto-read or leaving the conversation view invalidates any queued reply.
+            onAgentAutoReadConsumed()
+            return@LaunchedEffect
+        }
+        // A pending read belongs to an explicit Agent send, not to avatar gestures or call state changes.
+        // Keep it pending only while that same visible Agent request is actively completing.
+        if (!agentAutoReadPending || callActive || isThinking) return@LaunchedEffect
+        if (agentAutoReadTargetIndex < 0) return@LaunchedEffect
+        val lastAssistantIndex = messages.indexOfLast { !it.fromUser && !it.isSystemEvent }
+        if (lastAssistantIndex <= agentAutoReadTargetIndex) return@LaunchedEffect
+        val reply = messages.getOrNull(lastAssistantIndex)?.text.orEmpty()
+        if (reply.isBlank() || !canSpeak) return@LaunchedEffect
+        val messageKey = "$currentSessionTitle:$lastAssistantIndex:${reply.hashCode()}"
+        if (messageKey == lastAutoReadKey) {
+            onAgentAutoReadConsumed()
+            return@LaunchedEffect
+        }
+        lastAutoReadKey = messageKey
+        onAgentAutoReadConsumed()
+        val spokenText = speechText(reply)
+        if (spokenText.isNotBlank()) {
+            if (ttsMode == "cloud") {
+                val profile = selectedTtsProfile
+                if (profile != null) {
+                    cloudSpeechJob?.cancel()
+                    cloudSpeechJob = speechScope.launch {
+                        isSpeaking = true
+                        try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "自动朗读完成" }
+                        catch (cancelled: CancellationException) { speechStatus = "已停止朗读"; throw cancelled }
+                        catch (error: Exception) { speechStatus = "自动朗读失败：${error.message ?: "TTS 服务异常"}"; ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel) }
+                        finally { isSpeaking = false }
                     }
+                } else speechStatus = "自动朗读未启动：请先选择 TTS 模型"
+            } else if (ttsReady) {
+                val chunks = splitSpeechText(spokenText)
+                val prefix = "hypercat-auto-${System.nanoTime()}"
+                isSpeaking = true
+                chunks.forEachIndexed { index, chunk ->
+                    val id = prefix + if (index == chunks.lastIndex) "-last" else "-${index}"
+                    speechEngine.speak(chunk, if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id)
                 }
             }
         }
@@ -1966,15 +3059,15 @@ private fun ChatPage(
     Column(modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding(), bottom = if (WindowInsets.isImeVisible) 0.dp else contentPadding.calculateBottomPadding()).imePadding().padding(horizontal = 14.dp)) {
         Spacer(Modifier.height(3.dp))
         Row(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { drawerScope.launch { drawerState.open() } }) {
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable {
+                dismissKeyboard()
+                drawerScope.launch { drawerState.open() }
+            }) {
                 Box(contentAlignment = Alignment.Center) { Text("☰", color = MainText, fontSize = 18.sp) }
             }
             Spacer(Modifier.width(11.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Agent", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                Text(if (configured) activeModel else "尚未连接模型", color = Muted, fontSize = 10.sp, maxLines = 1)
-            }
-            Surface(shape = RoundedCornerShape(15.dp), color = Panel2, modifier = Modifier.clickable { showModelPicker = true }) {
+            Spacer(Modifier.weight(1f))
+            Surface(shape = RoundedCornerShape(15.dp), color = Panel2, modifier = Modifier.clickable { dismissKeyboard(); showModelPicker = true }) {
                 Row(Modifier.padding(horizontal = 11.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("模型", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.width(5.dp))
@@ -1982,21 +3075,30 @@ private fun ChatPage(
                 }
             }
             Spacer(Modifier.width(7.dp))
-            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { onShareCurrentSession() }) {
-                Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Share, contentDescription = "分享当前对话", tint = Cyan, modifier = Modifier.size(19.dp)) }
-            }
-            Spacer(Modifier.width(6.dp))
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { showClear = true }) {
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Delete, contentDescription = "清理当前对话", tint = MainText, modifier = Modifier.size(20.dp)) }
             }
         }
         Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("长期记忆 ${savedNotes.size} 条", color = Muted, fontSize = 10.sp)
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { noteDraft = ""; showRemember = true }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("管理记忆", fontSize = 10.sp) }
-            Spacer(Modifier.width(6.dp))
-            Text("自动朗读", color = Muted, fontSize = 11.sp)
-            Switch(checked = autoReadReplies, onCheckedChange = onAutoReadReplies)
+            Text("✦ Skill", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(7.dp))
+            visibleSkillPrompts.forEach { (label, prompt) ->
+                Surface(
+                    modifier = Modifier.padding(end = 6.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
+                    color = Panel, shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                ) {
+                    Text(label, color = MainText, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
+                }
+            }
+            TextButton(onClick = { skillPromptShuffle++ }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                Text("换一组", color = Cyan, fontSize = 10.sp)
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onAutoReadReplies(!autoReadReplies) }, modifier = Modifier.size(36.dp)) {
+                Icon(if (autoReadReplies) Icons.Outlined.VolumeUp else Icons.Outlined.VolumeOff, contentDescription = if (autoReadReplies) "关闭自动朗读" else "开启自动朗读", tint = if (autoReadReplies) Cyan else Muted)
+            }
         }
         if (!configured) {
             Spacer(Modifier.height(12.dp))
@@ -2004,33 +3106,6 @@ private fun ChatPage(
                 Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("尚未配置模型 · 点击前往设置", color = Color(0xFFFFD58B), fontSize = 12.sp, modifier = Modifier.weight(1f))
                     Text("设置  ›", color = Cyan, fontSize = 12.sp)
-                }
-            }
-        }
-        if (messages.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
-            Text("有什么可以帮你？", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text("选择常用任务，或直接输入想法。", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 1.dp, bottom = 4.dp))
-            val suggestions = listOf(
-                "总结内容" to "请帮我总结以下内容，提炼重点：",
-                "翻译文本" to "请将下面内容准确翻译成中文：",
-                "润色写作" to "请帮我润色下面这段文字，保持原意：",
-                "代码助手" to "请分析下面的代码并给出修复建议："
-            )
-            suggestions.chunked(2).forEach { rowItems ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    rowItems.forEach { (label, prompt) ->
-                        Surface(
-                            modifier = Modifier.weight(1f).padding(bottom = 4.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
-                            color = Panel, shape = RoundedCornerShape(15.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-                        ) {
-                            Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                Text("✦", color = Cyan, fontSize = 9.sp)
-                                Spacer(Modifier.height(2.dp))
-                                Text(label, color = MainText, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -2044,16 +3119,18 @@ private fun ChatPage(
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
         LazyColumn(state = chatListState, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)).background(Bg).padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
-            if (messages.isEmpty()) item {
-                Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("开始与 Agent 对话", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                    Text("输入消息，或使用语音与 Agent 交流。", color = Muted, fontSize = 13.sp)
-                }
-            }
-            items(messages.mapIndexed { index, message -> index to message }) { (messageIndex, line) ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
-                    if (selectedMessageIndices.isNotEmpty()) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
-                    Surface(modifier = (if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices) Cyan else GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
+            // Use the indexed lazy-list API directly. Building messages.mapIndexed on every
+            // recomposition allocated and traversed the entire conversation even though
+            // LazyColumn only composes the visible rows.
+            items(
+                count = messages.size,
+                key = { index -> index },
+                contentType = { "chat-message" }
+            ) { messageIndex ->
+                val line = messages[messageIndex]
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.isSystemEvent) Arrangement.Center else if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
+                    if (selectedMessageIndices.isNotEmpty() && !line.isSystemEvent) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
+                    Surface(modifier = (if (line.isSystemEvent) Modifier else if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (!line.isSystemEvent && selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { if (!line.isSystemEvent) selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.isSystemEvent) Panel2 else if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices && !line.isSystemEvent) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices && !line.isSystemEvent) Cyan else GlassBorder), shape = if (line.isSystemEvent) RoundedCornerShape(50) else RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
                             if (line.reasoning.startsWith("方法摘要：") && !line.fromUser && shouldShowReasoning(messages.take(messageIndex))) {
                                 var reasoningExpanded by remember(line) { mutableStateOf(true) }
@@ -2070,8 +3147,12 @@ private fun ChatPage(
                                 }
                                 Spacer(Modifier.height(9.dp))
                             }
-                            if (line.text.isNotBlank()) {
-                                MarkdownMessage(line.text, if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), clipboardManager)
+                            if (line.isSystemEvent && line.text.isNotBlank()) {
+                                Text(line.text, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                            } else if (line.text.isNotBlank()) {
+                                SelectionContainer {
+                                    MarkdownMessage(line.text, if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), clipboardManager)
+                                }
                                 if (!line.fromUser) {
                                     val downloadableLinks = remember(line.text) { extractGeneratedDownloadLinks(line.text) }
                                     if (downloadableLinks.isNotEmpty()) {
@@ -2091,6 +3172,15 @@ private fun ChatPage(
                                     TextButton(onClick = { clipboardManager.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
                                         Icon(Icons.Outlined.ContentCopy, contentDescription = "复制消息", modifier = Modifier.size(13.dp), tint = actionTint)
                                         Spacer(Modifier.width(3.dp)); Text("复制", color = actionTint, fontSize = 10.sp)
+                                    }
+                                    if (!line.fromUser) {
+                                        TextButton(onClick = {
+                                            val quoted = line.text.lineSequence().joinToString("\n") { "> $it" }
+                                            onDraft(if (draft.isBlank()) "$quoted\n\n" else "$quoted\n\n$draft")
+                                            Toast.makeText(context, "已引用这条回复", Toast.LENGTH_SHORT).show()
+                                        }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                            Text("引用", color = actionTint, fontSize = 10.sp)
+                                        }
                                     }
                                     TextButton(onClick = {
                                         val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -2114,7 +3204,7 @@ private fun ChatPage(
                                                 if (spokenText.isBlank()) speechStatus = "这条回复没有可朗读的文字"
                                                 else if (ttsMode == "cloud") {
                                                     val profile = selectedTtsProfile
-                                                    if (profile == null) speechStatus = "请先在设置中选择 TTS 模型档案"
+                                                    if (profile == null) speechStatus = "请先在设置的语音模型中添加并选择 TTS 模型"
                                                     else {
                                                         cloudSpeechJob?.cancel()
                                                         cloudSpeechJob = speechScope.launch {
@@ -2150,6 +3240,7 @@ private fun ChatPage(
                                 }
                             }
                             line.photos.forEach { photo -> Image(bitmap = photo.asImageBitmap(), contentDescription = "照片", modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp).clip(RoundedCornerShape(12.dp))) }
+                            line.voiceAudioPath?.let { path -> VoiceMessageBubble(path, line.voiceDurationMs, line.fromUser) }
                             line.attachments.forEach { name -> Text("📎 $name", color = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan, fontSize = 11.sp) }
                         }
                     }
@@ -2193,38 +3284,69 @@ private fun ChatPage(
                 Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedFiles = emptyList() })
             }
         }
-        Column(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            if (showComposerActions) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    listOf("拍照", "照片", "附件", "打电话").forEachIndexed { index, label ->
+                        val icon = when (index) { 0 -> Icons.Outlined.PhotoCamera; 1 -> Icons.Outlined.Photo; 2 -> Icons.Outlined.AttachFile; else -> Icons.Outlined.Call }
+                        Column(Modifier.width(64.dp).clip(RoundedCornerShape(12.dp)).clickable {
+                            showComposerActions = false
+                            when (index) { 0 -> { dismissKeyboard(); cameraCapture.launch(null) }; 1 -> { dismissKeyboard(); photoPicker.launch("image/*") }; 2 -> { dismissKeyboard(); filePicker.launch(arrayOf("*/*")) }; else -> { dismissKeyboard(); startUnifiedCall() } }
+                        }.padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Surface(color = Panel2, shape = CircleShape, modifier = Modifier.size(38.dp)) { Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = label, tint = Cyan) } }
+                            Text(label, color = MainText, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                        }
+                    }
+                }
+                if (recentPhotoUris.isNotEmpty()) {
+                    var upwardDrag by remember { mutableFloatStateOf(0f) }
+                    Row(
+                        Modifier.fillMaxWidth().pointerInput(recentPhotoUris) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { _, amount -> upwardDrag += amount },
+                                onDragEnd = { if (upwardDrag < -35f) { dismissKeyboard(); photoPicker.launch("image/*") }; upwardDrag = 0f },
+                                onDragCancel = { upwardDrag = 0f }
+                            )
+                        },
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        recentPhotoUris.take(8).forEach { uri ->
+                            RecentPhotoThumbnail(uri = uri, onClick = { selectedFiles = (selectedFiles + uri).distinct() })
+                        }
+                        Text("上滑查看全部", color = Muted, fontSize = 10.sp, modifier = Modifier.clickable { dismissKeyboard(); photoPicker.launch("image/*") })
+                    }
+                }
+            }
             Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
-                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 15.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(Modifier.requiredSize(34.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
-                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted, modifier = Modifier.size(19.dp)) }
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(Modifier.requiredSize(36.dp).clickable { showComposerActions = !showComposerActions }, color = Panel2, shape = CircleShape) {
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Add, contentDescription = "更多操作", tint = Cyan, modifier = Modifier.size(21.dp)) }
                     }
-                    BasicTextField(value = draft, onValueChange = onDraft,
-                        modifier = Modifier.weight(1f).heightIn(min = 42.dp, max = 132.dp).padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
-                        decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$avatarName…", color = Muted, fontSize = 14.sp); inner() })
+                    Box(Modifier.weight(1f)) {
+                        BasicTextField(value = draft, onValueChange = onDraft,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp, max = 132.dp).padding(start = 10.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
+                            decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$avatarName…", color = Muted, fontSize = 14.sp); inner() })
+                        if (draft.length > 80) IconButton(onClick = { showFullScreenEditor = true }, modifier = Modifier.align(Alignment.TopEnd).size(28.dp)) {
+                            Icon(Icons.Outlined.OpenInFull, contentDescription = "全屏编辑", tint = Muted, modifier = Modifier.size(16.dp))
+                        }
+                    }
                     VoiceInputButton(isListening = isListening, onPressStart = { startInAppRecognition() }, onPressEnd = { stopInAppRecognition() })
-                }
-            }
-            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                Surface(Modifier.requiredSize(40.dp).clickable { cameraCapture.launch(null) }, color = Panel2, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PhotoCamera, contentDescription = "拍照", tint = Cyan, modifier = Modifier.size(20.dp)) } }
-                Surface(Modifier.requiredHeight(40.dp).defaultMinSize(minWidth = 72.dp).clickable { startUnifiedCall() }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
-                    Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Call, contentDescription = "AI 通话", tint = Cyan, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(6.dp)); Text("通话", color = MainText, fontSize = 11.sp)
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                Surface(Modifier.requiredSize(42.dp).clickable(enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) {
-                    onSend(draft, selectedFiles, selectedPhotos); selectedFiles = emptyList(); selectedPhotos = emptyList()
-                }, color = if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.Send, contentDescription = "发送", tint = if (draft.isNotBlank() || selectedFiles.isNotEmpty()) Color(0xFF06202A) else Muted, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Surface(Modifier.requiredSize(40.dp).clickable {
+                        if (isThinking) onCancelThinking()
+                        else if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) { onSend(draft, selectedFiles, selectedPhotos, false, null, 0L); selectedFiles = emptyList(); selectedPhotos = emptyList() }
+                    }, color = if (isThinking || draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
+                        Box(contentAlignment = Alignment.Center) { Icon(if (isThinking) Icons.Outlined.Stop else Icons.Outlined.Send, contentDescription = if (isThinking) "停止回答" else "发送", tint = if (isThinking || draft.isNotBlank() || selectedFiles.isNotEmpty()) Color(0xFF06202A) else Muted, modifier = Modifier.size(19.dp)) }
                     }
                 }
             }
-            if (isListening) Text("通话/语音输入：麦克风正在采集声音", color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
+            if (isListening) Text("麦克风正在采集声音", color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
+            else if (!callActive && (speechStatus.contains("识别") || speechStatus.contains("麦克风") || speechStatus.contains("语音"))) {
+                Text(speechStatus, color = if (speechStatus.contains("失败") || speechStatus.contains("没有") || speechStatus.contains("异常")) Color(0xFFE07878) else Muted, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp))
+            }
         }
     }
         AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
@@ -2277,7 +3399,7 @@ private fun ChatPage(
                         Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 7.dp)) { listOf("最新", "最早", "A-Z").forEach { mode -> FilterChip(selected = recentSort == mode, onClick = { recentSort = mode }, label = { Text(mode, fontSize = 10.sp) }) } }
                         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 8.dp)) {
                             if (orderedRecent.isEmpty()) item { Column(Modifier.fillMaxWidth().padding(top = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("暂无历史对话", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold); Text("开始聊天后，记录会显示在这里", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp)) } }
-                            items(orderedRecent) { prompt ->
+                            items(orderedRecent, key = { prompt -> prompt }, contentType = { "recent-chat" }) { prompt ->
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).padding(vertical = 6.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f).clickable { onOpenRecentSession(prompt); drawerScope.launch { drawerState.close() } }.padding(vertical = 5.dp)) { Text(prompt, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 2); Text("与 " + avatarName + " 的对话", color = Muted, fontSize = 10.sp) }
                                     IconButton(onClick = { onShareRecentSession(prompt) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Share, contentDescription = "分享完整对话", tint = Cyan, modifier = Modifier.size(17.dp)) }
@@ -2286,7 +3408,10 @@ private fun ChatPage(
                                 Divider(color = GlassBorder.copy(alpha = .4f))
                             }
                         }
-
+                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("记忆管理 · ${savedNotes.size} 条", color = MainText, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { noteDraft = ""; showRemember = true }) { Text("打开") }
+                        }
                     }
                 }
             }
@@ -2310,6 +3435,15 @@ private fun ChatPage(
         },
         dismissButton = { TextButton(onClick = { ttsDiagnostic = null }) { Text("关闭") } }
     )
+    if (showFullScreenEditor) Dialog(onDismissRequest = { showFullScreenEditor = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(), color = Bg) {
+            Column(Modifier.fillMaxSize().padding(16.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("编辑消息", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)); TextButton(onClick = { showFullScreenEditor = false }) { Text("完成") } }
+                OutlinedTextField(value = draft, onValueChange = onDraft, modifier = Modifier.weight(1f).fillMaxWidth(), placeholder = { Text("输入消息…") })
+                Button(onClick = { showFullScreenEditor = false; if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) { onSend(draft, selectedFiles, selectedPhotos, false, null, 0L); selectedFiles = emptyList(); selectedPhotos = emptyList() } }, enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty(), modifier = Modifier.align(Alignment.End).padding(top = 12.dp)) { Text("发送") }
+            }
+        }
+    }
     if (previewPhoto != null) AlertDialog(onDismissRequest = { previewPhoto = null }, title = { Text("照片预览") }, text = { Image(bitmap = previewPhoto!!.asImageBitmap(), contentDescription = "照片预览", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) }, confirmButton = { TextButton(onClick = { previewPhoto = null }) { Text("完成") } })
     if (showPetNameDialog) AlertDialog(
         onDismissRequest = { showPetNameDialog = false },
@@ -2342,12 +3476,19 @@ private fun ChatPage(
     )
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("清理当前对话") },
         text = { Text("确定清空当前页面的全部消息吗？此操作不会删除最近对话记录。", color = Muted) },
-        confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); onClearCurrentSession(); showClear = false }) { Text("清空消息", color = Color(0xFFE57373)) } },
+        confirmButton = { TextButton(onClick = { dismissKeyboard(); (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); onClearCurrentSession(); showClear = false }) { Text("清空消息", color = Color(0xFFE57373)) } },
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
-    if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
+    if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加推理模型",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { dismissKeyboard(); onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={dismissKeyboard();showModelPicker=false;openSettings()}) { Text("管理模型") }})
     if (showCallInfo) Dialog(
         onDismissRequest = {
-            callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+            onCallEnd()
+            callActive = false; callGeneration += 1L; micEnabled = false; videoEnabled = false; isListening = false
+            recognitionStartJob?.cancel(); recognitionStartJob = null
+            recognitionSessionActive = false; recognitionStartCommandSent = false
+            callPcmCaptureController?.close(); callPcmCaptureController = null
+            speechAudioLease?.close(); speechAudioLease = null
+            realtimeCallSession?.close(); realtimeCallSession = null
+            realtimeAssistantDraft = ""
             runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
             agentPlaybackUntilMs = 0L
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -2356,26 +3497,49 @@ private fun ChatPage(
         },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
-        Surface(Modifier.fillMaxSize(), color = Color(0xFF080B12)) {
+        Surface(Modifier.fillMaxSize(), color = Bg) {
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 18.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("‹", color = Color.White, fontSize = 28.sp, modifier = Modifier.clickable {
-                        callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+                    IconButton(onClick = {
+                        onCallEnd()
+            callActive = false; callGeneration += 1L; micEnabled = false; videoEnabled = false; isListening = false
+                        recognitionStartJob?.cancel(); recognitionStartJob = null
+                        recognitionSessionActive = false; recognitionStartCommandSent = false
+                        callPcmCaptureController?.close(); callPcmCaptureController = null
+                        speechAudioLease?.close(); speechAudioLease = null
+                        realtimeCallSession?.close(); realtimeCallSession = null
+                        realtimeAssistantDraft = ""
                         runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
                         agentPlaybackUntilMs = 0L
                         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
                         audioManager.isSpeakerphoneOn = previousSpeakerphoneOn
                         audioManager.mode = previousAudioMode
-                    })
+                    }) {
+                        Icon(Icons.Outlined.ArrowBack, contentDescription = "返回通话", tint = MainText)
+                    }
                     Spacer(Modifier.weight(1f))
-                    Text("HyperCat AI 通话", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                    Text("HyperCat AI 通话", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.weight(1f))
-                    Text(if (callActive) "● 通话中" else "● 已结束", color = if (callActive) Color(0xFF55D69A) else Color.Gray, fontSize = 11.sp)
+                    Text(if (callActive) "● 通话中" else "● 已结束", color = if (callActive) Cyan else Muted, fontSize = 11.sp)
                 }
                 Spacer(Modifier.height(14.dp))
-                Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF151C29))) {
+                Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)).background(Panel2)) {
                     if (videoEnabled) {
-                        LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it })
+                        LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it }, shouldCaptureFrame = { videoEnabled }, onFrame = { jpeg ->
+                            latestCameraFrame.set(jpeg)
+                            val realtimeActive = realtimeCallSession != null
+                            if (realtimeActive) realtimeVisionController?.offerFrame(jpeg)
+                            Handler(Looper.getMainLooper()).post {
+                                if (realtimeActive && realtimeVisionController != null) {
+                                    if (cameraVisionStatus.isBlank() || cameraVisionStatus == "摄像头已开启 · 独立视觉模型将持续观察画面") {
+                                        cameraVisionStatus = "摄像头画面已接入 · 正在等待视觉分析"
+                                    }
+                                } else if (cameraVisionStatus.isBlank()) {
+                                    cameraVisionStatus = "画面已就绪 · 可询问镜头中的内容"
+                                }
+                            }
+                            videoEnabled
+                        })
                         if (cameraError != null) Text(cameraError.orEmpty(), color = Color(0xFFFF9A9A), fontSize = 11.sp,
                             modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp).background(Color.Black.copy(alpha = .65f), RoundedCornerShape(8.dp)).padding(8.dp))
                         Surface(Modifier.align(Alignment.TopEnd).padding(12.dp), color = Color.Black.copy(alpha = .55f), shape = RoundedCornerShape(20.dp)) {
@@ -2383,32 +3547,53 @@ private fun ChatPage(
                         }
                     } else {
                         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            Text("HyperCat AI", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                            Text(if (isSpeaking) "AI 正在回答…" else if (isListening) "正在聆听…" else if (isThinking) "正在思考…" else "语音通话已连接", color = Color(0xFFADB8C8), fontSize = 13.sp)
+                            Text("HyperCat AI", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                            Text(if (isSpeaking) "AI 正在回答…" else if (isListening) "正在聆听…" else if (callThinking) "正在思考…" else "语音通话已连接", color = Muted, fontSize = 13.sp)
                         }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                val latestCallReply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
-                val latestCallInput = messages.lastOrNull { it.fromUser }?.text.orEmpty()
-                Surface(Modifier.fillMaxWidth().heightIn(max = 128.dp), color = Color(0xFF151C29), shape = RoundedCornerShape(18.dp)) {
+                val latestCallReply = callMessages.lastOrNull { !it.fromUser }?.text.orEmpty()
+                val latestCallInput = callMessages.lastOrNull { it.fromUser }?.text.orEmpty()
+                Surface(Modifier.fillMaxWidth().heightIn(max = 128.dp), color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                     Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (latestCallInput.isNotBlank()) Text("你：$latestCallInput", color = Color(0xFFADB8C8), fontSize = 11.sp)
-                        if (latestCallReply.isNotBlank()) Text("AI：$latestCallReply", color = Color.White, fontSize = 12.sp, lineHeight = 18.sp)
-                        if (latestCallReply.isBlank() && latestCallInput.isBlank()) Text("说话后，识别内容和 AI 回复会显示在这里", color = Color(0xFFADB8C8), fontSize = 11.sp)
+                        if (latestCallInput.isNotBlank()) Text("你：$latestCallInput", color = Muted, fontSize = 11.sp)
+                        if (latestCallReply.isNotBlank()) Text("AI：$latestCallReply", color = MainText, fontSize = 12.sp, lineHeight = 18.sp)
+                        if (latestCallReply.isBlank() && latestCallInput.isBlank()) Text("说话后，识别内容和 AI 回复会显示在这里", color = Muted, fontSize = 11.sp)
                     }
                 }
                 Spacer(Modifier.height(15.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    CallControl(if (micEnabled) "麦克风开启" else "已静音", if (micEnabled) "🎙" else "🔇") {
+                    CallControl(if (micEnabled) "麦克风" else "静音", if (micEnabled) Icons.Outlined.Mic else Icons.Outlined.MicOff, active = micEnabled, minimal = true) {
                         micEnabled = !micEnabled
-                        if (!micEnabled) { isListening = false; runCatching { speechRecognizer.cancel() }; speechStatus = "麦克风已关闭" }
-                        else if (callActive) { speechStatus = "正在重新启动语音识别…"; startInAppRecognition() }
+                        if (!micEnabled) {
+                            isListening = false
+                            if (realtimeCallSession != null) { realtimeCallSession?.setMicrophoneEnabled(false); speechStatus = "Realtime 麦克风已静音" }
+                            else {
+                                callPcmCaptureController?.setEnabled(false)
+                                isListening = false
+                                speechStatus = "麦克风已关闭，录音采集已暂停"
+                            }
+                        } else if (callActive) {
+                            if (realtimeCallSession != null) { realtimeCallSession?.setMicrophoneEnabled(true); isListening = true; speechStatus = "Realtime 麦克风已恢复" }
+                            else {
+                                speechStatus = "正在恢复麦克风录音…"
+                                runCatching { callPcmCaptureController?.setEnabled(true) }
+                                    .onFailure { speechStatus = "麦克风恢复失败：${it.message ?: "请检查录音权限"}" }
+                            }
+                        }
                     }
-                    CallControl(if (videoEnabled) "关闭视频" else "开启视频", if (videoEnabled) "📹" else "📷") { toggleVideo() }
-                    if (videoEnabled) CallControl("翻转摄像头", "🔄") { useFrontCamera = !useFrontCamera }
-                    CallControl("挂断", "☎", danger = true) {
-                        callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+                    CallControl("视频", Icons.Outlined.Videocam, active = videoEnabled, minimal = true) { toggleVideo() }
+                    if (videoEnabled) CallControl("翻转摄像头", Icons.Outlined.FlipCameraAndroid) { useFrontCamera = !useFrontCamera }
+                    CallControl("挂断", Icons.Outlined.CallEnd, danger = true) {
+                        onCallEnd()
+            callActive = false; callGeneration += 1L; micEnabled = false; videoEnabled = false; isListening = false
+                        recognitionStartJob?.cancel()
+                        recognitionSessionActive = false
+                        callPcmCaptureController?.close(); callPcmCaptureController = null
+                        speechAudioLease?.close(); speechAudioLease = null
+                        realtimeCallSession?.close(); realtimeCallSession = null
+                        realtimeAssistantDraft = ""
                         runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
                         agentPlaybackUntilMs = 0L
                         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -2416,20 +3601,23 @@ private fun ChatPage(
                         audioManager.mode = previousAudioMode
                     }
                 }
-                Text(if (videoEnabled) "摄像头画面为设备本地实时预览；AI 语音通话持续工作。连续视频流理解需接入支持实时音视频的模型服务。" else "语音通话已启动。点击摄像头按钮可开启视频，点击麦克风按钮可静音。",
-                    color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
-                if (speechStatus.isNotBlank()) Text(speechStatus, color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
-                if (callActive && micEnabled) Text("麦克风输入电平：${micRmsDb.toInt()} dB · 识别持续运行", color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                Text(if (videoEnabled) "摄像头已开启：支持图像输入的 Realtime 模型会直接接收画面；其他通话模式会在你询问画面时调用独立视觉模型分析。" else "语音通话已启动。点击摄像头按钮可开启视频，点击麦克风按钮可静音。",
+                    color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
+                if (videoEnabled && cameraVisionStatus.isNotBlank()) Text(cameraVisionStatus, color = if (cameraVisionStatus.startsWith("AI 视觉")) Cyan else Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                if (speechStatus.isNotBlank()) Text(speechStatus, color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                if (callActive && micEnabled) Text("麦克风输入电平：${micRmsDb.toInt()} dB · 识别持续运行", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
             }
         }
     }
 }
 
 @Composable
-private fun LiveCameraPreview(useFrontCamera: Boolean, onError: (String) -> Unit) {
+private fun LiveCameraPreview(useFrontCamera: Boolean, onError: (String) -> Unit, shouldCaptureFrame: () -> Boolean, onFrame: (ByteArray) -> Boolean) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestOnError by rememberUpdatedState(onError)
+    val latestOnFrame by rememberUpdatedState(onFrame)
+    val latestShouldCaptureFrame by rememberUpdatedState(shouldCaptureFrame)
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val previewView = remember(context) { PreviewView(context).apply {
         scaleType = PreviewView.ScaleType.FILL_CENTER
@@ -2438,38 +3626,145 @@ private fun LiveCameraPreview(useFrontCamera: Boolean, onError: (String) -> Unit
     DisposableEffect(previewView, lifecycleOwner, useFrontCamera) {
         var boundProvider: ProcessCameraProvider? = null
         var boundPreview: Preview? = null
+        var boundAnalysis: ImageAnalysis? = null
+        val analysisExecutor = Executors.newSingleThreadExecutor()
+        val lastFrameAt = java.util.concurrent.atomic.AtomicLong(0L)
         val providerFuture = ProcessCameraProvider.getInstance(context)
         providerFuture.addListener({
             try {
                 val provider = providerFuture.get()
                 boundProvider = provider
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+                val analysis = ImageAnalysis.Builder()
+                    .setTargetAspectRatio(androidx.camera.core.AspectRatio.RATIO_4_3)
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                    .build()
+                analysis.setAnalyzer(analysisExecutor) { image ->
+                    try {
+                        val now = SystemClock.elapsedRealtime()
+                        val previous = lastFrameAt.get()
+                        if (latestShouldCaptureFrame() && now - previous >= 500L && lastFrameAt.compareAndSet(previous, now)) {
+                            val jpeg = image.toVisionJpeg()
+                            if (jpeg != null) latestOnFrame(jpeg)
+                        }
+                    } catch (error: Throwable) {
+                        Log.w("HyperCatCamera", "Camera frame processing failed", error)
+                    } finally {
+                        image.close()
+                    }
+                }
                 boundPreview = preview
+                boundAnalysis = analysis
                 val selector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
                 if (!provider.hasCamera(selector)) error(if (useFrontCamera) "设备没有可用的前置摄像头" else "设备没有可用的后置摄像头")
-                provider.bindToLifecycle(lifecycleOwner, selector, preview)
+                provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
             } catch (error: Exception) {
-                mainHandler.post { latestOnError("摄像头启动失败：${error.message ?: error.javaClass.simpleName}。请检查权限或关闭占用摄像头的应用。") }
+                mainHandler.post { latestOnError("摄像头启动失败：" + (error.message ?: error.javaClass.simpleName) + "。请检查权限或关闭占用摄像头的应用。") }
             }
         }, ContextCompat.getMainExecutor(context))
         onDispose {
             runCatching {
                 val provider = boundProvider
                 val preview = boundPreview
-                if (provider != null && preview != null) provider.unbind(preview)
+                val analysis = boundAnalysis
+                if (provider != null) {
+                    if (preview != null && analysis != null) provider.unbind(preview, analysis)
+                    else if (preview != null) provider.unbind(preview)
+                }
             }
+            analysisExecutor.shutdown()
         }
     }
     AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 }
 
-@Composable
-private fun CallControl(label: String, icon: String, enabled: Boolean = true, danger: Boolean = false, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(84.dp)) {
-        Surface(Modifier.size(62.dp).clickable(enabled = enabled, onClick = onClick), color = if (danger) Color(0xFFB83D4A) else if (enabled) Color(0xFF202A3A) else Color(0xFF30343B), shape = CircleShape) {
-            Box(contentAlignment = Alignment.Center) { Text(icon, color = Color.White, fontSize = 24.sp) }
+private fun ImageProxy.toVisionJpeg(): ByteArray? {
+    if (planes.isEmpty()) return null
+    val plane = planes[0]
+    val buffer = plane.buffer.duplicate()
+    val frameWidth = width
+    val frameHeight = height
+    val rowStride = plane.rowStride
+    val pixelStride = plane.pixelStride
+    if (frameWidth <= 0 || frameHeight <= 0 || pixelStride < 4) return null
+    val pixels = IntArray(frameWidth * frameHeight)
+    val limit = buffer.limit()
+    for (y in 0 until frameHeight) {
+        val rowOffset = y * rowStride
+        for (x in 0 until frameWidth) {
+            val offset = rowOffset + x * pixelStride
+            if (offset + 3 >= limit) continue
+            val r = buffer.get(offset).toInt() and 0xFF
+            val g = buffer.get(offset + 1).toInt() and 0xFF
+            val b = buffer.get(offset + 2).toInt() and 0xFF
+            val a = buffer.get(offset + 3).toInt() and 0xFF
+            pixels[y * frameWidth + x] = (a shl 24) or (r shl 16) or (g shl 8) or b
         }
-        Text(label, color = if (danger) Color(0xFFFF8E98) else Color.White, fontSize = 11.sp, modifier = Modifier.padding(top = 7.dp))
+    }
+    var bitmap = Bitmap.createBitmap(frameWidth, frameHeight, Bitmap.Config.ARGB_8888)
+    bitmap.setPixels(pixels, 0, frameWidth, 0, 0, frameWidth, frameHeight)
+    val rotation = imageInfo.rotationDegrees
+    if (rotation != 0) {
+        val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+        val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        bitmap.recycle()
+        bitmap = rotated
+    }
+    val maxDimension = 512
+    if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
+        val scale = maxDimension.toFloat() / maxOf(bitmap.width, bitmap.height)
+        val scaled = Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt().coerceAtLeast(1),
+            (bitmap.height * scale).toInt().coerceAtLeast(1), true)
+        bitmap.recycle()
+        bitmap = scaled
+    }
+    return try {
+        ByteArrayOutputStream().use { output ->
+            if (bitmap.compress(Bitmap.CompressFormat.JPEG, 60, output)) output.toByteArray() else null
+        }
+    } finally {
+        bitmap.recycle()
+    }
+}
+
+@Composable
+private fun CallControl(
+    label: String,
+    icon: ImageVector,
+    enabled: Boolean = true,
+    active: Boolean = false,
+    danger: Boolean = false,
+    minimal: Boolean = false,
+    onClick: () -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(if (minimal) 64.dp else 76.dp)) {
+        Surface(
+            modifier = Modifier.size(if (minimal) 48.dp else 54.dp).clickable(enabled = enabled, onClick = onClick),
+            color = when {
+                danger -> Color(0xFFB3261E)
+                active -> Cyan
+                else -> Panel2
+            },
+            shape = CircleShape,
+            border = if (minimal || danger || active) null else androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    icon,
+                    contentDescription = label,
+                    tint = if (danger || active) Bg else MainText,
+                    modifier = Modifier.size(if (minimal) 21.dp else 22.dp)
+                )
+            }
+        }
+        Text(
+            label,
+            color = if (danger) Color(0xFFB3261E) else Muted,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(top = 5.dp),
+            maxLines = 1
+        )
     }
 }
 
@@ -2483,7 +3778,10 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
             drawCircle(color = Cyan.copy(alpha = 0.42f), radius = size.minDimension * 0.42f * pulse,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
         }
-        Surface(Modifier.size(40.dp).pointerInput(isListening) {
+        Surface(Modifier.size(40.dp).pointerInput(Unit) {
+            // Do not key this gesture to isListening: onReadyForSpeech changes that
+            // state while the finger is still down. Restarting pointerInput cancels
+            // tryAwaitRelease and immediately calls onPressEnd, aborting SpeechRecognizer.
             detectTapGestures(onPress = {
                 onPressStart()
                 tryAwaitRelease()
@@ -2510,9 +3808,18 @@ private fun AvatarRenderer(
     onGesture: (String, String) -> Unit = { _, _ -> }
 ) {
     val deviceState by AvatarDeviceStateStore.state.collectAsState()
+    val realtimePhase by RealtimeAvatarStateStore.state.collectAsState()
+    val realtimeMood = when (realtimePhase) {
+        RealtimeAvatarPhase.CONNECTING -> "thinking"
+        RealtimeAvatarPhase.LISTENING -> "happy"
+        RealtimeAvatarPhase.INTERRUPTED -> "shy"
+        RealtimeAvatarPhase.FAILED -> "sad"
+        else -> mood
+    }
+    val realtimeSpeaking = speaking || realtimePhase == RealtimeAvatarPhase.RESPONDING
     if (model != null) {
         Live2DView(
-            model = model, modifier = modifier, mood = mood, speaking = speaking, musicPlaying = deviceState.music, halfBody = halfBody,
+            model = model, modifier = modifier, mood = realtimeMood, speaking = realtimeSpeaking, musicPlaying = deviceState.music, halfBody = halfBody,
             showLyrics = showLyrics,
             onGesture = onGesture,
             onPortrait = { dataUrl ->
@@ -2568,257 +3875,6 @@ private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
         }
     }
 }
-
-@Composable
-private fun AnimeGirlAvatar(
-    character: String,
-    modifier: Modifier = Modifier,
-    mood: String = "normal",
-    animated: Boolean = true
-) {
-    val idleMotion = rememberInfiniteTransition(label = "avatarIdleMotion")
-    val bob by idleMotion.animateFloat(
-        initialValue = -2.5f, targetValue = 2.5f,
-        animationSpec = infiniteRepeatable(tween(if (mood == "thinking") 2800 else 2100), RepeatMode.Reverse),
-        label = "avatarBob"
-    )
-    val sway by idleMotion.animateFloat(
-        initialValue = -0.7f, targetValue = 0.7f,
-        animationSpec = infiniteRepeatable(tween(3400), RepeatMode.Reverse),
-        label = "avatarSway"
-    )
-    val reactionScale by animateFloatAsState(
-        targetValue = when (mood) { "happy" -> 1.025f; "thinking" -> .99f; "sleepy" -> .985f; else -> 1f },
-        animationSpec = tween(320), label = "avatarReactionScale"
-    )
-    val animatedModifier = if (animated) modifier.graphicsLayer {
-        translationY = bob.dp.toPx()
-        rotationZ = sway
-        scaleX = reactionScale
-        scaleY = reactionScale
-    } else modifier
-    val palette = when (character) {
-        "haru" -> listOf(Color(0xFFFFD9E8), Color(0xFFB95D85), Color(0xFFEE9AB9), Color(0xFF713650))
-        "hiyori" -> listOf(Color(0xFFFFE7B8), Color(0xFFB87942), Color(0xFFFFC66D), Color(0xFF75452D))
-        "mao" -> listOf(Color(0xFFFFD6D0), Color(0xFF9E526B), Color(0xFFE58CA0), Color(0xFF633448))
-        "natori" -> listOf(Color(0xFFD9E8FF), Color(0xFF536D9D), Color(0xFF8FADE0), Color(0xFF303E69))
-        "rice" -> listOf(Color(0xFFE8E1FF), Color(0xFF8272B6), Color(0xFFB5A5E8), Color(0xFF4A416F))
-        "aoi" -> listOf(Color(0xFFBDEBFF), Color(0xFF4C80D8), Color(0xFF2CADD9), Color(0xFF193A78))
-        "luna" -> listOf(Color(0xFFEDEBFF), Color(0xFF8582C8), Color(0xFFB6A7F4), Color(0xFF49446F))
-        "yuna" -> listOf(Color(0xFFFFD9EC), Color(0xFFB94F86), Color(0xFFEE91B7), Color(0xFF71365C))
-        else -> listOf(Color(0xFFFFE0EC), Color(0xFFBE638B), Color(0xFFEE9AB4), Color(0xFF783C61))
-    }
-    val hairLight = palette[0]
-    val hair = palette[1]
-    val hairBright = palette[2]
-    val hairDark = palette[3]
-    val iris = when (character) {
-        "haru" -> Color(0xFFB84F79)
-        "hiyori" -> Color(0xFFB47A32)
-        "mao" -> Color(0xFF9B4F72)
-        "natori" -> Color(0xFF4C78B8)
-        "rice" -> Color(0xFF7666C8)
-        "aoi" -> Color(0xFF258BCB)
-        "luna" -> Color(0xFF7666C8)
-        "yuna" -> Color(0xFF9B4F9C)
-        else -> Color(0xFFB84F79)
-    }
-    Canvas(animatedModifier) {
-        val w = size.width
-        val h = size.height
-        fun p(x: Float, y: Float) = Offset(w * x, h * y)
-        fun oval(color: Color, x: Float, y: Float, rw: Float, rh: Float) {
-            drawOval(color, Offset(w * x, h * y), Size(w * rw, h * rh))
-        }
-        fun oval(brush: Brush, x: Float, y: Float, rw: Float, rh: Float) {
-            drawOval(brush, Offset(w * x, h * y), Size(w * rw, h * rh))
-        }
-        fun strokePath(color: Color, width: Float, block: Path.() -> Unit) {
-            val path = Path().apply(block)
-            drawPath(path, color, style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * width, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
-        }
-
-        drawRect(Brush.verticalGradient(listOf(hairLight.copy(alpha = .95f), Color(0xFFFFF7FB), Color(0xFFECEBFF))))
-        drawCircle(Color.White.copy(alpha = .42f), w * .15f, p(.12f, .17f))
-        drawCircle(Color.White.copy(alpha = .34f), w * .08f, p(.88f, .31f))
-        drawCircle(hairBright.copy(alpha = .16f), w * .22f, p(.82f, .82f))
-
-        if (character == "yuna") {
-            oval(Brush.verticalGradient(listOf(hairBright, hairDark)), .04f, .25f, .24f, .58f)
-            oval(Brush.verticalGradient(listOf(hairBright, hairDark)), .72f, .23f, .24f, .60f)
-            oval(hairDark, .04f, .22f, .20f, .17f)
-            oval(hairDark, .76f, .20f, .20f, .17f)
-        } else if (character == "aoi") {
-            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .70f, .18f, .23f, .45f)
-        } else if (character == "luna") {
-            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .12f, .23f, .20f, .65f)
-            oval(Brush.verticalGradient(listOf(hairLight, hairDark)), .68f, .23f, .20f, .65f)
-        }
-        oval(Brush.verticalGradient(listOf(hair, hairDark)), .16f, .12f, .68f, .70f)
-
-        val body = Path().apply {
-            moveTo(w * .17f, h * 1.02f)
-            cubicTo(w * .19f, h * .80f, w * .28f, h * .70f, w * .43f, h * .68f)
-            lineTo(w * .57f, h * .68f)
-            cubicTo(w * .75f, h * .70f, w * .83f, h * .82f, w * .85f, h * 1.02f)
-            close()
-        }
-        drawPath(body, Brush.verticalGradient(listOf(Color(0xFFFFFBFF), hairBright, hair)))
-        oval(Brush.verticalGradient(listOf(Color(0xFFFFF7FB), hairBright)), .12f, .78f, .25f, .25f)
-        oval(Brush.verticalGradient(listOf(Color(0xFFFFF7FB), hairBright)), .63f, .78f, .25f, .25f)
-
-        drawRoundRect(Brush.verticalGradient(listOf(Color(0xFFFFE2D7), Color(0xFFFFC8C1))), Offset(w * .43f, h * .57f), Size(w * .14f, h * .19f), androidx.compose.ui.geometry.CornerRadius(w * .05f))
-        oval(Brush.verticalGradient(listOf(Color(0xFFFFF4EC), Color(0xFFFFD9D1))), .25f, .22f, .50f, .48f)
-        oval(Color(0xFFFFE5DD), .225f, .43f, .07f, .13f)
-        oval(Color(0xFFFFE5DD), .705f, .43f, .07f, .13f)
-
-        oval(Brush.verticalGradient(listOf(hairBright, hair)), .17f, .31f, .18f, .48f)
-        oval(Brush.verticalGradient(listOf(hairBright, hair)), .65f, .31f, .18f, .48f)
-        val fringe = Path().apply {
-            moveTo(w * .24f, h * .39f)
-            cubicTo(w * .19f, h * .12f, w * .34f, h * .09f, w * .50f, h * .12f)
-            cubicTo(w * .69f, h * .08f, w * .80f, h * .20f, w * .76f, h * .41f)
-            cubicTo(w * .68f, h * .34f, w * .63f, h * .31f, w * .57f, h * .43f)
-            cubicTo(w * .52f, h * .34f, w * .48f, h * .34f, w * .43f, h * .45f)
-            cubicTo(w * .38f, h * .34f, w * .31f, h * .35f, w * .24f, h * .44f)
-            close()
-        }
-        drawPath(fringe, Brush.verticalGradient(listOf(hairLight, hairBright, hairDark)))
-        strokePath(hairLight.copy(alpha = .72f), .009f) {
-            moveTo(w * .31f, h * .18f); cubicTo(w * .34f, h * .29f, w * .34f, h * .34f, w * .37f, h * .39f)
-            moveTo(w * .48f, h * .14f); cubicTo(w * .49f, h * .27f, w * .47f, h * .33f, w * .45f, h * .40f)
-            moveTo(w * .65f, h * .17f); cubicTo(w * .63f, h * .28f, w * .62f, h * .33f, w * .59f, h * .39f)
-        }
-
-        listOf(.395f, .605f).forEach { x ->
-            oval(Color(0xFF6B3D55), x - .064f, .405f, .128f, .105f)
-            oval(Color.White, x - .057f, .412f, .114f, .094f)
-            oval(Brush.verticalGradient(listOf(Color(0xFFB6F1FF), iris, hairDark)), x - .043f, .414f, .086f, .090f)
-            oval(Color(0xFF18233D), x - .025f, .427f, .050f, .071f)
-            oval(Color.White, x - .025f, .425f, .030f, .030f)
-            oval(Color.White.copy(alpha = .78f), x + .014f, .461f, .014f, .014f)
-            strokePath(hairDark, .010f) {
-                moveTo(w * (x - .060f), h * .425f)
-                cubicTo(w * (x - .025f), h * .385f, w * (x + .025f), h * .385f, w * (x + .060f), h * .425f)
-            }
-        }
-        strokePath(hairDark.copy(alpha = .8f), .008f) {
-            moveTo(w * .34f, h * .375f); quadraticTo(w * .395f, h * .35f, w * .445f, h * .375f)
-            moveTo(w * .555f, h * .375f); quadraticTo(w * .605f, h * .35f, w * .66f, h * .375f)
-        }
-        oval(Color(0xFFFFA9B7).copy(alpha = .35f), .295f, .545f, .11f, .035f)
-        oval(Color(0xFFFFA9B7).copy(alpha = .35f), .595f, .545f, .11f, .035f)
-        oval(Color(0xFFEBA99D), .493f, .535f, .014f, .012f)
-        strokePath(Color(0xFFB85B78), .008f) {
-            moveTo(w * .465f, h * .585f)
-            quadraticTo(w * .50f, h * .615f, w * .535f, h * .585f)
-        }
-
-        val collar = Path().apply {
-            moveTo(w * .39f, h * .69f); lineTo(w * .50f, h * .79f); lineTo(w * .61f, h * .69f)
-            lineTo(w * .56f, h * .67f); lineTo(w * .50f, h * .72f); lineTo(w * .44f, h * .67f); close()
-        }
-        drawPath(collar, Brush.verticalGradient(listOf(Color.White, hairLight)))
-        oval(hairBright, .465f, .75f, .07f, .07f)
-        val bowLeft = Path().apply { moveTo(w*.49f,h*.77f); cubicTo(w*.39f,h*.72f,w*.37f,h*.84f,w*.48f,h*.83f); close() }
-        val bowRight = Path().apply { moveTo(w*.51f,h*.77f); cubicTo(w*.61f,h*.72f,w*.63f,h*.84f,w*.52f,h*.83f); close() }
-        drawPath(bowLeft, Brush.verticalGradient(listOf(hairLight, hair)))
-        drawPath(bowRight, Brush.verticalGradient(listOf(hairBright, hairDark)))
-        oval(Color(0xFFFFF2F7), .485f, .765f, .03f, .04f)
-        strokePath(Color.White.copy(alpha = .72f), .006f) {
-            moveTo(w*.25f,h*.88f); quadraticTo(w*.50f,h*.93f,w*.75f,h*.88f)
-        }
-
-        when (character) {
-            "aoi" -> {
-                oval(Color(0xFFFFF7FB), .73f, .22f, .12f, .10f)
-                oval(Color(0xFF4CC8F0), .755f, .24f, .07f, .06f)
-                strokePath(Color.White, .008f) { moveTo(w*.77f,h*.22f); lineTo(w*.80f,h*.15f) }
-            }
-            "luna" -> {
-                oval(Color(0xFFFFE89B), .68f, .18f, .11f, .10f)
-                oval(Color(0xFFFFF9D8), .705f, .195f, .06f, .055f)
-            }
-            "yuna" -> {
-                oval(Color(0xFFFFF5FA), .10f, .25f, .12f, .11f)
-                oval(Color(0xFFFFC4D9), .13f, .27f, .06f, .06f)
-                oval(Color(0xFFFFF5FA), .78f, .24f, .12f, .11f)
-                oval(Color(0xFFFFC4D9), .81f, .26f, .06f, .06f)
-            }
-            else -> {
-                oval(Color(0xFFFFF7FB), .72f, .22f, .12f, .11f)
-                oval(Color(0xFFFFD36D), .75f, .245f, .06f, .055f)
-            }
-        }
-        strokePath(Color.White.copy(alpha = .62f), .007f) {
-            moveTo(w*.27f,h*.29f); quadraticTo(w*.31f,h*.18f,w*.43f,h*.16f)
-            moveTo(w*.67f,h*.30f); quadraticTo(w*.70f,h*.22f,w*.72f,h*.33f)
-        }
-        drawCircle(Color.White.copy(alpha = .9f), w * .012f, p(.19f, .16f))
-        drawCircle(Color.White.copy(alpha = .8f), w * .009f, p(.83f, .47f))
-
-        // Mood-specific facial expressions: cover the neutral eye/mouth details first,
-        // then draw the expression on the same anime face rather than swapping a symbol.
-        val skin = Color(0xFFFFE5DD)
-        when (mood.lowercase()) {
-            "happy" -> {
-                oval(skin, .335f, .402f, .12f, .115f)
-                oval(skin, .545f, .402f, .12f, .115f)
-                strokePath(hairDark, .014f) {
-                    moveTo(w*.345f,h*.458f); quadraticTo(w*.395f,h*.405f,w*.445f,h*.458f)
-                    moveTo(w*.555f,h*.458f); quadraticTo(w*.605f,h*.405f,w*.655f,h*.458f)
-                }
-                oval(skin, .455f, .565f, .09f, .07f)
-                strokePath(Color(0xFFB85B78), .012f) {
-                    moveTo(w*.455f,h*.585f); quadraticTo(w*.50f,h*.645f,w*.545f,h*.585f)
-                }
-                oval(Color(0xFFFF91AE).copy(alpha=.38f), .285f, .535f, .13f, .045f)
-                oval(Color(0xFFFF91AE).copy(alpha=.38f), .585f, .535f, .13f, .045f)
-            }
-            "sleepy" -> {
-                oval(skin, .335f, .402f, .12f, .115f)
-                oval(skin, .545f, .402f, .12f, .115f)
-                strokePath(hairDark, .013f) {
-                    moveTo(w*.345f,h*.445f); quadraticTo(w*.395f,h*.475f,w*.445f,h*.445f)
-                    moveTo(w*.555f,h*.445f); quadraticTo(w*.605f,h*.475f,w*.655f,h*.445f)
-                }
-                oval(skin, .465f, .565f, .07f, .055f)
-                strokePath(Color(0xFFB85B78), .008f) {
-                    moveTo(w*.475f,h*.59f); lineTo(w*.525f,h*.59f)
-                }
-            }
-            "thinking" -> {
-                oval(skin, .465f, .565f, .07f, .06f)
-                strokePath(Color(0xFFB85B78), .009f) {
-                    moveTo(w*.485f,h*.60f); quadraticTo(w*.50f,h*.565f,w*.515f,h*.60f)
-                }
-                strokePath(hairDark.copy(alpha=.9f), .009f) {
-                    moveTo(w*.35f,h*.385f); quadraticTo(w*.40f,h*.36f,w*.445f,h*.39f)
-                    moveTo(w*.56f,h*.37f); quadraticTo(w*.61f,h*.345f,w*.65f,h*.38f)
-                }
-            }
-            "sad" -> {
-                oval(skin, .465f, .565f, .07f, .055f)
-                strokePath(Color(0xFFB85B78), .009f) {
-                    moveTo(w*.46f,h*.61f); quadraticTo(w*.50f,h*.565f,w*.54f,h*.61f)
-                }
-                strokePath(hairDark.copy(alpha=.8f), .009f) {
-                    moveTo(w*.35f,h*.39f); quadraticTo(w*.40f,h*.42f,w*.445f,h*.40f)
-                    moveTo(w*.555f,h*.40f); quadraticTo(w*.60f,h*.42f,w*.65f,h*.39f)
-                }
-            }
-            "surprised" -> {
-                oval(Color.White, .36f, .395f, .09f, .13f)
-                oval(Color.White, .55f, .395f, .09f, .13f)
-                oval(iris, .385f, .425f, .045f, .085f)
-                oval(iris, .575f, .425f, .045f, .085f)
-                oval(skin, .465f, .565f, .07f, .06f)
-                oval(Color(0xFFB85B78), .482f, .575f, .036f, .045f)
-            }
-        }
-    }
-}
-
 
 @Composable
 private fun AvatarColorEditor(title: String, color: String, onColorChange: (String) -> Unit) {
@@ -3063,6 +4119,8 @@ private fun SettingsPage(
     autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit,
     onCheckUpdates: () -> Unit, openUrl: (String) -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var showPetNameDialog by remember { mutableStateOf(false) }
     var avatarNameDraft by remember(avatarName) { mutableStateOf(avatarName) }
     var showPluginDialog by remember { mutableStateOf(false) }
@@ -3083,8 +4141,50 @@ private fun SettingsPage(
     var securityDetailText by remember { mutableStateOf("") }
     var taskTitle by remember { mutableStateOf("") }
     var taskDelayMinutes by remember { mutableStateOf("30") }
+    val context = androidx.compose.ui.platform.LocalContext.current
     var profileName by remember { mutableStateOf("") }
+    var profileRealtimeEndpoint by remember { mutableStateOf(context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).getString("active_realtime_endpoint", "") ?: "") }
+    var profileRealtimeProtocol by remember { mutableStateOf(context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).getString("active_realtime_protocol", "none") ?: "none") }
+    val modelPrefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     var modelSettingsTab by remember { mutableStateOf("推理模型") }
+    var pendingInferenceName by remember { mutableStateOf(modelProfiles.firstOrNull { it.model == model && it.endpoint == endpoint }?.name.orEmpty()) }
+    var pendingAsrName by remember { mutableStateOf(modelPrefs.getString("asr_profile_name", "") ?: "") }
+    var pendingTtsName by remember { mutableStateOf(ttsProfileName) }
+    var pendingVisionName by remember { mutableStateOf(modelPrefs.getString("vision_profile_name", "") ?: "") }
+    var modelEditorCategory by remember { mutableStateOf("") }
+    var modelEditorOriginalName by remember { mutableStateOf("") }
+    var modelEditorName by remember { mutableStateOf("") }
+    var modelEditorProvider by remember { mutableStateOf("OpenAI 兼容接口") }
+    var modelEditorEndpoint by remember { mutableStateOf("") }
+    var modelEditorApiKey by remember { mutableStateOf("") }
+    var modelEditorModel by remember { mutableStateOf("") }
+    var modelEditorVoice by remember { mutableStateOf("alloy") }
+    var modelEditorRealtimeProtocol by remember { mutableStateOf("none") }
+    var modelEditorRealtimeEndpoint by remember { mutableStateOf("") }
+    // Declare service profile state before openModelEditor, which reads their sizes.
+    val asrProfiles = remember { mutableStateListOf<ServiceModelProfile>() }
+    val visionProfiles = remember { mutableStateListOf<ServiceModelProfile>() }
+    fun openModelEditor(category: String, name: String = "", endpointValue: String = "", keyValue: String = "", modelValue: String = "", providerValue: String = "", voiceValue: String = "alloy", realtimeValue: String = "none", realtimeUrl: String = "") {
+        modelEditorCategory = category
+        modelEditorOriginalName = name
+        modelEditorName = name.ifBlank { when (category) { "推理模型" -> "推理模型-${modelProfiles.size + 1}"; "ASR" -> "ASR-${asrProfiles.size + 1}"; "TTS" -> "TTS-${ttsProfiles.size + 1}"; else -> "视觉模型-${visionProfiles.size + 1}" } }
+        modelEditorProvider = providerValue.ifBlank { if (category == "推理模型") provider else "独立视觉模型" }
+        modelEditorEndpoint = endpointValue
+        modelEditorApiKey = keyValue
+        modelEditorModel = modelValue
+        modelEditorVoice = voiceValue
+        modelEditorRealtimeProtocol = realtimeValue
+        modelEditorRealtimeEndpoint = realtimeUrl
+    }
+    var asrEndpoint by remember { mutableStateOf(modelPrefs.getString("asr_endpoint", "") ?: "") }
+    var asrApiKey by remember { mutableStateOf(modelPrefs.getString("asr_api_key", "") ?: "") }
+    var asrModel by remember { mutableStateOf(modelPrefs.getString("asr_model", "mimo-v2.5-asr") ?: "mimo-v2.5-asr") }
+    var asrProfileName by remember { mutableStateOf("") }
+    var visionProfileName by remember { mutableStateOf("") }
+    var visionProvider by remember { mutableStateOf(modelPrefs.getString("vision_provider", "独立视觉模型") ?: "独立视觉模型") }
+    var visionEndpoint by remember { mutableStateOf(modelPrefs.getString("vision_endpoint", "https://ark.cn-beijing.volces.com/api/v3") ?: "https://ark.cn-beijing.volces.com/api/v3") }
+    var visionApiKey by remember { mutableStateOf(modelPrefs.getString("vision_api_key", "") ?: "") }
+    var visionModel by remember { mutableStateOf(modelPrefs.getString("vision_model", "doubao-seed-2-1-pro") ?: "doubao-seed-2-1-pro") }
     var pluginEnabled by remember { mutableStateOf(false) }
     var pluginName by remember { mutableStateOf("") }
     var pluginDescription by remember { mutableStateOf("") }
@@ -3095,7 +4195,6 @@ private fun SettingsPage(
     val plugins = remember { mutableStateListOf<ThirdPartyPlugin>() }
     var mcpName by remember { mutableStateOf("") }
     var mcpEndpoint by remember { mutableStateOf("") }
-    val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     var weatherProvider by remember { mutableStateOf(prefs.getString("weather_provider", "openmeteo") ?: "openmeteo") }
     var amapWeatherKey by remember { mutableStateOf(prefs.getString("amap_weather_key", "") ?: "") }
@@ -3136,6 +4235,16 @@ private fun SettingsPage(
         }.onFailure { skillStatus = "导入失败：${it.message ?: "文件格式无法识别"}" }
     }
     LaunchedEffect(Unit) {
+        runCatching {
+            val arr = org.json.JSONArray(prefs.getString("asr_profiles", "[]") ?: "[]")
+            for (i in 0 until arr.length()) { val x = arr.getJSONObject(i); asrProfiles.add(ServiceModelProfile(x.optString("name"), x.optString("endpoint"), x.optString("apiKey"), x.optString("model"), "ASR")) }
+        }
+        if (asrProfiles.isEmpty() && asrEndpoint.isNotBlank()) asrProfiles.add(ServiceModelProfile("ASR-1", asrEndpoint, asrApiKey, asrModel, "ASR"))
+        runCatching {
+            val arr = org.json.JSONArray(prefs.getString("vision_profiles", "[]") ?: "[]")
+            for (i in 0 until arr.length()) { val x = arr.getJSONObject(i); visionProfiles.add(ServiceModelProfile(x.optString("name"), x.optString("endpoint"), x.optString("apiKey"), x.optString("model"), x.optString("provider", "独立视觉模型"))) }
+        }
+        if (visionProfiles.isEmpty() && visionEndpoint.isNotBlank()) visionProfiles.add(ServiceModelProfile("视觉模型-1", visionEndpoint, visionApiKey, visionModel, visionProvider))
         pluginEnabled = prefs.getBoolean("plugins_enabled", false)
         weatherProvider = prefs.getString("weather_provider", "openmeteo") ?: "openmeteo"
         amapWeatherKey = prefs.getString("amap_weather_key", "") ?: ""
@@ -3173,98 +4282,168 @@ private fun SettingsPage(
         Text("外观、扩展能力与应用信息", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(16.dp))
         Text("模型与服务", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-        Text("先选择服务类型，再配置连接信息与模型档案", color = Muted, fontSize = 11.sp)
+        Text("按你要完成的事情配置模型，不需要先理解技术名词。", color = Muted, fontSize = 11.sp)
         Spacer(Modifier.height(10.dp))
         Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
-            Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("你想让 HyperCat 做什么？", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("每个用途可以使用不同服务商；配置完成后点击保存即可。", color = Muted, fontSize = 10.sp)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("推理模型", "语音 TTS", "模型档案").forEach { tab ->
+                    listOf("推理模型", "语音模型", "视觉模型").forEach { tab ->
                         FilterChip(
                             selected = modelSettingsTab == tab,
                             onClick = { modelSettingsTab = tab },
-                            modifier = Modifier.weight(1f),
-                            label = { Text(tab, fontSize = 11.sp, maxLines = 1) }
+                            label = { Text(tab, fontSize = 12.sp, maxLines = 1) },
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(2.dp))
                 if (modelSettingsTab == "推理模型") {
-                                    Text("服务类型", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Spacer(Modifier.height(8.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        listOf("本地模型", "OpenAI 兼容接口").forEach { item ->
-                                            FilterChip(selected = provider == item, onClick = { onProvider(item) }, label = { Text(item, fontSize = 12.sp) })
-                                        }
-                                    }
-                                    Spacer(Modifier.height(12.dp))
-                                    ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 http://127.0.0.1:1234/v1")
-                                    ConfigField("模型名称", model, onModel, "例如 qwen2.5 或 gpt-4o-mini")
-                                    ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
-                                    Spacer(Modifier.height(14.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("推理模型列表 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { openModelEditor("推理模型") }) { Icon(Icons.Outlined.Add, contentDescription = "新增推理模型", tint = Cyan) }
+                    }
+                    Text("点击条目编辑配置，右侧圆圈仅选择待启用模型。", color = Muted, fontSize = 10.sp)
+                    modelProfiles.forEach { item ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (pendingInferenceName == item.name) Panel2 else Color.Transparent).clickable { openModelEditor("推理模型", item.name, item.endpoint, item.apiKey, item.model, item.provider, realtimeValue = item.realtimeProtocol, realtimeUrl = item.realtimeEndpoint) }.padding(horizontal = 8.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(item.name, color = MainText, fontSize = 12.sp); Text("${item.provider} · ${item.model}", color = Muted, fontSize = 10.sp) }
+                            if (model == item.model && endpoint == item.endpoint) Text("使用中", color = Color(0xFF76E0B1), fontSize = 9.sp)
+                            RadioButton(selected = pendingInferenceName == item.name, onClick = { pendingInferenceName = item.name })
+                        }
+                    }
+                    if (modelProfiles.isEmpty()) Text("暂无推理模型，点击＋添加。", color = Muted, fontSize = 11.sp)
                 }
-                if (modelSettingsTab == "语音 TTS") {
-                                    Text("TTS 语音配置", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("选择系统语音，或使用已保存模型档案连接兼容 OpenAI 的云端语音合成服务。", color = Muted, fontSize = 10.sp)
-                                    Spacer(Modifier.height(7.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                        FilterChip(selected = ttsMode == "system", onClick = { onTtsMode("system") }, label = { Text("系统语音") })
-                                        FilterChip(selected = ttsMode == "cloud", onClick = { onTtsMode("cloud") }, label = { Text("云端模型 TTS") })
-                                    }
-                                    if (ttsMode == "cloud") {
-                                        Text("TTS 服务连接独立于推理模型配置。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
-                                        ConfigField("TTS API Base URL", ttsEndpoint, onTtsEndpoint, "例如 https://api.xiaomimimo.com/v1")
-                                        ConfigField("TTS API Key", ttsApiKey, onTtsApiKey, "TTS 服务密钥", secret = true)
-                                        ttsProfiles.forEach { profile -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f).clickable { onSelectTtsProfile(profile) }.padding(7.dp)) { Text(profile.name, color = MainText, fontSize = 12.sp); Text(profile.endpoint, color = Muted, fontSize = 9.sp, maxLines = 1) }
-                                            RadioButton(selected = ttsProfileName == profile.name, onClick = { onSelectTtsProfile(profile) })
-                                            IconButton(onClick = { onDeleteTtsProfile(profile) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除 TTS 模型", tint = Color(0xFFE07878)) }
-                                        } }
-                                        OutlinedButton(onClick = { val n = "TTS-${ttsProfiles.size + 1}"; if (ttsEndpoint.isNotBlank()) onAddTtsProfile(TtsProfile(n, ttsEndpoint.trim(), ttsApiKey)) }, enabled = ttsEndpoint.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存当前 TTS 配置") }
-                                        ConfigField("TTS 模型名称", ttsModel, onTtsModel, "例如 tts-1 或服务商提供的语音模型")
-                                        ConfigField("TTS 音色", ttsVoice, onTtsVoice, "例如 alloy、nova、shimmer")
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                                            Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
-                                            Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                                        }
-                                        Text("支持 OpenAI /v1/audio/speech；小米 MiMo-V2.5-TTS 自动使用 /v1/chat/completions，并解析 WAV Base64 音频。MiMo 音色可选 mimo_default、冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean。", color = Muted, fontSize = 10.sp)
-                                    } else {
-                                        Text("朗读语言", color = Muted, fontSize = 11.sp)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                            listOf("zh-CN" to "中文普通话", "en-US" to "英语").forEach { (code, label) ->
-                                                FilterChip(selected = ttsLanguage == code, onClick = { onTtsLanguage(code) }, label = { Text(label, fontSize = 11.sp) })
-                                            }
-                                        }
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                                            Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
-                                            Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                                        }
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("音调", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                                            Slider(value = ttsPitch, onValueChange = onTtsPitch, valueRange = 0.7f..1.4f, modifier = Modifier.weight(1f))
-                                            Text(String.format(Locale.US, "%.1f", ttsPitch), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                                        }
-                                        Text("参数自动保存并用于回复朗读与 AI 通话播报。", color = Muted, fontSize = 10.sp)
-                                    }
+                if (modelSettingsTab == "语音模型") {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("语音识别 ASR · ${asrProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { openModelEditor("ASR", modelValue = "mimo-v2.5-asr") }) { Icon(Icons.Outlined.Add, contentDescription = "新增 ASR 模型", tint = Cyan) }
+                    }
+                    asrProfiles.forEach { item ->
+                        Row(Modifier.fillMaxWidth().clickable { openModelEditor("ASR", item.name, item.endpoint, item.apiKey, item.model) }.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(item.name, color = MainText, fontSize = 12.sp); Text(item.model, color = Muted, fontSize = 10.sp) }
+                            RadioButton(selected = pendingAsrName == item.name, onClick = { pendingAsrName = item.name })
+                        }
+                    }
+                    if (asrProfiles.isEmpty()) Text("暂无 ASR 模型，点击＋添加。", color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("语音合成 TTS · ${ttsProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { openModelEditor("TTS", modelValue = ttsModel, voiceValue = ttsVoice) }) { Icon(Icons.Outlined.Add, contentDescription = "新增 TTS 模型", tint = Cyan) }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        FilterChip(selected = ttsMode == "system", onClick = { onTtsMode("system") }, label = { Text("系统语音") })
+                        FilterChip(selected = ttsMode == "cloud", onClick = { onTtsMode("cloud") }, label = { Text("云端模型 TTS") })
+                    }
+                    ttsProfiles.forEach { item ->
+                        Row(Modifier.fillMaxWidth().clickable { openModelEditor("TTS", item.name, item.endpoint, item.apiKey, item.model, voiceValue = item.voice) }.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(item.name, color = MainText, fontSize = 12.sp); Text("${item.model} · ${item.voice}", color = Muted, fontSize = 10.sp) }
+                            RadioButton(selected = pendingTtsName == item.name, onClick = { pendingTtsName = item.name })
+                        }
+                    }
+                    Text("系统语音无需配置模型；云端 TTS 参数在编辑弹窗中设置。", color = Muted, fontSize = 10.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                        Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
+                        Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("音调", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                        Slider(value = ttsPitch, onValueChange = onTtsPitch, valueRange = 0.7f..1.4f, modifier = Modifier.weight(1f))
+                        Text(String.format(Locale.US, "%.1f", ttsPitch), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                    }
                 }
-                if (modelSettingsTab == "模型档案") {
-                                    Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
-                                    else modelProfiles.forEach { p ->
-                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f).clickable { onSelectProfile(p) }.padding(vertical = 9.dp, horizontal = 4.dp)) { Text(p.name, color = MainText, fontSize = 13.sp); Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp) }
-                                            Text("设为当前", color = Cyan, fontSize = 11.sp)
-                                            IconButton(onClick = { onDeleteProfile(p) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除推理模型", tint = Color(0xFFE07878)) }
+                if (modelSettingsTab == "视觉模型") {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("视觉模型列表 · ${visionProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { openModelEditor("视觉模型") }) { Icon(Icons.Outlined.Add, contentDescription = "新增视觉模型", tint = Cyan) }
+                    }
+                    Text("负责理解图片和通话摄像头画面。", color = Muted, fontSize = 10.sp)
+                    visionProfiles.forEach { item ->
+                        Row(Modifier.fillMaxWidth().clickable { openModelEditor("视觉模型", item.name, item.endpoint, item.apiKey, item.model, item.provider) }.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(item.name, color = MainText, fontSize = 12.sp); Text("${item.provider} · ${item.model}", color = Muted, fontSize = 10.sp) }
+                            RadioButton(selected = pendingVisionName == item.name, onClick = { pendingVisionName = item.name })
+                        }
+                    }
+                    if (visionProfiles.isEmpty()) Text("暂无视觉模型，点击＋添加。", color = Muted, fontSize = 11.sp)
+                    Text("只有你询问画面时才发送当前帧，不会持续上传视频。", color = Muted, fontSize = 10.sp)
+                }
+                Button(onClick = {
+                    onSave()
+                    modelProfiles.firstOrNull { it.name == pendingInferenceName }?.let { onSelectProfile(it) }
+                    asrProfiles.firstOrNull { it.name == pendingAsrName }?.let { item ->
+                        asrEndpoint = item.endpoint; asrApiKey = item.apiKey; asrModel = item.model
+                        prefs.edit().putString("asr_endpoint", item.endpoint).putString("asr_api_key", item.apiKey).putString("asr_model", item.model).putString("asr_profile_name", item.name).apply()
+                    }
+                    ttsProfiles.firstOrNull { it.name == pendingTtsName }?.let { item -> onSelectTtsProfile(item); onTtsMode("cloud") }
+                    visionProfiles.firstOrNull { it.name == pendingVisionName }?.let { item ->
+                        visionProvider = item.provider; visionEndpoint = item.endpoint; visionApiKey = item.apiKey; visionModel = item.model
+                        prefs.edit().putString("vision_provider", item.provider).putString("vision_endpoint", item.endpoint).putString("vision_api_key", item.apiKey).putString("vision_model", item.model).putString("vision_profile_name", item.name).apply()
+                    }
+                }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) { Text("保存并启用", fontWeight = FontWeight.Bold) }
+                if (saved) Text("配置已保存", color = Color(0xFF76E0B1), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                if (modelEditorCategory.isNotBlank()) {
+                    val inferenceEditor = modelEditorCategory == "推理模型"
+                    val ttsEditor = modelEditorCategory == "TTS"
+                    AlertDialog(
+                        onDismissRequest = { modelEditorCategory = "" },
+                        title = { Text(if (modelEditorOriginalName.isBlank()) "新增${modelEditorCategory}" else "编辑${modelEditorCategory}") },
+                        text = {
+                            Column(Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(value = modelEditorName, onValueChange = { modelEditorName = it.take(32) }, label = { Text("列表显示名称") }, singleLine = true, modifier = Modifier.fillMaxWidth(), readOnly = modelEditorOriginalName.isNotBlank())
+                                if (inferenceEditor) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf("本地模型", "OpenAI 兼容接口").forEach { v -> FilterChip(selected = modelEditorProvider == v, onClick = { modelEditorProvider = v }, label = { Text(v, fontSize = 10.sp) }) }
+                                    }
+                                }
+                                if (modelEditorCategory == "视觉模型") {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf("复用推理模型", "独立视觉模型").forEach { v -> FilterChip(selected = modelEditorProvider == v, onClick = { modelEditorProvider = v }, label = { Text(v, fontSize = 10.sp) }) }
+                                    }
+                                }
+                                if (!(modelEditorCategory == "视觉模型" && modelEditorProvider == "复用推理模型")) {
+                                    OutlinedTextField(value = modelEditorEndpoint, onValueChange = { modelEditorEndpoint = it }, label = { Text("API / 服务地址") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    OutlinedTextField(value = modelEditorApiKey, onValueChange = { modelEditorApiKey = it }, label = { Text("API Key") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                                    OutlinedTextField(value = modelEditorModel, onValueChange = { modelEditorModel = it }, label = { Text("模型 ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                }
+                                if (ttsEditor) OutlinedTextField(value = modelEditorVoice, onValueChange = { modelEditorVoice = it }, label = { Text("TTS 音色") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                if (inferenceEditor) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        FilterChip(selected = modelEditorRealtimeProtocol == "none", onClick = { modelEditorRealtimeProtocol = "none"; modelEditorRealtimeEndpoint = "" }, label = { Text("标准语音链路") })
+                                        FilterChip(selected = modelEditorRealtimeProtocol == "openai_realtime", onClick = { modelEditorRealtimeProtocol = "openai_realtime" }, label = { Text("Realtime") })
+                                    }
+                                    if (modelEditorRealtimeProtocol == "openai_realtime") OutlinedTextField(value = modelEditorRealtimeEndpoint, onValueChange = { modelEditorRealtimeEndpoint = it }, label = { Text("Realtime WebSocket 地址") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                val reuseVision = modelEditorCategory == "视觉模型" && modelEditorProvider == "复用推理模型"
+                                if (modelEditorName.isNotBlank() && (reuseVision || modelEditorEndpoint.isNotBlank() && modelEditorModel.isNotBlank()) && (modelEditorRealtimeProtocol != "openai_realtime" || modelEditorRealtimeEndpoint.startsWith("wss://"))) {
+                                    when (modelEditorCategory) {
+                                        "推理模型" -> onAddProfile(ModelProfile(modelEditorName.trim(), modelEditorProvider, modelEditorEndpoint.trim(), modelEditorModel.trim(), modelEditorApiKey, modelEditorRealtimeProtocol, modelEditorRealtimeEndpoint.trim()))
+                                        "ASR" -> {
+                                            val p = ServiceModelProfile(modelEditorName.trim(), modelEditorEndpoint.trim(), modelEditorApiKey, modelEditorModel.trim(), "ASR")
+                                            asrProfiles.removeAll { it.name == p.name }; asrProfiles.add(0, p)
+                                            val arr = org.json.JSONArray(); asrProfiles.forEach { x -> arr.put(JSONObject().put("name", x.name).put("endpoint", x.endpoint).put("apiKey", x.apiKey).put("model", x.model)) }
+                                            prefs.edit().putString("asr_profiles", arr.toString()).apply()
+                                        }
+                                        "TTS" -> onAddTtsProfile(TtsProfile(modelEditorName.trim(), modelEditorEndpoint.trim(), modelEditorApiKey, modelEditorModel.trim(), modelEditorVoice.trim()))
+                                        "视觉模型" -> {
+                                            val p = ServiceModelProfile(modelEditorName.trim(), modelEditorEndpoint.trim(), modelEditorApiKey, modelEditorModel.trim(), modelEditorProvider)
+                                            visionProfiles.removeAll { it.name == p.name }; visionProfiles.add(0, p)
+                                            val arr = org.json.JSONArray(); visionProfiles.forEach { x -> arr.put(JSONObject().put("name", x.name).put("endpoint", x.endpoint).put("apiKey", x.apiKey).put("model", x.model).put("provider", x.provider)) }
+                                            prefs.edit().putString("vision_profiles", arr.toString()).apply()
                                         }
                                     }
-                                    OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(24) }, label = { Text("档案名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                    Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank()) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey)); profileName = "" } },
-                                        enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存为模型档案") }
-                                    Spacer(Modifier.height(8.dp))
+                                    modelEditorCategory = ""
+                                }
+                            }) { Text("保存模型") }
+                        },
+                        dismissButton = { TextButton(onClick = { modelEditorCategory = "" }) { Text("取消") } }
+                    )
                 }
                 Text("密钥目前保存在应用私有配置中；模型推理请求与密钥加密存储仍需后续接入。", color = Muted, fontSize = 10.sp)
-                Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) { Text("保存模型配置", fontWeight = FontWeight.Bold) }
                 if (saved) Text("配置已保存", color = Color(0xFF76E0B1), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
@@ -3510,7 +4689,7 @@ private fun SettingsPage(
                     pluginStatus = "插件已添加，默认未启用"
                 } else pluginStatus = "请填写名称，并使用 HTTPS API 地址"
             }, enabled = pluginName.isNotBlank() && pluginEndpoint.startsWith("https://"), modifier = Modifier.fillMaxWidth()) { Text("添加插件") }
-            OutlinedButton(onClick = { pluginImporter.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) { Text("导入 JSON 插件清单") }
+            OutlinedButton(onClick = { focusManager.clearFocus(force = true); keyboardController?.hide(); pluginImporter.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) { Text("导入 JSON 插件清单") }
             Text(pluginStatus, color = Muted, fontSize = 10.sp)
             Divider(color = GlassBorder)
             Text("已接入插件 · \${plugins.size}", color = MainText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp))
@@ -3592,19 +4771,27 @@ private fun SettingsPage(
 
 @Composable
 private fun SettingsAction(icon: String, title: String, subtitle: String, onClick: () -> Unit) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            onClick()
+        },
         color = Panel, shape = RoundedCornerShape(15.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
     ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, fontSize = 18.sp, color = Cyan, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(subtitle, color = Muted, fontSize = 11.sp, maxLines = 2)
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Cyan.copy(alpha = if (appDarkState) .12f else .09f)), contentAlignment = Alignment.Center) {
+                Text(icon, fontSize = 17.sp, color = Cyan, fontWeight = FontWeight.Medium)
             }
-            Text("›", color = Muted, fontSize = 20.sp, fontWeight = FontWeight.Light)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.Medium, lineHeight = 19.sp)
+                Text(subtitle, color = Muted, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2)
+            }
+            Text("›", color = Muted, fontSize = 19.sp, fontWeight = FontWeight.Normal)
         }
     }
 }
