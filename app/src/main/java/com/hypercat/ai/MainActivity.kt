@@ -1894,9 +1894,9 @@ private fun ChatPage(
         val engine = RealtimeAudioEngine(object : RealtimeAudioEngine.Listener {
             override fun onAudioFrame(pcm16: ByteArray, length: Int) = Unit
             override fun onError(message: String, cause: Throwable?) {
-                Handler(Looper.getMainLooper()).post {
-                    if (realtimeCallSession != null) speechStatus = "实时音频引擎异常：$message"
-                }
+                val activeSession = sessionRef
+                if (activeSession != null) activeSession.reportAudioFailure("实时音频引擎异常：$message", cause)
+                else Handler(Looper.getMainLooper()).post { speechStatus = "实时音频引擎异常：$message" }
             }
         }, sampleRate = 24_000)
         val adapter = OpenAiRealtimeAudioAdapter(realtimeEndpoint, apiKey, model)
