@@ -2923,10 +2923,7 @@ private fun ChatPage(
                 Box(contentAlignment = Alignment.Center) { Text("☰", color = MainText, fontSize = 18.sp) }
             }
             Spacer(Modifier.width(11.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Agent", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                Text(if (configured) activeModel else "尚未连接模型", color = Muted, fontSize = 10.sp, maxLines = 1)
-            }
+            Spacer(Modifier.weight(1f))
             Surface(shape = RoundedCornerShape(15.dp), color = Panel2, modifier = Modifier.clickable { showModelPicker = true }) {
                 Row(Modifier.padding(horizontal = 11.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("模型", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -2935,10 +2932,6 @@ private fun ChatPage(
                 }
             }
             Spacer(Modifier.width(7.dp))
-            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { onShareCurrentSession() }) {
-                Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Share, contentDescription = "分享当前对话", tint = Cyan, modifier = Modifier.size(19.dp)) }
-            }
-            Spacer(Modifier.width(6.dp))
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { showClear = true }) {
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Delete, contentDescription = "清理当前对话", tint = MainText, modifier = Modifier.size(20.dp)) }
             }
