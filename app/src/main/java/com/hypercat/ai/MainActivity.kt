@@ -351,6 +351,12 @@ private fun VoiceMessageBubble(path: String, durationMs: Long, fromUser: Boolean
     }
 }
 
+private fun JSONObject.optNonNullString(key: String): String {
+    val value = opt(key) ?: return ""
+    if (value == JSONObject.NULL || value.toString().equals("null", ignoreCase = true)) return ""
+    return value as? String ?: value.toString()
+}
+
 /** MiMo ASR streams transcript events over SSE; the public endpoint still accepts a complete WAV per request. */
 private fun transcribeCapturedPcm(ttsEndpoint: String, ttsApiKey: String, pcm16: ByteArray, sampleRate: Int = 16_000, onPartial: (String) -> Unit = {}): String {
     require(pcm16.size >= sampleRate / 2) { "录音时长不足 0.5 秒，未发送给 AI" }
@@ -403,15 +409,15 @@ private fun transcribeCapturedPcm(ttsEndpoint: String, ttsApiKey: String, pcm16:
                     val event = runCatching { JSONObject(data) }.getOrNull() ?: continue
                     event.optJSONObject("error")?.let { throw IllegalStateException(it.optString("message", "MiMo ASR 流式识别失败")) }
                     val choice = event.optJSONArray("choices")?.optJSONObject(0)
-                    val delta = choice?.optJSONObject("delta")?.optString("content").orEmpty()
-                    val text = delta.ifBlank { choice?.optJSONObject("message")?.optString("content").orEmpty() }.ifBlank { event.optString("text").takeIf { it != "null" }.orEmpty() }
+                    val delta = choice?.optJSONObject("delta")?.optNonNullString("content").orEmpty()
+                    val text = delta.ifBlank { choice?.optJSONObject("message")?.optNonNullString("content").orEmpty() }.ifBlank { event.optNonNullString("text") }
                     appendDelta(text)
                 }
             }
         } else {
             val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             val json = JSONObject(body)
-            appendDelta(json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty().ifBlank { json.optString("text").takeIf { it != "null" }.orEmpty() })
+            appendDelta(json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optNonNullString("content").orEmpty().ifBlank { json.optNonNullString("text") })
         }
         return result.toString().trim().also { if (it.isBlank()) throw IllegalStateException("MiMo ASR 已收到录音，但没有返回识别文字") }
     } finally { connection.disconnect() }
@@ -1222,6 +1228,8 @@ private fun HyperCatApp() {
                     messages = messages,
                     callMessages = callMessages,
                     callThinking = callThinking,
+                    avatarInteractionReply = avatarInteractionReply,
+                    avatarInteractionReplyId = avatarInteractionReplyId,
                     agentAutoReadPending = agentAutoReadPending,
                     onAgentAutoReadConsumed = { agentAutoReadPending = false },
                     onCallStart = {
@@ -1776,7 +1784,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: MutableList<ChatLine>, callThinking: Boolean, agentAutoReadPending: Boolean, onAgentAutoReadConsumed: () -> Unit, onCallStart: () -> Unit, onCallEnd: () -> Unit, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: MutableList<ChatLine>, callThinking: Boolean, avatarInteractionReply: String, avatarInteractionReplyId: Long, agentAutoReadPending: Boolean, onAgentAutoReadConsumed: () -> Unit, onCallStart: () -> Unit, onCallEnd: () -> Unit, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>, Boolean, String?, Long) -> Unit, onCallInitiative: (String) -> Unit,
     onRealtimeUserTranscript: (String) -> Unit, onRealtimeAssistantReply: (String) -> Unit,
     openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
@@ -2588,6 +2596,48 @@ private fun ChatPage(
             }
         }
     }
+    var lastAvatarAutoReadId by remember { mutableLongStateOf(avatarInteractionReplyId) }
+    LaunchedEffect(autoReadReplies, avatarInteractionReplyId, avatarInteractionReply, callActive, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, ttsReady, canSpeak) {
+        if (avatarInteractionReplyId <= 0L || avatarInteractionReplyId == lastAvatarAutoReadId) return@LaunchedEffect
+        if (!autoReadReplies) {
+            lastAvatarAutoReadId = avatarInteractionReplyId
+            return@LaunchedEffect
+        }
+        if (callActive || avatarInteractionReply.isBlank() || !canSpeak) return@LaunchedEffect
+        lastAvatarAutoReadId = avatarInteractionReplyId
+        val spokenText = speechText(avatarInteractionReply)
+        if (spokenText.isBlank()) return@LaunchedEffect
+        if (ttsMode == "cloud") {
+            val profile = selectedTtsProfile ?: return@LaunchedEffect
+            cloudSpeechJob?.cancel()
+            cloudSpeechJob = speechScope.launch {
+                isSpeaking = true
+                try {
+                    speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate)
+                    speechStatus = "虚拟形象互动朗读完成"
+                } catch (cancelled: CancellationException) {
+                    speechStatus = "已停止朗读"
+                    throw cancelled
+                } catch (error: Exception) {
+                    speechStatus = "虚拟形象互动朗读失败：${error.message ?: "TTS 服务异常"}"
+                    ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
+                } finally { isSpeaking = false }
+            }
+        } else if (ttsReady) {
+            val chunks = splitSpeechText(spokenText)
+            val prefix = "hypercat-avatar-auto-${avatarInteractionReplyId}"
+            isSpeaking = true
+            chunks.forEachIndexed { index, chunk ->
+                val id = prefix + if (index == chunks.lastIndex) "-last" else "-${index}"
+                val result = speechEngine.speak(chunk, if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id)
+                if (result == TextToSpeech.ERROR) {
+                    isSpeaking = false
+                    speechStatus = "虚拟形象互动朗读请求失败，请检查系统 TTS 引擎"
+                }
+            }
+        }
+    }
+
     var lastAutoReadKey by remember { mutableStateOf("") }
     LaunchedEffect(autoReadReplies, agentAutoReadPending, callActive, messages.size, isThinking, drawerSection, currentSessionTitle, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, ttsReady, canSpeak) {
         if (!autoReadReplies) {
