@@ -1009,8 +1009,8 @@ private fun HyperCatApp() {
     val focusManager = LocalFocusManager.current
     LaunchedEffect(page) {
         if (page != Page.CHAT) {
-            keyboardController?.hide()
             focusManager.clearFocus(force = true)
+            keyboardController?.hide()
         }
     }
     var openSettingsDrawer by remember { mutableStateOf(false) }
@@ -1879,6 +1879,10 @@ private fun ChatPage(
     val context: Context = LocalContext.current
     val drawerKeyboardController = LocalSoftwareKeyboardController.current
     val drawerFocusManager = LocalFocusManager.current
+    val dismissKeyboard: () -> Unit = {
+        drawerFocusManager.clearFocus(force = true)
+        drawerKeyboardController?.hide()
+    }
     val realtimePrefs = remember(context) { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     val skillPromptOptions = remember {
         listOf(
@@ -2973,15 +2977,14 @@ private fun ChatPage(
         Spacer(Modifier.height(3.dp))
         Row(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable {
-                drawerFocusManager.clearFocus(force = true)
-                drawerKeyboardController?.hide()
+                dismissKeyboard()
                 drawerScope.launch { drawerState.open() }
             }) {
                 Box(contentAlignment = Alignment.Center) { Text("☰", color = MainText, fontSize = 18.sp) }
             }
             Spacer(Modifier.width(11.dp))
             Spacer(Modifier.weight(1f))
-            Surface(shape = RoundedCornerShape(15.dp), color = Panel2, modifier = Modifier.clickable { showModelPicker = true }) {
+            Surface(shape = RoundedCornerShape(15.dp), color = Panel2, modifier = Modifier.clickable { dismissKeyboard(); showModelPicker = true }) {
                 Row(Modifier.padding(horizontal = 11.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("模型", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.width(5.dp))
@@ -3204,7 +3207,7 @@ private fun ChatPage(
             Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 15.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(Modifier.requiredSize(34.dp).clickable { filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
+                    Surface(Modifier.requiredSize(34.dp).clickable { dismissKeyboard(); filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
                         Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted, modifier = Modifier.size(19.dp)) }
                     }
                     BasicTextField(value = draft, onValueChange = onDraft,
@@ -3215,8 +3218,8 @@ private fun ChatPage(
                 }
             }
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                Surface(Modifier.requiredSize(40.dp).clickable { cameraCapture.launch(null) }, color = Panel2, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PhotoCamera, contentDescription = "拍照", tint = Cyan, modifier = Modifier.size(20.dp)) } }
-                Surface(Modifier.requiredHeight(40.dp).defaultMinSize(minWidth = 72.dp).clickable { startUnifiedCall() }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
+                Surface(Modifier.requiredSize(40.dp).clickable { dismissKeyboard(); cameraCapture.launch(null) }, color = Panel2, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PhotoCamera, contentDescription = "拍照", tint = Cyan, modifier = Modifier.size(20.dp)) } }
+                Surface(Modifier.requiredHeight(40.dp).defaultMinSize(minWidth = 72.dp).clickable { dismissKeyboard(); startUnifiedCall() }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
                     Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Call, contentDescription = "AI 通话", tint = Cyan, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(6.dp)); Text("通话", color = MainText, fontSize = 11.sp)
@@ -3352,9 +3355,9 @@ private fun ChatPage(
     )
     if (showClear) AlertDialog(onDismissRequest = { showClear = false }, title = { Text("清理当前对话") },
         text = { Text("确定清空当前页面的全部消息吗？此操作不会删除最近对话记录。", color = Muted) },
-        confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); onClearCurrentSession(); showClear = false }) { Text("清空消息", color = Color(0xFFE57373)) } },
+        confirmButton = { TextButton(onClick = { dismissKeyboard(); (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); onClearCurrentSession(); showClear = false }) { Text("清空消息", color = Color(0xFFE57373)) } },
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
-    if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加推理模型",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
+    if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加推理模型",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { dismissKeyboard(); onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={dismissKeyboard();showModelPicker=false;openSettings()}) { Text("管理模型") }})
     if (showCallInfo) Dialog(
         onDismissRequest = {
             onCallEnd()
@@ -4814,7 +4817,7 @@ private fun SettingsPage(
                     pluginStatus = "插件已添加，默认未启用"
                 } else pluginStatus = "请填写名称，并使用 HTTPS API 地址"
             }, enabled = pluginName.isNotBlank() && pluginEndpoint.startsWith("https://"), modifier = Modifier.fillMaxWidth()) { Text("添加插件") }
-            OutlinedButton(onClick = { pluginImporter.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) { Text("导入 JSON 插件清单") }
+            OutlinedButton(onClick = { focusManager.clearFocus(force = true); keyboardController?.hide(); pluginImporter.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) { Text("导入 JSON 插件清单") }
             Text(pluginStatus, color = Muted, fontSize = 10.sp)
             Divider(color = GlassBorder)
             Text("已接入插件 · \${plugins.size}", color = MainText, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp))
@@ -4896,8 +4899,14 @@ private fun SettingsPage(
 
 @Composable
 private fun SettingsAction(icon: String, title: String, subtitle: String, onClick: () -> Unit) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            onClick()
+        },
         color = Panel, shape = RoundedCornerShape(15.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
     ) {
