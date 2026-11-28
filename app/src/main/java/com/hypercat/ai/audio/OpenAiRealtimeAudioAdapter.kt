@@ -113,7 +113,7 @@ class OpenAiRealtimeAudioAdapter(
                             .put("type", "server_vad")
                             .put("threshold", 0.55)
                             .put("prefix_padding_ms", 300)
-                            .put("silence_duration_ms", 500))))
+                            .put("silence_duration_ms", 500))).toString())
                 try {
                     engine.start()
                     listener.onState(State.LISTENING)
