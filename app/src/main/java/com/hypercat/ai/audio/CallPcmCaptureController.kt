@@ -64,7 +64,11 @@ class CallPcmCaptureController(
                 onError("系统麦克风隐私开关已关闭，请先开启麦克风访问", null)
                 return
             }
-            runCatching { startCapture() }.onFailure { onError("恢复麦克风采集失败：${it.message}", it) }
+            runCatching { startCapture() }.onFailure {
+                // A failed start must leave the controller retryable.
+                enabled = false
+                onError("恢复麦克风采集失败：${it.message}", it)
+            }
         } else {
             stopCapture(releaseLease = false)
         }
