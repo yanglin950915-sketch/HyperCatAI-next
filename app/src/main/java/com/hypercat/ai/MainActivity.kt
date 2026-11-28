@@ -315,7 +315,7 @@ private fun RecentPhotoThumbnail(uri: Uri, onClick: () -> Unit) {
             }.getOrNull()
         }
     }
-    Box(Modifier.size(54.dp).clip(RoundedCornerShape(10.dp)).background(Panel2).clickable(onClick), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(54.dp).clip(RoundedCornerShape(10.dp)).background(Panel2).clickable { onClick() }, contentAlignment = Alignment.Center) {
         if (bitmap != null) Image(bitmap = bitmap!!.asImageBitmap(), contentDescription = "最近照片", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         else Icon(Icons.Outlined.Photo, contentDescription = "照片加载中", tint = Muted)
     }
