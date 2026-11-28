@@ -32,6 +32,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.content.Intent
 import android.net.Uri
+import android.provider.MediaStore
 import java.io.File
 import java.io.FileOutputStream
 import android.speech.RecognizerIntent
@@ -54,6 +55,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -149,6 +151,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URL
 import android.webkit.URLUtil
 import com.hypercat.ai.rear.AvatarStateStore
@@ -281,6 +285,41 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+
+
+
+private fun loadRecentImageUris(context: Context): List<Uri> {
+    val images = mutableListOf<Uri>()
+    val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+    val projection = arrayOf(MediaStore.Images.Media._ID)
+    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+    runCatching {
+        context.contentResolver.query(collection, projection, null, null, sortOrder)?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            while (cursor.moveToNext() && images.size < 12) {
+                images += Uri.withAppendedPath(collection, cursor.getLong(idColumn).toString())
+            }
+        }
+    }
+    return images
+}
+
+@Composable
+private fun RecentPhotoThumbnail(uri: Uri, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val bitmap by produceState<Bitmap?>(initialValue = null, uri) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                if (Build.VERSION.SDK_INT >= 29) context.contentResolver.loadThumbnail(uri, android.util.Size(160, 160), null)
+                else context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            }.getOrNull()
+        }
+    }
+    Box(Modifier.size(54.dp).clip(RoundedCornerShape(10.dp)).background(Panel2).clickable(onClick), contentAlignment = Alignment.Center) {
+        if (bitmap != null) Image(bitmap = bitmap!!.asImageBitmap(), contentDescription = "最近照片", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        else Icon(Icons.Outlined.Photo, contentDescription = "照片加载中", tint = Muted)
+    }
+}
 
 private fun saveCapturedPcmAsWav(context: Context, pcm16: ByteArray, sampleRate: Int = 16_000): File {
     val directory = File(context.filesDir, "voice_messages").apply { mkdirs() }
@@ -484,7 +523,7 @@ private fun buildOpenAiStreamingPayload(model: String, history: List<ChatLine>, 
     return JSONObject().put("model", model).put("messages", messages).put("temperature", 0.7)
 }
 
-private fun requestModelReply(context: Context, endpoint: String, model: String, apiKey: String, history: List<ChatLine>, memories: List<String> = emptyList()): ModelReply {
+private suspend fun requestModelReply(context: Context, endpoint: String, model: String, apiKey: String, history: List<ChatLine>, memories: List<String> = emptyList()): ModelReply {
     val base = endpoint.trim().trimEnd('/')
     val apiUrl = when { base.endsWith("/chat/completions") -> base; base.endsWith("/v1") -> "$base/chat/completions"; else -> "$base/v1/chat/completions" }
     val requestMessages = org.json.JSONArray()
@@ -516,35 +555,48 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
         }
     }
     val payload = JSONObject().put("model", model).put("messages", requestMessages).put("stream", false)
-    val connection = URL(apiUrl).openConnection() as HttpURLConnection
-    try {
-        connection.requestMethod = "POST"; connection.connectTimeout = 15000; connection.readTimeout = 90000; connection.doOutput = true
-        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-        connection.setRequestProperty("Accept", "application/json")
-        if (apiKey.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
-        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-        val code = connection.responseCode
-        val responseText = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if (code !in 200..299) {
-            val detail = runCatching { JSONObject(responseText).optJSONObject("error")?.optString("message") }.getOrNull()
-            throw IllegalStateException("模型请求失败（HTTP $code）${detail?.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""}")
-        }
-        val message = JSONObject(responseText).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message") ?: throw IllegalStateException("模型返回内容格式不正确")
-        val value = message.opt("content")
-        var answer = when (value) {
-            is String -> value
-            is org.json.JSONArray -> (0 until value.length()).mapNotNull { value.optJSONObject(it)?.optString("text") }.filter { it.isNotBlank() }.joinToString("\n")
-            else -> "模型已返回，但没有可显示的文字内容。"
-        }.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
-        // Only display an explicit, user-facing summary embedded in the final answer.
-        // Never surface provider-private reasoning_content / analysis fields.
-        val tagged = Regex("(?s)<思路说明>(.*?)</思路说明>").find(answer)
-        val reasoning = tagged?.groupValues?.get(1)?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?.let { "方法摘要：$it" }.orEmpty()
-        if (tagged != null) answer = answer.removeRange(tagged.range).trim()
-        return ModelReply(answer, reasoning)
-    } finally { connection.disconnect() }
+    val requestBuilder = okhttp3.Request.Builder().url(apiUrl)
+        .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+        .header("Accept", "application/json")
+    if (apiKey.isNotBlank()) requestBuilder.header("Authorization", "Bearer $apiKey")
+    val client = okhttp3.OkHttpClient.Builder()
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(100, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+    val call = client.newCall(requestBuilder.build())
+    return suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, error: java.io.IOException) {
+                if (continuation.isActive) continuation.resumeWithException(error)
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                response.use { result ->
+                    try {
+                        val responseText = result.body?.string().orEmpty()
+                        if (!result.isSuccessful) {
+                            val detail = runCatching { JSONObject(responseText).optJSONObject("error")?.optString("message") }.getOrNull()
+                            throw IllegalStateException("模型请求失败（HTTP ${result.code}）${detail?.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""}")
+                        }
+                        val message = JSONObject(responseText).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message") ?: throw IllegalStateException("模型返回内容格式不正确")
+                        val value = message.opt("content")
+                        var answer = when (value) {
+                            is String -> value
+                            is org.json.JSONArray -> (0 until value.length()).mapNotNull { value.optJSONObject(it)?.optString("text") }.filter { it.isNotBlank() }.joinToString("\\n")
+                            else -> "模型已返回，但没有可显示的文字内容。"
+                        }.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
+                        val tagged = Regex("(?s)<思路说明>(.*?)</思路说明>").find(answer)
+                        val reasoning = tagged?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }?.let { "方法摘要：$it" }.orEmpty()
+                        if (tagged != null) answer = answer.removeRange(tagged.range).trim()
+                        if (continuation.isActive) continuation.resume(ModelReply(answer, reasoning))
+                    } catch (error: Exception) {
+                        if (continuation.isActive) continuation.resumeWithException(error)
+                    }
+                }
+            }
+        })
+    }
 }
 
 
@@ -2019,6 +2071,24 @@ private fun ChatPage(
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     var showComposerActions by remember { mutableStateOf(false) }
+    var recentPhotoUris by remember { mutableStateOf(emptyList<Uri>()) }
+    val galleryPermission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
+    val galleryPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            recentPhotoUris = loadRecentImageUris(context)
+        } else {
+            recentPhotoUris = emptyList()
+        }
+    }
+    LaunchedEffect(showComposerActions) {
+        if (showComposerActions) {
+            if (ContextCompat.checkSelfPermission(context, galleryPermission) == PackageManager.PERMISSION_GRANTED) {
+                recentPhotoUris = withContext(Dispatchers.IO) { loadRecentImageUris(context) }
+            } else {
+                galleryPermissionLauncher.launch(galleryPermission)
+            }
+        }
+    }
     var showFullScreenEditor by remember { mutableStateOf(false) }
     val latestOnSend by rememberUpdatedState(onSend)
     val latestOnDraft by rememberUpdatedState(onDraft)
@@ -3202,6 +3272,25 @@ private fun ChatPage(
                             Surface(color = Panel2, shape = CircleShape, modifier = Modifier.size(38.dp)) { Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = label, tint = Cyan) } }
                             Text(label, color = MainText, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                         }
+                    }
+                }
+                if (recentPhotoUris.isNotEmpty()) {
+                    var upwardDrag by remember { mutableFloatStateOf(0f) }
+                    Row(
+                        Modifier.fillMaxWidth().pointerInput(recentPhotoUris) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { _, amount -> upwardDrag += amount },
+                                onDragEnd = { if (upwardDrag < -35f) { dismissKeyboard(); photoPicker.launch("image/*") }; upwardDrag = 0f },
+                                onDragCancel = { upwardDrag = 0f }
+                            )
+                        },
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        recentPhotoUris.take(8).forEach { uri ->
+                            RecentPhotoThumbnail(uri = uri, onClick = { selectedFiles = (selectedFiles + uri).distinct() })
+                        }
+                        Text("上滑查看全部", color = Muted, fontSize = 10.sp, modifier = Modifier.clickable { dismissKeyboard(); photoPicker.launch("image/*") })
                     }
                 }
             }
