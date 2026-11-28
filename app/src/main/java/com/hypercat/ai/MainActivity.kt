@@ -2566,7 +2566,7 @@ private fun ChatPage(
     }
     var lastAutoReadKey by remember { mutableStateOf("") }
     var autoReadPendingReply by remember { mutableStateOf(false) }
-    LaunchedEffect(autoReadReplies, callActive, messages.size, isThinking, drawerSection, currentSessionTitle, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate) {
+    LaunchedEffect(autoReadReplies, callActive, messages.size, isThinking, drawerSection, currentSessionTitle, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, ttsReady, canSpeak) {
         // Do not replay a historical reply just because the avatar/settings page opens.
         // Keep auto-read enabled for a fresh avatar touch interaction (isThinking sets the pending flag).
         if (drawerSection == "settings" ||
@@ -2585,6 +2585,8 @@ private fun ChatPage(
             return@LaunchedEffect
         }
         if (!autoReadPendingReply) return@LaunchedEffect
+        // Keep the pending reply until the selected TTS engine/profile is actually ready.
+        if (!canSpeak) return@LaunchedEffect
         autoReadPendingReply = false
         val lastUserIndex = messages.indexOfLast { it.fromUser }
         val lastAssistantIndex = messages.indexOfLast { !it.fromUser }
