@@ -124,6 +124,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -1003,6 +1005,15 @@ private fun HyperCatApp() {
     val initialRearState = remember { AvatarStateStore.read(context) }
     val rearAvatarState by AvatarStateStore.state.collectAsState()
     var page by remember { mutableStateOf(Page.CHAT) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    var suppressRearChatEventsDuringCall by remember { mutableStateOf(false) }
+    LaunchedEffect(page) {
+        if (page != Page.CHAT) {
+            keyboardController?.hide()
+            focusManager.clearFocus(force = true)
+        }
+    }
     var openSettingsDrawer by remember { mutableStateOf(false) }
     var chatDrawerExpanded by remember { mutableStateOf(false) }
     var provider by remember { mutableStateOf("OpenAI 兼容接口") }
@@ -1221,11 +1232,15 @@ private fun HyperCatApp() {
                     rearAvatarState.userText.startsWith("[背屏互动") -> "你与虚拟形象进行了一次互动"
                     else -> rearAvatarState.userText.trim()
                 }
-                messages.add(ChatLine(
-                    interactionText.ifBlank { "你与虚拟形象进行了一次互动" },
-                    true
-                ))
-                messages.add(ChatLine(rearAvatarState.reply, false))
+                // Rear-screen avatar interactions stay in the avatar channel and must not
+                // leak into the Agent transcript, especially around voice-call hangup.
+                if (!suppressRearChatEventsDuringCall) {
+                    messages.add(ChatLine(
+                        interactionText.ifBlank { "你与虚拟形象进行了一次互动" },
+                        true
+                    ))
+                    messages.add(ChatLine(rearAvatarState.reply, false))
+                }
             }
             avatarReply = rearAvatarState.reply
             if (rearAvatarState.userText.startsWith("[背屏互动") && rearAvatarState.reply.isNotBlank() && rearAvatarState.reply !in transientRearFeedback) {
@@ -1292,6 +1307,7 @@ private fun HyperCatApp() {
                     agentAutoReadTargetIndex = agentAutoReadTargetIndex,
                     onAgentAutoReadConsumed = { agentAutoReadPending = false; agentAutoReadTargetIndex = -1 },
                     onCallStart = {
+                        suppressRearChatEventsDuringCall = true
                         callHistoryCommitted = false
                         callReplyJob?.cancel()
                         callReplyGeneration++
@@ -1301,6 +1317,7 @@ private fun HyperCatApp() {
                         agentAutoReadTargetIndex = -1
                     },
                     onCallEnd = {
+                        suppressRearChatEventsDuringCall = false
                         callReplyJob?.cancel()
                         callReplyGeneration++
                         callThinking = false
@@ -3013,10 +3030,6 @@ private fun ChatPage(
                 }
             }
         }
-        if (messages.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
-            Text("有什么可以帮你？", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text("点击上方随机 Skill 提示词快速开始，也可以直接输入想法。", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 1.dp, bottom = 4.dp))
-        }
         if (selectedMessageIndices.isNotEmpty()) {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("已选 ${selectedMessageIndices.size} 条", color = Cyan, fontSize = 12.sp, modifier = Modifier.weight(1f))
@@ -3027,12 +3040,6 @@ private fun ChatPage(
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
         LazyColumn(state = chatListState, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)).background(Bg).padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 10.dp)) {
-            if (messages.isEmpty()) item {
-                Column(Modifier.fillMaxWidth().padding(top = 45.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("开始与 Agent 对话", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                    Text("输入消息，或使用语音与 Agent 交流。", color = Muted, fontSize = 13.sp)
-                }
-            }
             items(messages.mapIndexed { index, message -> index to message }) { (messageIndex, line) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.isSystemEvent) Arrangement.Center else if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
                     if (selectedMessageIndices.isNotEmpty() && !line.isSystemEvent) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
