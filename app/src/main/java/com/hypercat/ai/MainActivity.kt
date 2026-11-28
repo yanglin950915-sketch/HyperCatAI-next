@@ -1071,6 +1071,13 @@ private fun HyperCatApp() {
     }
     val messages = remember { mutableStateListOf<ChatLine>() }
     var agentAutoReadPending by remember { mutableStateOf(false) }
+    // A reply may finish while the user is outside the Agent screen. Never replay it on re-entry.
+    LaunchedEffect(page) {
+        if (page != Page.CHAT) {
+            agentAutoReadPending = false
+            agentAutoReadTargetIndex = -1
+        }
+    }
     var agentAutoReadTargetIndex by remember { mutableIntStateOf(-1) }
     // Voice-call turns are intentionally isolated from the normal Agent conversation until hangup.
     val callMessages = remember { mutableStateListOf<ChatLine>() }
@@ -2646,13 +2653,14 @@ private fun ChatPage(
 
     var lastAutoReadKey by remember { mutableStateOf("") }
     LaunchedEffect(autoReadReplies, agentAutoReadPending, callActive, messages.size, isThinking, drawerSection, currentSessionTitle, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, ttsReady, canSpeak) {
-        if (!autoReadReplies) {
+        if (!autoReadReplies || drawerSection == "settings") {
+            // Disabling auto-read or leaving the conversation view invalidates any queued reply.
             onAgentAutoReadConsumed()
             return@LaunchedEffect
         }
         // A pending read belongs to an explicit Agent send, not to avatar gestures or call state changes.
-        // Keep it pending while a request is running, while the reply has not arrived, or while TTS initializes.
-        if (!agentAutoReadPending || callActive || isThinking || drawerSection == "settings") return@LaunchedEffect
+        // Keep it pending only while that same visible Agent request is actively completing.
+        if (!agentAutoReadPending || callActive || isThinking) return@LaunchedEffect
         if (agentAutoReadTargetIndex < 0) return@LaunchedEffect
         val lastAssistantIndex = messages.indexOfLast { !it.fromUser && !it.isSystemEvent }
         if (lastAssistantIndex <= agentAutoReadTargetIndex) return@LaunchedEffect
