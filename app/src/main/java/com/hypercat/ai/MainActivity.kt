@@ -1864,6 +1864,13 @@ private fun ChatPage(
     var callActive by remember { mutableStateOf(false) }
     var callGeneration by remember { mutableLongStateOf(0L) }
     var realtimeCallSession by remember { mutableStateOf<RealtimeAgentSession?>(null) }
+    var realtimeVisionController by remember { mutableStateOf<RealtimeVisionController?>(null) }
+    LaunchedEffect(callActive) {
+        if (!callActive) {
+            realtimeVisionController?.close()
+            realtimeVisionController = null
+        }
+    }
     var callPcmCaptureController by remember { mutableStateOf<CallPcmCaptureController?>(null) }
     var realtimeAssistantDraft by remember { mutableStateOf("") }
     val audioSessionCoordinator = remember(context) { AudioSessionCoordinator.get(context) }
@@ -2274,8 +2281,6 @@ private fun ChatPage(
             latestOnCallInitiative("请直接回应用户刚才说的话，保持自然、简洁的口语表达。")
             return
         }
-        // A native vision-capable Realtime model already receives camera frames directly.
-        if (realtimeCallSession?.supportsImageInput() == true) return
         val frame = latestCameraFrame.get()
         if (frame == null) {
             cameraVisionStatus = "尚未取得摄像头画面，请开启摄像头后再询问画面内容"
@@ -2299,10 +2304,13 @@ private fun ChatPage(
                 val description = VisionModelClient.describeFrame(visionEndpoint, visionKey, visionModel, frame, text)
                 withContext(Dispatchers.Main) {
                     if (callActive) {
-                        cameraVisionStatus = "画面识别完成 · 正在播报"
-                        // VisionModelClient already answers the user's question from the image.
-                        // Deliver it directly instead of making a second, serial LLM request.
-                        latestOnRealtimeAssistantReply(description)
+                        cameraVisionStatus = "画面识别完成 · 正在组织语音回答"
+                        val realtime = realtimeCallSession
+                        if (realtime != null) {
+                            realtime.sendTextPrompt("用户刚才询问摄像头画面。视觉模型根据当前画面得到以下结果：$description。请基于该结果直接、自然地用语音回答用户；不要提及后台视觉模型或内部处理过程。")
+                        } else {
+                            latestOnRealtimeAssistantReply(description)
+                        }
                     }
                 }
             } catch (error: Throwable) {
@@ -2407,6 +2415,39 @@ private fun ChatPage(
         })
         sessionRef = session
         realtimeCallSession = session
+        val visionProvider = prefs.getString("vision_provider", "独立视觉模型") ?: "独立视觉模型"
+        val visionEndpoint = if (visionProvider == "独立视觉模型") {
+            prefs.getString("vision_endpoint", "").orEmpty()
+        } else {
+            prefs.getString("endpoint", "").orEmpty()
+        }
+        val visionApiKey = if (visionProvider == "独立视觉模型") {
+            prefs.getString("vision_api_key", "").orEmpty()
+        } else {
+            prefs.getString("api_key", "").orEmpty()
+        }
+        val visionModel = if (visionProvider == "独立视觉模型") {
+            prefs.getString("vision_model", "").orEmpty()
+        } else {
+            prefs.getString("model", "").orEmpty()
+        }
+        realtimeVisionController?.close()
+        realtimeVisionController = if (visionEndpoint.isNotBlank() && visionApiKey.isNotBlank() && visionModel.isNotBlank()) {
+            RealtimeVisionController(
+                endpoint = visionEndpoint,
+                apiKey = visionApiKey,
+                model = visionModel,
+                onContext = { observation -> sessionRef?.sendContextUpdate(observation) },
+                onStatus = { status ->
+                    Handler(Looper.getMainLooper()).post {
+                        if (callActive) cameraVisionStatus = status
+                    }
+                }
+            )
+        } else {
+            cameraVisionStatus = "实时视觉感知未配置：请到设置 → 视觉模型配置独立视觉模型"
+            null
+        }
         runCatching { session.start() }.onFailure {
             speechStatus = "Realtime 启动失败：${it.message ?: "未知错误"}"
             session.close()
@@ -2622,9 +2663,21 @@ private fun ChatPage(
         }
     }
     fun toggleVideo() {
-        if (videoEnabled) { videoEnabled = false; cameraError = null; cameraVisionStatus = "" }
-        else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        else { cameraError = null; videoEnabled = true; cameraVisionStatus = if (realtimeCallSession?.supportsImageInput() == true) "摄像头已就绪，开始说话后发送画面" else "提问画面内容时将调用独立视觉模型分析" }
+        if (videoEnabled) {
+            videoEnabled = false
+            cameraError = null
+            cameraVisionStatus = "摄像头已关闭"
+        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        } else {
+            cameraError = null
+            videoEnabled = true
+            cameraVisionStatus = if (realtimeCallSession != null) {
+                if (realtimeVisionController != null) "摄像头已开启 · 独立视觉模型将持续观察画面" else "摄像头已开启，但请先配置独立视觉模型"
+            } else {
+                "摄像头已开启 · 询问画面内容时调用视觉模型分析"
+            }
+        }
     }
     LaunchedEffect(callActive, callMessages.size, callThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak, realtimeCallSession) {
         if (callActive && realtimeCallSession == null && !callThinking) {
@@ -3238,12 +3291,18 @@ private fun ChatPage(
                     if (videoEnabled) {
                         LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it }, shouldCaptureFrame = { videoEnabled }, onFrame = { jpeg ->
                             latestCameraFrame.set(jpeg)
-                            val sent = realtimeCallSession?.sendImageFrame(jpeg) == true
+                            val realtimeActive = realtimeCallSession != null
+                            if (realtimeActive) realtimeVisionController?.offerFrame(jpeg)
                             Handler(Looper.getMainLooper()).post {
-                                if (sent) cameraVisionStatus = "实时画面已发送；也可询问镜头中的内容"
-                                else if (cameraVisionStatus.isBlank()) cameraVisionStatus = "画面已就绪 · 询问镜头内容时调用独立视觉模型"
+                                if (realtimeActive && realtimeVisionController != null) {
+                                    if (cameraVisionStatus.isBlank() || cameraVisionStatus == "摄像头已开启 · 独立视觉模型将持续观察画面") {
+                                        cameraVisionStatus = "摄像头画面已接入 · 正在等待视觉分析"
+                                    }
+                                } else if (cameraVisionStatus.isBlank()) {
+                                    cameraVisionStatus = "画面已就绪 · 可询问镜头中的内容"
+                                }
                             }
-                            sent || videoEnabled
+                            videoEnabled
                         })
                         if (cameraError != null) Text(cameraError.orEmpty(), color = Color(0xFFFF9A9A), fontSize = 11.sp,
                             modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp).background(Color.Black.copy(alpha = .65f), RoundedCornerShape(8.dp)).padding(8.dp))
