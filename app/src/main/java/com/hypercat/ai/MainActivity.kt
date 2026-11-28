@@ -4074,6 +4074,9 @@ private fun SettingsPage(
     var modelEditorVoice by remember { mutableStateOf("alloy") }
     var modelEditorRealtimeProtocol by remember { mutableStateOf("none") }
     var modelEditorRealtimeEndpoint by remember { mutableStateOf("") }
+    // Declare service profile state before openModelEditor, which reads their sizes.
+    val asrProfiles = remember { mutableStateListOf<ServiceModelProfile>() }
+    val visionProfiles = remember { mutableStateListOf<ServiceModelProfile>() }
     fun openModelEditor(category: String, name: String = "", endpointValue: String = "", keyValue: String = "", modelValue: String = "", providerValue: String = "", voiceValue: String = "alloy", realtimeValue: String = "none", realtimeUrl: String = "") {
         modelEditorCategory = category
         modelEditorOriginalName = name
@@ -4089,9 +4092,7 @@ private fun SettingsPage(
     var asrEndpoint by remember { mutableStateOf(modelPrefs.getString("asr_endpoint", "") ?: "") }
     var asrApiKey by remember { mutableStateOf(modelPrefs.getString("asr_api_key", "") ?: "") }
     var asrModel by remember { mutableStateOf(modelPrefs.getString("asr_model", "mimo-v2.5-asr") ?: "mimo-v2.5-asr") }
-    val asrProfiles = remember { mutableStateListOf<ServiceModelProfile>() }
     var asrProfileName by remember { mutableStateOf("") }
-    val visionProfiles = remember { mutableStateListOf<ServiceModelProfile>() }
     var visionProfileName by remember { mutableStateOf("") }
     var visionProvider by remember { mutableStateOf(modelPrefs.getString("vision_provider", "独立视觉模型") ?: "独立视觉模型") }
     var visionEndpoint by remember { mutableStateOf(modelPrefs.getString("vision_endpoint", "https://ark.cn-beijing.volces.com/api/v3") ?: "https://ark.cn-beijing.volces.com/api/v3") }
