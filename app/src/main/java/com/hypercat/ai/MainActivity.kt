@@ -1176,9 +1176,15 @@ private fun HyperCatApp() {
                 rearAvatarState.reply != avatarReply &&
                 rearAvatarState.reply !in transientRearFeedback
             ) {
-                val interactionText = rearAvatarState.userText.trim().replace("背屏互动", "互动")
+                val interactionText = when {
+                    rearAvatarState.userText.contains("摸了摸虚拟形象") -> "你摸了摸虚拟形象"
+                    rearAvatarState.userText.contains("长按虚拟形象") -> "你长按了虚拟形象"
+                    rearAvatarState.userText.contains("拖动了虚拟形象") -> "你拖动了虚拟形象"
+                    rearAvatarState.userText.startsWith("[背屏互动") -> "你与虚拟形象进行了一次互动"
+                    else -> rearAvatarState.userText.trim()
+                }
                 messages.add(ChatLine(
-                    interactionText.ifBlank { "（互动）用户通过背屏和虚拟形象进行了互动。" },
+                    interactionText.ifBlank { "你与虚拟形象进行了一次互动" },
                     true
                 ))
                 messages.add(ChatLine(rearAvatarState.reply, false))
@@ -2582,58 +2588,47 @@ private fun ChatPage(
         }
     }
     var lastAutoReadKey by remember { mutableStateOf("") }
-    var autoReadPendingReply by remember { mutableStateOf(false) }
-    LaunchedEffect(autoReadReplies, callActive, messages.size, isThinking, drawerSection, currentSessionTitle, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, ttsReady, canSpeak) {
-        // Do not replay a historical reply just because the avatar/settings page opens.
-        // Keep auto-read enabled for a fresh avatar touch interaction (isThinking sets the pending flag).
-        if (drawerSection == "settings" ||
-            (drawerSection == "avatar_settings" && !isThinking && !autoReadPendingReply)) {
-            autoReadPendingReply = false
+    LaunchedEffect(autoReadReplies, agentAutoReadPending, callActive, messages.size, isThinking, drawerSection, currentSessionTitle, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, ttsReady, canSpeak) {
+        if (!autoReadReplies) {
+            onAgentAutoReadConsumed()
             return@LaunchedEffect
         }
-        // Only auto-read a reply produced by a request in the active chat.
-        // Opening/restoring a conversation must never replay its historical last message.
-        if (isThinking) {
-            if (autoReadReplies && !callActive) autoReadPendingReply = true
-            return@LaunchedEffect
-        }
-        if (!autoReadReplies || callActive) {
-            autoReadPendingReply = false
-            return@LaunchedEffect
-        }
-        if (!autoReadPendingReply) return@LaunchedEffect
-        // Keep the pending reply until the selected TTS engine/profile is actually ready.
-        if (!canSpeak) return@LaunchedEffect
-        autoReadPendingReply = false
+        // A pending read belongs to an explicit Agent send, not to avatar gestures or call state changes.
+        // Keep it pending while a request is running, while the reply has not arrived, or while TTS initializes.
+        if (!agentAutoReadPending || callActive || drawerSection == "settings" || isThinking) return@LaunchedEffect
         val lastUserIndex = messages.indexOfLast { it.fromUser }
         val lastAssistantIndex = messages.indexOfLast { !it.fromUser }
         if (lastAssistantIndex <= lastUserIndex) return@LaunchedEffect
         val reply = messages.getOrNull(lastAssistantIndex)?.text.orEmpty()
+        if (reply.isBlank() || !canSpeak) return@LaunchedEffect
         val messageKey = "$currentSessionTitle:$lastAssistantIndex:${reply.hashCode()}"
-        if (reply.isNotBlank() && messageKey != lastAutoReadKey) {
-            lastAutoReadKey = messageKey
-            val spokenText = speechText(reply)
-            if (spokenText.isNotBlank()) {
-                if (ttsMode == "cloud") {
-                    val profile = selectedTtsProfile
-                    if (profile != null) {
-                        cloudSpeechJob?.cancel()
-                        cloudSpeechJob = speechScope.launch {
-                            isSpeaking = true
-                            try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "自动朗读完成" }
-                            catch (cancelled: CancellationException) { speechStatus = "已停止朗读"; throw cancelled }
-                            catch (error: Exception) { speechStatus = "自动朗读失败：${error.message ?: "TTS 服务异常"}"; ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel) }
-                            finally { isSpeaking = false }
-                        }
-                    } else speechStatus = "自动朗读未启动：请先选择 TTS 模型"
-                } else if (ttsReady) {
-                    val chunks = splitSpeechText(spokenText)
-                    val prefix = "hypercat-auto-${System.nanoTime()}"
-                    isSpeaking = true
-                    chunks.forEachIndexed { index, chunk ->
-                        val id = prefix + if (index == chunks.lastIndex) "-last" else "-${index}"
-                        speechEngine.speak(chunk, if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id)
+        if (messageKey == lastAutoReadKey) {
+            onAgentAutoReadConsumed()
+            return@LaunchedEffect
+        }
+        lastAutoReadKey = messageKey
+        onAgentAutoReadConsumed()
+        val spokenText = speechText(reply)
+        if (spokenText.isNotBlank()) {
+            if (ttsMode == "cloud") {
+                val profile = selectedTtsProfile
+                if (profile != null) {
+                    cloudSpeechJob?.cancel()
+                    cloudSpeechJob = speechScope.launch {
+                        isSpeaking = true
+                        try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate); speechStatus = "自动朗读完成" }
+                        catch (cancelled: CancellationException) { speechStatus = "已停止朗读"; throw cancelled }
+                        catch (error: Exception) { speechStatus = "自动朗读失败：${error.message ?: "TTS 服务异常"}"; ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel) }
+                        finally { isSpeaking = false }
                     }
+                } else speechStatus = "自动朗读未启动：请先选择 TTS 模型"
+            } else if (ttsReady) {
+                val chunks = splitSpeechText(spokenText)
+                val prefix = "hypercat-auto-${System.nanoTime()}"
+                isSpeaking = true
+                chunks.forEachIndexed { index, chunk ->
+                    val id = prefix + if (index == chunks.lastIndex) "-last" else "-${index}"
+                    speechEngine.speak(chunk, if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id)
                 }
             }
         }
