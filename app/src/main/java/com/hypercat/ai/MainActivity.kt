@@ -730,7 +730,7 @@ private fun safeTtsDiagnostic(error: Exception, profile: TtsProfile, model: Stri
     val safeEndpoint = (if (profile.apiKey.isNotBlank()) profile.endpoint.replace(profile.apiKey, "[API Key 已隐藏]") else profile.endpoint)
         .replace(Regex("(?i)([?&](?:api[-_]?key|token|access_token)=)[^&]+"), "$1[已隐藏]")
     return buildString {
-        appendLine("模型档案：").appendLine(profile.name)
+        appendLine("模型配置：").appendLine(profile.name)
         appendLine("TTS 模型：").appendLine(model)
         appendLine("配置的 API Base URL：").appendLine(safeEndpoint)
         appendLine()
@@ -1901,7 +1901,7 @@ private fun ChatPage(
         }
     }
     LaunchedEffect(ttsMode, ttsProfileName, ttsModel) {
-        if (ttsMode == "cloud") speechStatus = if (selectedTtsProfile != null && ttsModel.isNotBlank()) "云端 TTS 已配置，可测试朗读" else "请在设置中选择 TTS 模型档案并填写模型名称"
+        if (ttsMode == "cloud") speechStatus = if (selectedTtsProfile != null && ttsModel.isNotBlank()) "云端 TTS 已配置，可测试朗读" else "请在设置的语音模型中选择 TTS 模型并填写模型名称"
     }
     LaunchedEffect(ttsReady, ttsLanguage, ttsRate, ttsPitch) {
         if (ttsReady) {
@@ -2321,12 +2321,12 @@ private fun ChatPage(
         val realtimeApiKey = prefs.getString("api_key", "")?.trim().orEmpty()
         if (!realtimeEndpoint.startsWith("wss://", ignoreCase = true)) {
             Toast.makeText(context, "Realtime 档案缺少有效的 wss:// WebSocket 地址", Toast.LENGTH_LONG).show()
-            speechStatus = "Realtime 地址无效，请在模型档案中检查 WebSocket 地址"
+            speechStatus = "Realtime 地址无效，请在推理模型配置中检查 WebSocket 地址"
             return true
         }
         if (realtimeModel.isBlank() || realtimeApiKey.isBlank()) {
             Toast.makeText(context, "Realtime 通话需要模型名称和 API Key", Toast.LENGTH_LONG).show()
-            speechStatus = "Realtime 配置不完整：请检查当前模型档案的模型名称与 API Key"
+            speechStatus = "Realtime 配置不完整：请检查当前推理模型的模型名称与 API Key"
             return true
         }
         callActive = true; micEnabled = true; videoEnabled = false
@@ -2620,7 +2620,7 @@ private fun ChatPage(
     fun toggleVideo() {
         if (videoEnabled) { videoEnabled = false; cameraError = null; cameraVisionStatus = "" }
         else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        else { cameraError = null; videoEnabled = true; cameraVisionStatus = if (realtimeCallSession?.supportsImageInput() == true) "摄像头已就绪，开始说话后发送画面" else "当前通话模型不支持图像输入，画面仅本地预览" }
+        else { cameraError = null; videoEnabled = true; cameraVisionStatus = if (realtimeCallSession?.supportsImageInput() == true) "摄像头已就绪，开始说话后发送画面" else "提问画面内容时将调用独立视觉模型分析" }
     }
     LaunchedEffect(callActive, callMessages.size, callThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak, realtimeCallSession) {
         if (callActive && realtimeCallSession == null && !callThinking) {
@@ -2953,7 +2953,7 @@ private fun ChatPage(
                                                 if (spokenText.isBlank()) speechStatus = "这条回复没有可朗读的文字"
                                                 else if (ttsMode == "cloud") {
                                                     val profile = selectedTtsProfile
-                                                    if (profile == null) speechStatus = "请先在设置中选择 TTS 模型档案"
+                                                    if (profile == null) speechStatus = "请先在设置的语音模型中添加并选择 TTS 模型"
                                                     else {
                                                         cloudSpeechJob?.cancel()
                                                         cloudSpeechJob = speechScope.launch {
@@ -3187,7 +3187,7 @@ private fun ChatPage(
         text = { Text("确定清空当前页面的全部消息吗？此操作不会删除最近对话记录。", color = Muted) },
         confirmButton = { TextButton(onClick = { (messages as? androidx.compose.runtime.snapshots.SnapshotStateList<ChatLine>)?.clear(); onClearCurrentSession(); showClear = false }) { Text("清空消息", color = Color(0xFFE57373)) } },
         dismissButton = { TextButton(onClick = { showClear = false }) { Text("取消") } })
-    if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
+    if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加推理模型",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
     if (showCallInfo) Dialog(
         onDismissRequest = {
             onCallEnd()
