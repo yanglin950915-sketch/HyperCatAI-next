@@ -1007,7 +1007,6 @@ private fun HyperCatApp() {
     var page by remember { mutableStateOf(Page.CHAT) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    var suppressRearChatEventsDuringCall by remember { mutableStateOf(false) }
     LaunchedEffect(page) {
         if (page != Page.CHAT) {
             keyboardController?.hide()
@@ -1232,15 +1231,7 @@ private fun HyperCatApp() {
                     rearAvatarState.userText.startsWith("[背屏互动") -> "你与虚拟形象进行了一次互动"
                     else -> rearAvatarState.userText.trim()
                 }
-                // Rear-screen avatar interactions stay in the avatar channel and must not
-                // leak into the Agent transcript, especially around voice-call hangup.
-                if (!suppressRearChatEventsDuringCall) {
-                    messages.add(ChatLine(
-                        interactionText.ifBlank { "你与虚拟形象进行了一次互动" },
-                        true
-                    ))
-                    messages.add(ChatLine(rearAvatarState.reply, false))
-                }
+                // Rear-avatar interaction events stay in avatar state and are never appended to Agent chat.
             }
             avatarReply = rearAvatarState.reply
             if (rearAvatarState.userText.startsWith("[背屏互动") && rearAvatarState.reply.isNotBlank() && rearAvatarState.reply !in transientRearFeedback) {
@@ -1292,7 +1283,15 @@ private fun HyperCatApp() {
         typography = appTypography,
         shapes = appShapes
     ) {
-        Scaffold(containerColor = Bg) { padding ->
+        Scaffold(
+            containerColor = Bg,
+            modifier = Modifier.pointerInput(Unit) {
+                detectTapGestures(onTap = {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                })
+            }
+        ) { padding ->
             when (page) {
                 Page.CHAT -> ChatPage(
                     modifier = Modifier,
@@ -1307,7 +1306,6 @@ private fun HyperCatApp() {
                     agentAutoReadTargetIndex = agentAutoReadTargetIndex,
                     onAgentAutoReadConsumed = { agentAutoReadPending = false; agentAutoReadTargetIndex = -1 },
                     onCallStart = {
-                        suppressRearChatEventsDuringCall = true
                         callHistoryCommitted = false
                         callReplyJob?.cancel()
                         callReplyGeneration++
@@ -1317,7 +1315,6 @@ private fun HyperCatApp() {
                         agentAutoReadTargetIndex = -1
                     },
                     onCallEnd = {
-                        suppressRearChatEventsDuringCall = false
                         callReplyJob?.cancel()
                         callReplyGeneration++
                         callThinking = false
