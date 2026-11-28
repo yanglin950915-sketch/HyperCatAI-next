@@ -40,6 +40,7 @@ class RealtimeAudioEngine(
     )
 
     private val running = AtomicBoolean(false)
+    @Volatile private var frameConsumer: ((ByteArray, Int) -> Unit)? = null
     @Volatile private var recorder: AudioRecord? = null
     @Volatile private var player: AudioTrack? = null
     @Volatile private var captureThread: Thread? = null
@@ -51,6 +52,8 @@ class RealtimeAudioEngine(
         private set
 
     val isRunning: Boolean get() = running.get()
+
+    fun setFrameConsumer(consumer: ((ByteArray, Int) -> Unit)?) { frameConsumer = consumer }
 
     @Synchronized
     fun start() {
@@ -176,7 +179,8 @@ class RealtimeAudioEngine(
             val count = input.read(frame, 0, frame.size, AudioRecord.READ_BLOCKING)
             if (count > 0) {
                 try {
-                    listener.onAudioFrame(frame, count)
+                    val consumer = frameConsumer
+                    if (consumer != null) consumer(frame, count) else listener.onAudioFrame(frame, count)
                 } catch (error: Throwable) {
                     listener.onError("Audio frame consumer failed", error)
                 }
@@ -196,6 +200,7 @@ class RealtimeAudioEngine(
             if (thread !== Thread.currentThread()) runCatching { thread.join(500) }
         }
         captureThread = null
+        frameConsumer = null
         runCatching { recorder?.release() }
         runCatching { player?.release() }
         recorder = null
