@@ -2326,7 +2326,15 @@ private fun ChatPage(
                 }
                 val asksAboutScene = Regex("(看到|看见|画面|镜头|摄像头|眼前|面前|这里|这个东西|这是什么|描述一下|识别一下|读一下|数一数|有什么|发生了什么|帮我看看|看一下)").containsMatchIn(text)
                 val frame = latestCameraFrame.get()
+                if (asksAboutScene && frame == null) {
+                    Handler(Looper.getMainLooper()).post {
+                        cameraVisionStatus = "还没有取得摄像头画面：请保持摄像头预览开启后再问一次"
+                    }
+                }
                 if (asksAboutScene && frame != null) {
+                    Handler(Looper.getMainLooper()).post {
+                        cameraVisionStatus = "正在将摄像头画面发送给豆包视觉模型…"
+                    }
                     val provider = realtimePrefs.getString("vision_provider", "独立视觉模型") ?: "独立视觉模型"
                     val endpoint = if (provider == "独立视觉模型") realtimePrefs.getString("vision_endpoint", "https://ark.cn-beijing.volces.com/api/v3").orEmpty() else realtimePrefs.getString("endpoint", "").orEmpty()
                     val key = if (provider == "独立视觉模型") realtimePrefs.getString("vision_api_key", "").orEmpty() else realtimePrefs.getString("api_key", "").orEmpty()
@@ -2337,14 +2345,20 @@ private fun ChatPage(
                                 val visualDescription = VisionModelClient.describeFrame(endpoint, key, model, frame, text)
                                 Handler(Looper.getMainLooper()).post {
                                     if (callActive) {
+                                        // Always route the visual result through the configured inference model
+                                        // (DeepSeek Flash), not only through an optional Realtime session.
                                         realtimeCallSession?.interruptAssistant()
-                                        realtimeCallSession?.sendTextPrompt("用户刚才的问题是：$text。请结合摄像头画面理解结果回答，不要声称你直接看到了图像；视觉模型分析：$visualDescription")
-                                        cameraVisionStatus = "视觉识别完成 · $model"
+                                        latestOnCallInitiative(
+                                            "用户刚才问：$text。摄像头视觉模型 $model 对当前画面的识别结果是：$visualDescription。请基于这份识别结果直接回答用户，结合问题给出自然、简洁的中文回复；不要声称你直接接收或看到了原始图像，也不要忽略识别结果。"
+                                        )
+                                        cameraVisionStatus = "豆包识别完成 · 已交给推理模型回答"
                                     }
                                 }
                             } catch (error: Throwable) {
                                 Handler(Looper.getMainLooper()).post {
-                                    cameraVisionStatus = "视觉识别失败，请检查网络与模型配置"
+                                    val detail = (error.message ?: error.javaClass.simpleName).take(140)
+                                    cameraVisionStatus = "视觉识别失败：$detail"
+                                    Log.e("HyperCatVision", "Vision request failed", error)
                                 }
                             }
                         }, "HyperCat-VisionRequest").start()
