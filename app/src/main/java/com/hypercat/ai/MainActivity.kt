@@ -3359,7 +3359,7 @@ private fun ChatPage(
                     Text(if (callActive) "● 通话中" else "● 已结束", color = if (callActive) Color(0xFF55D69A) else Color.Gray, fontSize = 11.sp)
                 }
                 Spacer(Modifier.height(14.dp))
-                Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF151C29))) {
+                Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)).background(Panel2)) {
                     if (videoEnabled) {
                         LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it }, shouldCaptureFrame = { videoEnabled }, onFrame = { jpeg ->
                             latestCameraFrame.set(jpeg)
@@ -3383,7 +3383,7 @@ private fun ChatPage(
                         }
                     } else {
                         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            Text("HyperCat AI", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                            Text("HyperCat AI", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
                             Text(if (isSpeaking) "AI 正在回答…" else if (isListening) "正在聆听…" else if (callThinking) "正在思考…" else "语音通话已连接", color = Color(0xFFADB8C8), fontSize = 13.sp)
                         }
                     }
