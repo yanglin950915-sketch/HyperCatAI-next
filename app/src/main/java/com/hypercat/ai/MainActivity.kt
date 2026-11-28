@@ -101,6 +101,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -218,13 +219,21 @@ private fun applyPlatformNightMode(context: Context, mode: String) {
     }
 }
 
-private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFFFFFFF)
-private val Panel get() = if (appDarkState) Color(0xFF0D0D0D) else Color(0xFFFFFFFF)
-private val Panel2 get() = if (appDarkState) Color(0xFF191919) else Color(0xFFF4F4F4)
-private val Cyan get() = if (appDarkState) Color(0xFFF2F2F2) else Color(0xFF171717)
-private val Muted get() = if (appDarkState) Color(0xFF9A9A9A) else Color(0xFF777777)
-private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .14f) else Color(0xFFE6E6E6)
-private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF171717)
+private object HyperCatMotion {
+    const val PAGE_ENTER_MS = 230
+    const val PAGE_EXIT_MS = 170
+    const val DRAWER_ENTER_MS = 240
+    const val DRAWER_EXIT_MS = 190
+    const val CONTENT_MS = 180
+}
+
+private val Bg get() = if (appDarkState) Color(0xFF0C0D12) else Color(0xFFF7F6FA)
+private val Panel get() = if (appDarkState) Color(0xFF15171E) else Color(0xFFFFFFFF)
+private val Panel2 get() = if (appDarkState) Color(0xFF1E212A) else Color(0xFFF0EEF5)
+private val Cyan get() = if (appDarkState) Color(0xFFC9B8FF) else Color(0xFF65518F)
+private val Muted get() = if (appDarkState) Color(0xFFA3A0AE) else Color(0xFF777381)
+private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .10f) else Color(0xFFE6E2EC)
+private val MainText get() = if (appDarkState) Color(0xFFF4F1FA) else Color(0xFF1D1B24)
 
 class MainActivity : ComponentActivity() {
 
@@ -1291,23 +1300,29 @@ private fun HyperCatApp() {
 
     val appTypography = Typography()
     val appShapes = Shapes(
-        extraSmall = RoundedCornerShape(6.dp),
-        small = RoundedCornerShape(10.dp),
-        medium = RoundedCornerShape(12.dp),
-        large = RoundedCornerShape(16.dp),
-        extraLarge = RoundedCornerShape(20.dp)
+        extraSmall = RoundedCornerShape(8.dp),
+        small = RoundedCornerShape(12.dp),
+        medium = RoundedCornerShape(16.dp),
+        large = RoundedCornerShape(20.dp),
+        extraLarge = RoundedCornerShape(28.dp)
     )
     MaterialTheme(
         colorScheme = if (darkNow) darkColorScheme(
-            primary = Color(0xFFF2F2F2), secondary = Color(0xFFBDBDBD), background = Bg, surface = Panel,
-            onPrimary = Color(0xFF111111), onSurface = Color(0xFFF5F5F5),
-            surfaceVariant = Color(0xFF191919), onSurfaceVariant = Color(0xFFB0B0B0),
-            outline = Color(0xFF333333)
+            primary = Cyan, onPrimary = Color(0xFF211A30),
+            secondary = Muted, onSecondary = Color(0xFF211A30),
+            background = Bg, onBackground = MainText,
+            surface = Panel, onSurface = MainText,
+            surfaceVariant = Panel2, onSurfaceVariant = Muted,
+            primaryContainer = Panel2, onPrimaryContainer = MainText,
+            outline = GlassBorder, outlineVariant = GlassBorder
         ) else lightColorScheme(
-            primary = Color(0xFF171717), secondary = Color(0xFF666666), background = Bg, surface = Panel,
-            onPrimary = Color.White, onSurface = Color(0xFF171717),
-            surfaceVariant = Color(0xFFF4F4F4), onSurfaceVariant = Color(0xFF666666),
-            outline = Color(0xFFE2E2E2)
+            primary = Cyan, onPrimary = Color.White,
+            secondary = Muted, onSecondary = Color.White,
+            background = Bg, onBackground = MainText,
+            surface = Panel, onSurface = MainText,
+            surfaceVariant = Panel2, onSurfaceVariant = Muted,
+            primaryContainer = Panel2, onPrimaryContainer = MainText,
+            outline = GlassBorder, outlineVariant = GlassBorder
         ),
         typography = appTypography,
         shapes = appShapes
@@ -1321,7 +1336,18 @@ private fun HyperCatApp() {
                 })
             }
         ) { padding ->
-            when (page) {
+            AnimatedContent(
+                targetState = page,
+                transitionSpec = {
+                    val movingForward = targetState == Page.SETTINGS
+                    (fadeIn(animationSpec = tween(HyperCatMotion.PAGE_ENTER_MS)) +
+                        slideInHorizontally(animationSpec = tween(HyperCatMotion.PAGE_ENTER_MS)) { width -> if (movingForward) width / 16 else -width / 16 }) togetherWith
+                        (fadeOut(animationSpec = tween(HyperCatMotion.PAGE_EXIT_MS)) +
+                            slideOutHorizontally(animationSpec = tween(HyperCatMotion.PAGE_EXIT_MS)) { width -> if (movingForward) -width / 24 else width / 24 })
+                },
+                label = "hypercat-page-transition"
+            ) { targetPage ->
+            when (targetPage) {
                 Page.CHAT -> ChatPage(
                     modifier = Modifier,
                     contentPadding = padding,
@@ -1802,6 +1828,7 @@ private fun HyperCatApp() {
                     },
                     openUrl = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } }
                 )
+            }
             }
         }
         if (showUpdatePrompt && latestRelease != null) {
@@ -3413,7 +3440,8 @@ private fun ChatPage(
         }
     }
         AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(), exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()) {
+            enter = slideInHorizontally(animationSpec = tween(HyperCatMotion.DRAWER_ENTER_MS), initialOffsetX = { it }) + fadeIn(animationSpec = tween(HyperCatMotion.DRAWER_ENTER_MS)),
+            exit = slideOutHorizontally(animationSpec = tween(HyperCatMotion.DRAWER_EXIT_MS), targetOffsetX = { it }) + fadeOut(animationSpec = tween(HyperCatMotion.DRAWER_EXIT_MS))) {
             Surface(modifier = Modifier.fillMaxSize(), color = Panel) {
                 if (drawerSection == "avatar_settings") {
                     Column(Modifier.fillMaxSize()) {
@@ -4893,7 +4921,7 @@ private fun SettingsAction(icon: String, title: String, subtitle: String, onClic
             keyboardController?.hide()
             onClick()
         },
-        color = Panel, shape = RoundedCornerShape(15.dp),
+        color = Panel, shape = MaterialTheme.shapes.large,
         border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
     ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -4914,7 +4942,7 @@ private fun SettingsAction(icon: String, title: String, subtitle: String, onClic
 private fun ConfigField(label: String, value: String, onValue: (String) -> Unit, hint: String, secret: Boolean = false) {
     Text(label, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     Spacer(Modifier.height(7.dp))
-    Surface(color = Panel, shape = RoundedCornerShape(14.dp)) {
+    Surface(color = Panel, shape = MaterialTheme.shapes.medium, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp)) {
             if (secret) {
                 BasicTextField(value, onValue, modifier = Modifier.fillMaxWidth(), textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp),
