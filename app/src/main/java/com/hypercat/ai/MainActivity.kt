@@ -3582,6 +3582,8 @@ private fun AvatarRenderer(
     val realtimePhase by RealtimeAvatarStateStore.state.collectAsState()
     val realtimeMood = when (realtimePhase) {
         RealtimeAvatarPhase.CONNECTING -> "thinking"
+        RealtimeAvatarPhase.LISTENING -> "happy"
+        RealtimeAvatarPhase.INTERRUPTED -> "shy"
         RealtimeAvatarPhase.FAILED -> "sad"
         else -> mood
     }
