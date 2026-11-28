@@ -3412,7 +3412,7 @@ private fun ImageProxy.toVisionJpeg(): ByteArray? {
         bitmap.recycle()
         bitmap = rotated
     }
-    val maxDimension = 640
+    val maxDimension = 512
     if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
         val scale = maxDimension.toFloat() / maxOf(bitmap.width, bitmap.height)
         val scaled = Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt().coerceAtLeast(1),
@@ -3422,7 +3422,7 @@ private fun ImageProxy.toVisionJpeg(): ByteArray? {
     }
     return try {
         ByteArrayOutputStream().use { output ->
-            if (bitmap.compress(Bitmap.CompressFormat.JPEG, 68, output)) output.toByteArray() else null
+            if (bitmap.compress(Bitmap.CompressFormat.JPEG, 60, output)) output.toByteArray() else null
         }
     } finally {
         bitmap.recycle()
@@ -4166,25 +4166,41 @@ private fun SettingsPage(
         Text("外观、扩展能力与应用信息", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(16.dp))
         Text("模型与服务", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-        Text("按用途管理模型。每类可添加多个服务，点击列表项查看和修改配置。", color = Muted, fontSize = 11.sp)
+        Text("按你要完成的事情配置模型，不需要先理解技术名词。", color = Muted, fontSize = 11.sp)
         Spacer(Modifier.height(10.dp))
         Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
-            Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                Text("模型工作台", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("按能力配置服务，互不干扰；选择分类后管理对应模型。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    listOf("推理模型", "语音模型", "视觉模型", "实时语音").forEach { tab ->
-                        Surface(
-                            modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { modelSettingsTab = tab },
-                            color = if (modelSettingsTab == tab) Cyan.copy(alpha = if (appDarkState) .18f else .10f) else Panel2.copy(alpha = .55f),
-                            shape = RoundedCornerShape(12.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, if (modelSettingsTab == tab) Cyan.copy(alpha = .55f) else GlassBorder)
-                        ) {
-                            Text(tab, color = if (modelSettingsTab == tab) Cyan else Muted, fontSize = 11.sp, fontWeight = if (modelSettingsTab == tab) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp))
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("你想让 HyperCat 做什么？", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("每个用途可以使用不同服务商；配置完成后点击保存即可。", color = Muted, fontSize = 10.sp)
+                val modelTabs = listOf("推理模型" to "聊天思考", "语音模型" to "听与说", "视觉模型" to "看懂图片", "实时语音" to "实时通话")
+                modelTabs.chunked(2).forEach { rowTabs ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        rowTabs.forEach { (tab, title) ->
+                            val selected = modelSettingsTab == tab
+                            Surface(
+                                modifier = Modifier.weight(1f).clip(RoundedCornerShape(13.dp)).clickable { modelSettingsTab = tab },
+                                color = if (selected) Cyan.copy(alpha = if (appDarkState) .18f else .10f) else Panel2.copy(alpha = .55f),
+                                shape = RoundedCornerShape(13.dp),
+                                border = androidx.compose.foundation.BorderStroke(if (selected) 1.5.dp else 1.dp, if (selected) Cyan.copy(alpha = .65f) else GlassBorder)
+                            ) {
+                                Column(Modifier.padding(horizontal = 11.dp, vertical = 12.dp)) {
+                                    Text(title, color = if (selected) Cyan else MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(tab, color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                                }
+                            }
                         }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                val usageHint = when (modelSettingsTab) {
+                    "推理模型" -> "负责理解文字、组织答案和调用 Agent 能力。先配置这一项，聊天功能才能正常工作。"
+                    "语音模型" -> "ASR 把声音变成文字；TTS 把 AI 回复读出来。两者可以来自不同服务商。"
+                    "视觉模型" -> "负责理解图片或摄像头画面；识别结果会交给推理模型组织回答。"
+                    else -> "组合模式使用 ASR + 推理模型 + TTS；原生 Realtime 需要专门支持实时语音协议的模型。"
+                }
+                Surface(color = Panel2.copy(alpha = .45f), shape = RoundedCornerShape(11.dp)) {
+                    Text(usageHint, color = Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(11.dp))
+                }
+                Spacer(Modifier.height(3.dp))
                 if (modelSettingsTab == "推理模型") {
                                     Text("服务类型", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                     Spacer(Modifier.height(8.dp))
@@ -4314,7 +4330,7 @@ private fun SettingsPage(
                                         Text("视觉模型 · ${visionProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                         IconButton(onClick = { visionProfileName = "视觉模型-${visionProfiles.size + 1}"; visionProvider = "独立视觉模型"; visionEndpoint = ""; visionApiKey = ""; visionModel = "" }) { Icon(Icons.Outlined.Add, contentDescription = "添加视觉模型", tint = Cyan) }
                                     }
-                                    Text("负责图片问答和通话摄像头画面理解。Realtime 不支持图像输入时，会自动调用此处选定的视觉模型，再交给推理模型回答。", color = Muted, fontSize = 10.sp)
+                                    Text("负责看懂你发送的图片和通话摄像头画面。识别结果会交给聊天模型整理成回答。", color = Muted, fontSize = 11.sp)
                                     visionProfiles.forEach { item ->
                                         Row(Modifier.fillMaxWidth().clickable { visionProfileName = item.name; visionProvider = item.provider; visionEndpoint = item.endpoint; visionApiKey = item.apiKey; visionModel = item.model; prefs.edit().putString("vision_provider", item.provider).putString("vision_endpoint", item.endpoint).putString("vision_api_key", item.apiKey).putString("vision_model", item.model).putString("vision_profile_name", item.name).apply() }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f)) { Text(item.name, color = MainText, fontSize = 12.sp); Text(item.model, color = Muted, fontSize = 10.sp) }
@@ -4335,7 +4351,7 @@ private fun SettingsPage(
                                         Text("推理接口：$endpoint", color = Muted, fontSize = 10.sp, maxLines = 2)
                                     }
                                     Spacer(Modifier.height(8.dp))
-                                    Text("视频预览不会持续上传云端；只有检测到你询问画面内容时，才将最近一帧发送给视觉模型，降低延迟与调用费用。", color = Muted, fontSize = 10.sp)
+                                    Text("不会持续上传视频；只有你询问画面时才发送当前帧。想要更快响应，可优先选择服务商提供的 Flash / Fast 类视觉模型。", color = Muted, fontSize = 10.sp)
                                     Button(onClick = {
                                         prefs.edit().putString("vision_provider", visionProvider).putString("vision_endpoint", visionEndpoint.trim()).putString("vision_api_key", visionApiKey).putString("vision_model", visionModel.trim()).apply()
                                         if (visionProfileName.isNotBlank() && visionEndpoint.isNotBlank() && visionModel.isNotBlank()) {
@@ -4344,7 +4360,7 @@ private fun SettingsPage(
                                             val arr = org.json.JSONArray(); visionProfiles.forEach { x -> arr.put(JSONObject().put("name", x.name).put("endpoint", x.endpoint).put("apiKey", x.apiKey).put("model", x.model).put("provider", x.provider)) }
                                             prefs.edit().putString("vision_profiles", arr.toString()).putString("vision_profile_name", item.name).apply()
                                         }
-                                    }, enabled = visionProfileName.isNotBlank() && visionEndpoint.isNotBlank() && visionModel.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存视觉模型") }
+                                    }, enabled = visionProfileName.isNotBlank() && visionEndpoint.isNotBlank() && visionModel.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存看图配置") }
                 }
                 if (modelSettingsTab == "实时语音") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
