@@ -22,6 +22,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import java.util.concurrent.CopyOnWriteArraySet
 import org.json.JSONObject
 import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.flow.asStateFlow
 
 data class Live2DRenderState(val ready: Boolean = false, val error: String? = null, val fps: Int = 0)
 
