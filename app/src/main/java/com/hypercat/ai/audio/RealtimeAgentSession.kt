@@ -39,7 +39,7 @@ class RealtimeAgentSession(
         try {
             val coordinator = AudioSessionCoordinator.get(appContext)
             audioLease = coordinator.acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true)
-            coordinator.onFocusLost = {
+            coordinator.onFocusLost = { _ ->
                 if (!closed.get()) {
                     audio.interruptPlayback()
                     adapter.cancelResponse()
