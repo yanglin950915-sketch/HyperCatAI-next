@@ -2299,7 +2299,7 @@ private fun ChatPage(
                         check(endpoint.isNotBlank() && apiKey.isNotBlank()) {
                             "当前没有可用的 MiMo ASR 服务配置，请检查语音消息使用的 TTS 服务地址和 API Key"
                         }
-                        val transcript = transcribeCapturedPcm(endpoint, apiKey, pcm, 16_000) { partial -> Handler(Looper.getMainLooper()).post { if (callActive && micEnabled) speechStatus = "正在流式识别：$partial" } }
+                        val transcript = transcribeCapturedPcm(endpoint, apiKey, pcm, 16_000) { partial -> Handler(Looper.getMainLooper()).post { if (callActive && micEnabled) speechStatus = "正在识别：$partial" } }
                         Log.i("HyperCatVoice", "CALL_PCM_ASR_SUCCESS bytes=${pcm.size} chars=${transcript.length}")
                         withContext(Dispatchers.Main) {
                             if (callGeneration == thisCallGeneration && callActive && micEnabled && transcript.isNotBlank()) {
@@ -2465,6 +2465,9 @@ private fun ChatPage(
     }
     fun startUnifiedCall() {
         if (!configured) { Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show(); return }
+        // Every call starts with its own clean transcript, including OpenAI Realtime calls.
+        callMessages.clear()
+        callThinking = false
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             callMicPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         } else {
