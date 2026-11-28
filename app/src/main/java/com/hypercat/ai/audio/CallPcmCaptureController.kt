@@ -7,6 +7,9 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.AudioManager
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import android.os.Process
 import androidx.core.content.ContextCompat
 import java.io.ByteArrayOutputStream
@@ -23,6 +26,7 @@ import kotlin.math.sqrt
 class CallPcmCaptureController(
     context: Context,
     private val onUtterance: (ByteArray) -> Unit,
+    private val onSpeechStarted: () -> Unit = {},
     private val onLevel: (Double) -> Unit = {},
     private val onError: (String, Throwable?) -> Unit,
 ) : Closeable {
@@ -35,6 +39,9 @@ class CallPcmCaptureController(
     @Volatile private var recorder: AudioRecord? = null
     @Volatile private var captureThread: Thread? = null
     @Volatile private var lease: AudioSessionCoordinator.Lease? = null
+    @Volatile private var echoCanceler: AcousticEchoCanceler? = null
+    @Volatile private var noiseSuppressor: NoiseSuppressor? = null
+    @Volatile private var automaticGainControl: AutomaticGainControl? = null
 
     fun start() {
         check(!disposed.get()) { "通话录音控制器已关闭" }
@@ -86,6 +93,7 @@ class CallPcmCaptureController(
             check(startedRecorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord 初始化失败，无法打开麦克风" }
             startedRecorder.startRecording()
             check(startedRecorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "麦克风未进入录音状态" }
+            attachAudioEffects(startedRecorder)
             recorder = startedRecorder
             lease = acquired
             running = true
@@ -123,6 +131,7 @@ class CallPcmCaptureController(
                 if (++levelFrameCounter % 5 == 0) onLevel(level)
                 when (vad.process(copy, count)) {
                     PcmVoiceActivityDetector.Event.SPEECH_STARTED -> {
+                        runCatching { onSpeechStarted() }.onFailure { onError("语音起始回调失败：${it.message}", it) }
                         collecting = true
                         utterance.reset()
                         utteranceBytes = 0
@@ -187,6 +196,21 @@ class CallPcmCaptureController(
         return if (samples == 0) 0.0 else sqrt(sum / samples)
     }
 
+    private fun attachAudioEffects(input: AudioRecord) {
+        val sessionId = input.audioSessionId
+        if (sessionId <= 0) return
+        if (AcousticEchoCanceler.isAvailable()) runCatching { AcousticEchoCanceler.create(sessionId)?.also { it.enabled = true; echoCanceler = it } }.onFailure { onError("AEC 初始化失败：${it.message}", it) }
+        if (NoiseSuppressor.isAvailable()) runCatching { NoiseSuppressor.create(sessionId)?.also { it.enabled = true; noiseSuppressor = it } }.onFailure { onError("降噪初始化失败：${it.message}", it) }
+        if (AutomaticGainControl.isAvailable()) runCatching { AutomaticGainControl.create(sessionId)?.also { it.enabled = true; automaticGainControl = it } }.onFailure { onError("自动增益初始化失败：${it.message}", it) }
+        android.util.Log.i("HyperCatVoice", "CALL_AUDIO_EFFECTS session=$sessionId aec=${echoCanceler?.enabled == true} ns=${noiseSuppressor?.enabled == true} agc=${automaticGainControl?.enabled == true}")
+    }
+
+    private fun releaseAudioEffects() {
+        runCatching { echoCanceler?.release() }; echoCanceler = null
+        runCatching { noiseSuppressor?.release() }; noiseSuppressor = null
+        runCatching { automaticGainControl?.release() }; automaticGainControl = null
+    }
+
     private fun stopCapture(releaseLease: Boolean) {
         synchronized(lock) {
             if (!running && recorder == null) {
@@ -198,6 +222,7 @@ class CallPcmCaptureController(
             val thread = captureThread
             if (thread != null && thread !== Thread.currentThread()) runCatching { thread.join(700) }
             captureThread = null
+            releaseAudioEffects()
             runCatching { recorder?.release() }
             recorder = null
             if (releaseLease) { lease?.close(); lease = null }
