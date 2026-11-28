@@ -32,6 +32,7 @@ class RealtimeAgentSession(
     @Volatile private var audioLease: AudioSessionCoordinator.Lease? = null
     private val playbackQueue = ArrayBlockingQueue<ByteArray>(48)
     @Volatile private var playbackThread: Thread? = null
+    @Volatile private var microphoneEnabled = true
 
     fun currentState(): State = state
 
@@ -58,7 +59,7 @@ class RealtimeAgentSession(
                 override fun onReady() {
                     if (closed.get()) return
                     try {
-                        audio.setFrameConsumer { pcm, length -> adapter.sendAudioFrame(pcm, length) }
+                        audio.setFrameConsumer(if (microphoneEnabled) ({ pcm, length -> adapter.sendAudioFrame(pcm, length) }) else null)
                         audio.start()
                         startPlaybackWorker()
                         transition(State.LISTENING)
@@ -118,6 +119,16 @@ class RealtimeAgentSession(
 
     fun endUserTurn() {
         if (!closed.get()) adapter.endUserTurn()
+    }
+
+    fun sendTextPrompt(text: String) {
+        if (!closed.get() && text.isNotBlank()) adapter.sendTextPrompt(text.trim())
+    }
+
+    fun setMicrophoneEnabled(enabled: Boolean) {
+        if (closed.get()) return
+        microphoneEnabled = enabled
+        audio.setFrameConsumer(if (enabled) ({ pcm, length -> adapter.sendAudioFrame(pcm, length) }) else null)
     }
 
 
@@ -189,5 +200,6 @@ interface RealtimeModelAdapter : Closeable {
     fun connect(events: Events)
     fun sendAudioFrame(pcm16: ByteArray, length: Int)
     fun endUserTurn()
+    fun sendTextPrompt(text: String) { }
     fun cancelResponse()
 }
