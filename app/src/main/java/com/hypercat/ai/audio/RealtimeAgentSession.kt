@@ -28,6 +28,7 @@ class RealtimeAgentSession(
 
     private val appContext = context.applicationContext
     private val closed = AtomicBoolean(false)
+    private val failureReported = AtomicBoolean(false)
     @Volatile private var state = State.IDLE
     @Volatile private var audioLease: AudioSessionCoordinator.Lease? = null
     private val playbackQueue = ArrayBlockingQueue<ByteArray>(48)
@@ -98,8 +99,11 @@ class RealtimeAgentSession(
 
                 override fun onAudioDelta(pcm16: ByteArray, length: Int) {
                     if (closed.get()) return
+                    if (length <= 0 || length > pcm16.size || length % 2 != 0) {
+                        fail("Realtime 服务返回了无效的 PCM16 音频帧", null)
+                        return
+                    }
                     transition(State.RESPONDING)
-                    if (length <= 0 || length > pcm16.size || length % 2 != 0) return
                     val chunk = pcm16.copyOf(length)
                     if (!playbackQueue.offer(chunk)) fail("实时语音播放缓冲区已满，请检查网络延迟", null)
                 }
@@ -178,7 +182,7 @@ class RealtimeAgentSession(
     }
 
     private fun fail(message: String, cause: Throwable?) {
-        if (closed.get()) return
+        if (closed.get() || !failureReported.compareAndSet(false, true)) return
         transition(State.FAILED)
         listener.onFailure(message, cause)
         close()
