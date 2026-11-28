@@ -1012,6 +1012,8 @@ private fun HyperCatApp() {
     var avatarReply by remember { mutableStateOf(initialRearState.reply) }
     var avatarInteractionReply by remember { mutableStateOf("") }
     var avatarInteractionReplyId by remember { mutableLongStateOf(0L) }
+    // The first persisted rear-screen snapshot is history, not a fresh interaction.
+    var hasObservedRearAvatarSnapshot by remember { mutableStateOf(false) }
     var rearAvatarEnabled by remember { mutableStateOf(initialRearState.enabled) }
     var rearBackgroundColor by remember { mutableStateOf(initialRearState.backgroundColor) }
     var mainAvatarBackgroundColor by remember { mutableStateOf("#FFE6F0") }
@@ -1183,6 +1185,8 @@ private fun HyperCatApp() {
     }
 
     LaunchedEffect(rearAvatarState.updatedAt) {
+        val isInitialPersistedSnapshot = !hasObservedRearAvatarSnapshot
+        hasObservedRearAvatarSnapshot = true
         if (rearAvatarState.updatedAt > 0L) {
             avatarName = rearAvatarState.avatarName
             avatarMood = rearAvatarState.mood
@@ -1206,8 +1210,11 @@ private fun HyperCatApp() {
             }
             avatarReply = rearAvatarState.reply
             if (rearAvatarState.userText.startsWith("[背屏互动") && rearAvatarState.reply.isNotBlank() && rearAvatarState.reply !in transientRearFeedback) {
-                avatarInteractionReply = rearAvatarState.reply
-                avatarInteractionReplyId = rearAvatarState.updatedAt
+                // Do not treat the reply loaded from storage at app startup as a new event.
+                if (!isInitialPersistedSnapshot) {
+                    avatarInteractionReply = rearAvatarState.reply
+                    avatarInteractionReplyId = rearAvatarState.updatedAt
+                }
                 isThinking = false
             }
         }
