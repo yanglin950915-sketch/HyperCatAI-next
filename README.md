@@ -1,3 +1,9 @@
+## 0.9.99
+
+- 修复语音识别兼容性：改用系统默认 RecognitionService，不再强制切换到端侧识别服务。
+- 普通语音消息和非 Realtime AI 电话不再预先抢占音频焦点或强制切换通信音频模式，避免部分厂商识别服务返回 ERROR_CLIENT（5）。
+- Realtime 通话继续由独立音频会话管理器接管音频路由。
+
 # HyperCat AI
 
 **HyperCat AI 是面向 Android 手机的 AI Agent 智能助手。** Agent 主应用可在其他 Android 设备上使用，不要求手机具备背屏；只有背屏虚拟形象投放与互动功能，目标机型包括 Xiaomi 17 Pro / 17 Pro Max、Xiaomi 18 Pro / 18 Pro Max；具体背屏能力仍需结合机型与系统版本进行实机验证。背屏不是独立运行的虚拟形象应用，而是 Agent 的第二交互界面：主屏与背屏共享角色资料、情绪和交互状态。
