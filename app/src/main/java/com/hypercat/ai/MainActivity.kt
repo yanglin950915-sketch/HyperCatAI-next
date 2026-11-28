@@ -3716,6 +3716,32 @@ private object Live2DPortraitCache {
     val portraits = mutableStateMapOf<String, Bitmap>()
 }
 
+/** Small, non-animated portrait matching the currently selected virtual character. */
+@Composable
+private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
+    val model = Live2DModelStore.characters.firstOrNull { it.id == character }
+        ?: Live2DModelStore.characters.first()
+    val captured = Live2DPortraitCache.portraits[character]
+    Box(modifier.clip(CircleShape).background(Color(0xFFEDEAF4))) {
+        if (captured != null && !captured.isRecycled) {
+            Image(
+                bitmap = captured.asImageBitmap(),
+                contentDescription = model.displayName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            // Do not reintroduce the legacy hand-drawn placeholder in chat rows.
+            Box(
+                Modifier.fillMaxSize().background(Color(0xFF252238)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(model.displayName.take(1), color = Color.White)
+            }
+        }
+    }
+}
+
 @Composable
 private fun AvatarColorEditor(title: String, color: String, onColorChange: (String) -> Unit) {
     val presets = listOf("#080B12", "#F4F1EA", "#E8EEF8", "#FBE7EF", "#DCEFE8", "#242424", "#1C2942", "#4A3048", "#FFE6F0", "#E9E8FF")
