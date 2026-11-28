@@ -493,7 +493,9 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
     val memoryContext = memories.filter { it.isNotBlank() }.take(40).joinToString("\n") { "- ${it.take(500)}" }
     val systemPrompt = if (memoryContext.isBlank()) baseSystemPrompt else "$baseSystemPrompt\n\n以下是用户明确保存的长期记忆，仅在与当前问题相关时参考；若用户当前指令与记忆冲突，以当前指令为准：\n$memoryContext"
     requestMessages.put(JSONObject().put("role", "system").put("content", systemPrompt))
-    history.forEach { line ->
+    // Keep the request context bounded: very long chat histories slow down
+    // time-to-first-token without improving most short follow-up turns.
+    history.takeLast(24).forEach { line ->
         if (line.text.isNotBlank() || line.photos.isNotEmpty() || line.imageUris.isNotEmpty()) {
             val role = if (line.fromUser) "user" else "assistant"
             if (line.fromUser && (line.photos.isNotEmpty() || line.imageUris.isNotEmpty())) {
@@ -4172,35 +4174,17 @@ private fun SettingsPage(
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("你想让 HyperCat 做什么？", color = MainText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text("每个用途可以使用不同服务商；配置完成后点击保存即可。", color = Muted, fontSize = 10.sp)
-                val modelTabs = listOf("推理模型" to "聊天思考", "语音模型" to "听与说", "视觉模型" to "看懂图片")
-                modelTabs.chunked(2).forEach { rowTabs ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        rowTabs.forEach { (tab, title) ->
-                            val selected = modelSettingsTab == tab
-                            Surface(
-                                modifier = Modifier.weight(1f).clip(RoundedCornerShape(13.dp)).clickable { modelSettingsTab = tab },
-                                color = if (selected) Cyan.copy(alpha = if (appDarkState) .18f else .10f) else Panel2.copy(alpha = .55f),
-                                shape = RoundedCornerShape(13.dp),
-                                border = androidx.compose.foundation.BorderStroke(if (selected) 1.5.dp else 1.dp, if (selected) Cyan.copy(alpha = .65f) else GlassBorder)
-                            ) {
-                                Column(Modifier.padding(horizontal = 11.dp, vertical = 12.dp)) {
-                                    Text(title, color = if (selected) Cyan else MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(tab, color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
-                                }
-                            }
-                        }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("推理模型", "语音模型", "视觉模型").forEach { tab ->
+                        FilterChip(
+                            selected = modelSettingsTab == tab,
+                            onClick = { modelSettingsTab = tab },
+                            label = { Text(tab, fontSize = 12.sp, maxLines = 1) },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
-                val usageHint = when (modelSettingsTab) {
-                    "推理模型" -> "负责理解文字、组织答案和调用 Agent 能力。先配置这一项，聊天功能才能正常工作。"
-                    "语音模型" -> "ASR 把声音变成文字；TTS 把 AI 回复读出来。两者可以来自不同服务商。"
-                    "视觉模型" -> "负责理解图片或摄像头画面；识别结果会交给推理模型组织回答。"
-                    else -> "语音识别和语音合成在「听与说」中配置；实时通话可使用这套组合链路，或在「聊天思考」中为支持实时语音的模型开启原生实时能力。"
-                }
-                Surface(color = Panel2.copy(alpha = .45f), shape = RoundedCornerShape(11.dp)) {
-                    Text(usageHint, color = Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(11.dp))
-                }
-                Spacer(Modifier.height(3.dp))
+                Spacer(Modifier.height(2.dp))
                 if (modelSettingsTab == "推理模型") {
                                     Text("服务类型", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                     Spacer(Modifier.height(8.dp))
