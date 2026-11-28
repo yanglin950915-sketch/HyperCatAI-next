@@ -1063,7 +1063,8 @@ private fun HyperCatApp() {
         }
     }
     val messages = remember { mutableStateListOf<ChatLine>() }
-    // Voice-call turns are intentionally isolated from the normal Agent conversation.
+    var agentAutoReadPending by remember { mutableStateOf(false) }
+    // Voice-call turns are intentionally isolated from the normal Agent conversation until hangup.
     val callMessages = remember { mutableStateListOf<ChatLine>() }
     var callThinking by remember { mutableStateOf(false) }
     var callReplyGeneration by remember { mutableLongStateOf(0L) }
@@ -1215,6 +1216,8 @@ private fun HyperCatApp() {
                     messages = messages,
                     callMessages = callMessages,
                     callThinking = callThinking,
+                    agentAutoReadPending = agentAutoReadPending,
+                    onAgentAutoReadConsumed = { agentAutoReadPending = false },
                     onCallStart = {
                         callReplyJob?.cancel()
                         callReplyGeneration++
@@ -1225,6 +1228,18 @@ private fun HyperCatApp() {
                         callReplyJob?.cancel()
                         callReplyGeneration++
                         callThinking = false
+                        val completedCall = callMessages.filter { it.fromUser || it.text.isNotBlank() }
+                        if (completedCall.isNotEmpty()) {
+                            if (currentSessionTitle.isBlank()) {
+                                currentSessionTitle = completedCall.firstOrNull { it.fromUser }?.text
+                                    ?.trim()?.take(42)?.ifBlank { "AI通话" } ?: "AI通话"
+                                recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
+                                chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
+                            }
+                            messages.addAll(completedCall)
+                        }
+                        callMessages.clear()
+                        agentAutoReadPending = false
                     },
                     isThinking = isThinking,
                     recentPrompts = recentPrompts,
@@ -1251,6 +1266,7 @@ private fun HyperCatApp() {
                     onDraft = { draft = it },
                     onSend = { value, attachments, photos, isVoiceTurn, voiceAudioPath, voiceDurationMs ->
                         if (value.isNotBlank() || attachments.isNotEmpty() || photos.isNotEmpty()) {
+                            agentAutoReadPending = autoReadReplies
                             if (currentSessionTitle.isBlank() && value.isNotBlank()) currentSessionTitle = value.trim().take(42)
                             val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") }, voiceAudioPath = voiceAudioPath, voiceDurationMs = voiceDurationMs)
                             messages.add(userLine)
@@ -1352,7 +1368,6 @@ private fun HyperCatApp() {
                             callMessages.lastOrNull()?.let { if (!it.fromUser && it.text.isBlank()) callMessages.removeAt(callMessages.lastIndex) }
                             val generation = ++callReplyGeneration
                             val requestHistory = callMessages.toList() + ChatLine(prompt, true)
-                            callMessages.add(ChatLine(prompt, true))
                             callThinking = true
                             callReplyJob = scope.launch {
                                 val placeholderIndex = callMessages.size
@@ -1754,7 +1769,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: List<ChatLine>, callThinking: Boolean, onCallStart: () -> Unit, onCallEnd: () -> Unit, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: List<ChatLine>, callThinking: Boolean, agentAutoReadPending: Boolean, onAgentAutoReadConsumed: () -> Unit, onCallStart: () -> Unit, onCallEnd: () -> Unit, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>, Boolean, String?, Long) -> Unit, onCallInitiative: (String) -> Unit,
     onRealtimeUserTranscript: (String) -> Unit, onRealtimeAssistantReply: (String) -> Unit,
     openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
@@ -2328,7 +2343,9 @@ private fun ChatPage(
                         withContext(Dispatchers.Main) {
                             if (callGeneration == thisCallGeneration && callActive && micEnabled && transcript.isNotBlank()) {
                                 speechStatus = "已识别，正在发送给 AI…"
-                                latestOnCallInitiative("用户在通话中说：$transcript。请直接回应用户这句话，保持自然、简洁的口语表达。")
+                                // Persist the real recognized words; the instruction prompt stays internal.
+                                callMessages.add(ChatLine(transcript, true))
+                                latestOnCallInitiative("请直接回应用户刚才说的话，保持自然、简洁的口语表达。")
                             }
                         }
                     } catch (error: Exception) {
