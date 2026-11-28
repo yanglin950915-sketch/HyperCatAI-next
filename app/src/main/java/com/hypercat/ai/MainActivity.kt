@@ -1824,26 +1824,18 @@ private fun ChatPage(
                     override fun onStart(utteranceId: String?) {
                         isSpeaking = true
                         agentPlaybackUntilMs = Long.MAX_VALUE
-                        if (callActive && realtimeCallSession == null) {
-                            callPcmCaptureController?.setEnabled(false)
-                            isListening = false
-                        }
                     }
                     override fun onDone(utteranceId: String?) {
                         if (utteranceId?.endsWith("-last") == true) {
                             isSpeaking = false
                             agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 2200L
-                            if (callActive && micEnabled && realtimeCallSession == null) {
-                                callPcmCaptureController?.setEnabled(true)
-                                isListening = true
-                            }
+                            if (callActive && micEnabled && realtimeCallSession == null) isListening = true
                         }
                     }
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
                         isSpeaking = false
                         agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 1200L
-                        if (callActive && micEnabled && realtimeCallSession == null) callPcmCaptureController?.setEnabled(true)
                         speechStatus = "朗读失败，请检查系统语音引擎或语音数据"
                     }
                     override fun onError(utteranceId: String?, errorCode: Int) {
@@ -2306,6 +2298,19 @@ private fun ChatPage(
                     }
                 }
             },
+            onSpeechStarted = {
+                Handler(Looper.getMainLooper()).post {
+                    if (callActive && micEnabled && isSpeaking) {
+                        Log.i("HyperCatVoice", "CALL_BARGE_IN detected by continuous PCM VAD")
+                        cloudSpeechJob?.cancel()
+                        cloudSpeechJob = null
+                        runCatching { speechEngine.stop() }
+                        isSpeaking = false
+                        agentPlaybackUntilMs = 0L
+                        speechStatus = "检测到你正在插话，已立即停止 AI 播报…"
+                    }
+                }
+            },
             onLevel = { level ->
                 Handler(Looper.getMainLooper()).post {
                     if (callActive && micEnabled) {
@@ -2474,10 +2479,7 @@ private fun ChatPage(
                             cloudSpeechJob?.cancel()
                             cloudSpeechJob = speechScope.launch {
                                 isSpeaking = true
-                                if (callActive && realtimeCallSession == null) {
-                                    callPcmCaptureController?.setEnabled(false)
-                                    isListening = false
-                                }
+                                if (callActive && realtimeCallSession == null) isListening = micEnabled
                                 speechStatus = "正在请求云端语音…"
                                 try {
                                     speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate, AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -2491,10 +2493,7 @@ private fun ChatPage(
                                 } finally {
                                     isSpeaking = false
                                     agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 900L
-                                    if (callActive && micEnabled && realtimeCallSession == null) {
-                                        callPcmCaptureController?.setEnabled(true)
-                                        isListening = true
-                                    }
+                                    if (callActive && micEnabled && realtimeCallSession == null) isListening = true
                                 }
                             }
                         }
