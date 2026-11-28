@@ -2206,13 +2206,16 @@ private fun ChatPage(
                 val pcm = voiceCapturePcm ?: ByteArray(0)
                 voiceCapturePcm = null
                 if (pcm.size < 16_000) { speechStatus = "麦克风已启动，但有效录音不足 0.5 秒；请按住麦克风说完整句子"; return@launch }
-                if (ttsEndpoint.isBlank() || ttsApiKey.isBlank()) {
+                val voicePrefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+                val asrEndpoint = voicePrefs.getString("tts_endpoint", "").orEmpty()
+                val asrApiKey = voicePrefs.getString("tts_api_key", "").orEmpty()
+                if (asrEndpoint.isBlank() || asrApiKey.isBlank()) {
                     speechStatus = "录音已采集（${pcm.size} 字节），但当前没有可用的 MiMo TTS 服务配置或 API Key"
                     return@launch
                 }
                 try {
                     speechStatus = "PCM 已采集 ${pcm.size} 字节，正在使用 MiMo ASR 识别…"
-                    val transcript = withContext(Dispatchers.IO) { transcribeCapturedPcm(ttsEndpoint, ttsApiKey, pcm) }
+                    val transcript = withContext(Dispatchers.IO) { transcribeCapturedPcm(asrEndpoint, asrApiKey, pcm) }
                     Log.i("HyperCatVoice", "AI_TRANSCRIPTION_SUCCESS chars=${transcript.length}")
                     speechStatus = "AI 识别成功"
                     latestOnDraft(if (latestDraft.isBlank()) transcript else "${latestDraft} ${transcript}")
