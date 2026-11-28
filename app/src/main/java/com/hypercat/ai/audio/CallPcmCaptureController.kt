@@ -89,10 +89,10 @@ class CallPcmCaptureController(
             recorder = startedRecorder
             lease = acquired
             running = true
-            captureThread = Thread({ captureLoop(startedRecorder) }, "HyperCat-CallMicCapture").apply {
-                priority = Process.THREAD_PRIORITY_AUDIO
-                start()
-            }
+            captureThread = Thread({
+                Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
+                captureLoop(startedRecorder)
+            }, "HyperCat-CallMicCapture").apply { start() }
         } catch (error: Throwable) {
             running = false
             runCatching { input?.release() }
