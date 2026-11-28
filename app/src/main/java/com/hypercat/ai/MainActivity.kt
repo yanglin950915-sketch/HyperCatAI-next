@@ -280,7 +280,7 @@ class MainActivity : ComponentActivity() {
 
 
 private fun saveCapturedPcmAsWav(context: Context, pcm16: ByteArray, sampleRate: Int = 16_000): File {
-    val directory = File(context.cacheDir, "voice_messages").apply { mkdirs() }
+    val directory = File(context.filesDir, "voice_messages").apply { mkdirs() }
     val file = File(directory, "voice_${System.currentTimeMillis()}.wav")
     FileOutputStream(file).use { out ->
         val dataSize = pcm16.size
@@ -1851,7 +1851,6 @@ private fun ChatPage(
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     val latestOnSend by rememberUpdatedState(onSend)
     val latestOnDraft by rememberUpdatedState(onDraft)
-    val latestDraft by rememberUpdatedState(draft)
     val latestCallActive by rememberUpdatedState(callActive)
     val latestMicEnabled by rememberUpdatedState(micEnabled)
     val latestOnCallInitiative by rememberUpdatedState(onCallInitiative)
