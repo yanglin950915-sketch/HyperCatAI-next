@@ -2,7 +2,7 @@
 
 **HyperCat AI 是面向 Android 手机的 AI Agent 智能助手。** Agent 主应用可在其他 Android 设备上使用，不要求手机具备背屏；只有背屏虚拟形象投放与互动功能，目标机型包括 Xiaomi 17 Pro / 17 Pro Max、Xiaomi 18 Pro / 18 Pro Max；具体背屏能力仍需结合机型与系统版本进行实机验证。背屏不是独立运行的虚拟形象应用，而是 Agent 的第二交互界面：主屏与背屏共享角色资料、情绪和交互状态。
 
-- **当前开发版本：** 0.9.96（versionCode 115；以对应构建产物为准）
+- **当前开发版本：** 0.9.97（versionCode 116；以对应构建产物为准）
 - **平台：** Android
 - **技术栈：** Kotlin、Jetpack Compose、Coroutines、Android 系统 API
 - **仓库：** [GitHub](https://github.com/yanglin950915-sketch/HyperCatAI-next)
@@ -114,6 +114,11 @@
 
 ## 构建与发布
 项目通过 GitHub Actions 执行 Android CI、APK 构建和签名校验。请从 [Releases](https://github.com/yanglin950915-sketch/HyperCatAI-next/releases) 获取正式发布包，并查看对应版本说明。开发分支上的构建产物不等同于正式发布版本。
+
+## 0.9.97 开发分支更新
+- 修复 Android SpeechRecognizer 遇到客户端/服务端中断后，普通语音消息仍复用失效识别器的问题。
+- 普通语音消息在识别服务重建后提示用户重新按住麦克风；AI 电话保留自动恢复识别流程。
+- 版本号更新为 0.9.97（versionCode 116）。
 
 ## 0.9.96 开发分支更新
 - 增加 OpenAI Realtime 兼容 WebSocket 音频适配器与 PCM16 全双工音频会话。
