@@ -1256,7 +1256,7 @@ private fun HyperCatApp() {
                         }
                         if (completedCall.isNotEmpty()) messages.addAll(completedCall)
                         // This is a UI/system event, not a user prompt: it is never sent to the model.
-                        messages.add(ChatLine("你已结束 AI 通话", fromUser = false, isSystemEvent = true))
+                        messages.add(ChatLine("你已挂断 AI 电话", fromUser = true, isSystemEvent = true))
                         callMessages.clear()
                         agentAutoReadPending = false
                         agentAutoReadTargetIndex = -1
