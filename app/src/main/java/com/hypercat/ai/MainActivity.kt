@@ -66,6 +66,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
@@ -3004,7 +3005,9 @@ private fun ChatPage(
                             if (line.isSystemEvent && line.text.isNotBlank()) {
                                 Text(line.text, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                             } else if (line.text.isNotBlank()) {
-                                MarkdownMessage(line.text, if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), clipboardManager)
+                                SelectionContainer {
+                                    MarkdownMessage(line.text, if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), clipboardManager)
+                                }
                                 if (!line.fromUser) {
                                     val downloadableLinks = remember(line.text) { extractGeneratedDownloadLinks(line.text) }
                                     if (downloadableLinks.isNotEmpty()) {
@@ -3024,6 +3027,15 @@ private fun ChatPage(
                                     TextButton(onClick = { clipboardManager.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
                                         Icon(Icons.Outlined.ContentCopy, contentDescription = "复制消息", modifier = Modifier.size(13.dp), tint = actionTint)
                                         Spacer(Modifier.width(3.dp)); Text("复制", color = actionTint, fontSize = 10.sp)
+                                    }
+                                    if (!line.fromUser) {
+                                        TextButton(onClick = {
+                                            val quoted = line.text.lineSequence().joinToString("\n") { "> $it" }
+                                            onDraft(if (draft.isBlank()) "$quoted\n\n" else "$quoted\n\n$draft")
+                                            Toast.makeText(context, "已引用这条回复", Toast.LENGTH_SHORT).show()
+                                        }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                            Text("引用", color = actionTint, fontSize = 10.sp)
+                                        }
                                     }
                                     TextButton(onClick = {
                                         val shareIntent = Intent(Intent.ACTION_SEND).apply {
