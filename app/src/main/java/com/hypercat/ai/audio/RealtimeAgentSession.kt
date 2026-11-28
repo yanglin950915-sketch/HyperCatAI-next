@@ -149,6 +149,12 @@ class RealtimeAgentSession(
         if (!closed.get() && text.isNotBlank()) adapter.sendTextPrompt(text.trim())
     }
 
+    /** Sends a throttled camera still into the active conversation when the model supports vision. */
+    fun sendImageFrame(jpeg: ByteArray): Boolean {
+        if (closed.get() || jpeg.isEmpty() || !adapter.supportsImageInput) return false
+        return adapter.sendImageFrame(jpeg)
+    }
+
     fun setMicrophoneEnabled(enabled: Boolean) {
         if (closed.get()) return
         microphoneEnabled = enabled
@@ -215,6 +221,7 @@ class RealtimeAgentSession(
 interface RealtimeModelAdapter : Closeable {
     /** Null when the provider accepts a negotiated or implementation-defined PCM rate. */
     val requiredSampleRate: Int? get() = null
+    val supportsImageInput: Boolean get() = false
     interface Events {
         fun onReady()
         fun onUserTranscript(text: String)
@@ -228,6 +235,7 @@ interface RealtimeModelAdapter : Closeable {
 
     fun connect(events: Events)
     fun sendAudioFrame(pcm16: ByteArray, length: Int)
+    fun sendImageFrame(jpeg: ByteArray): Boolean = false
     fun endUserTurn()
     fun sendTextPrompt(text: String) { }
     fun cancelResponse()
