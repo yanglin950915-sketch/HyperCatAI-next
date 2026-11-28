@@ -12,12 +12,22 @@ class PcmVoiceActivityDetector(
     private val releaseFrames: Int = 18,
 ) {
     enum class Event { SPEECH_STARTED, SPEECH_CONTINUES, SPEECH_ENDED, SILENCE }
+
+    init {
+        require(threshold.isFinite() && threshold >= 0.0) { "VAD threshold must be finite and non-negative" }
+        require(onsetFrames > 0) { "VAD onsetFrames must be positive" }
+        require(releaseFrames > 0) { "VAD releaseFrames must be positive" }
+    }
+
     private var activeFrames = 0
     private var quietFrames = 0
     var isSpeechActive: Boolean = false
         private set
 
     fun process(pcm16: ByteArray, length: Int = pcm16.size): Event {
+        require(length in 0..pcm16.size) { "PCM length must be within the supplied buffer" }
+        require(length % 2 == 0) { "PCM16 frame length must be even" }
+        if (length == 0) return Event.SILENCE
         val rms = rms(pcm16, length)
         if (rms >= threshold) {
             activeFrames++
