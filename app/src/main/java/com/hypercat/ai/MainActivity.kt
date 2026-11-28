@@ -2564,7 +2564,7 @@ private fun ChatPage(
         }
     }
     fun toggleVideo() {
-        if (videoEnabled) { videoEnabled = false; cameraError = null }
+        if (videoEnabled) { videoEnabled = false; cameraError = null; cameraVisionStatus = "" }
         else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         else { cameraError = null; videoEnabled = true }
     }
@@ -3180,7 +3180,9 @@ private fun ChatPage(
                     if (videoEnabled) {
                         LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it }, onFrame = { jpeg ->
                             val sent = realtimeCallSession?.sendImageFrame(jpeg) == true
-                            cameraVisionStatus = if (sent) "AI 视觉已接收画面 · 约每秒 1 帧" else "当前通话模型不支持图像输入，画面仅本地预览"
+                            Handler(Looper.getMainLooper()).post {
+                                cameraVisionStatus = if (sent) "画面帧已发送到 AI 实时连接 · 约每秒 1 帧" else "当前通话模型不支持图像输入，画面仅本地预览"
+                            }
                             sent
                         })
                         if (cameraError != null) Text(cameraError.orEmpty(), color = Color(0xFFFF9A9A), fontSize = 11.sp,
