@@ -2566,6 +2566,8 @@ private fun ChatPage(
                     Text("‹", color = Color.White, fontSize = 28.sp, modifier = Modifier.clickable {
                         callActive = false; micEnabled = false; videoEnabled = false; isListening = false
                         speechAudioLease?.close(); speechAudioLease = null
+                        realtimeCallSession?.close(); realtimeCallSession = null
+                        realtimeAssistantDraft = ""
                         runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
                         agentPlaybackUntilMs = 0L
                         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
