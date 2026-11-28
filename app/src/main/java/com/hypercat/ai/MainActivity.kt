@@ -3320,7 +3320,7 @@ private fun ChatPage(
                                 position.x + coordinates.size.width,
                                 position.y + coordinates.size.height
                             )
-                        }
+                        },
                     color = Panel,
                     shape = RoundedCornerShape(28.dp),
                     shadowElevation = 18.dp,
