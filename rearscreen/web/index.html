@@ -1140,6 +1140,7 @@
     (() => {
       const params = new URLSearchParams(location.search);
       const isPreview = params.get("preview") === "1";
+      const isHyperCatNative = !!window.maml || !!window.HyperCatBridge;
       if (isPreview) document.body.classList.add("preview-mode");
 
       // ================= PERSISTED CONFIG =================
@@ -1199,6 +1200,45 @@
         completions: [],
       };
       let simMode = "live";
+      // HyperCat AI is the sole Agent state source; no LAN companion server is required.
+      window.__setAgentState = function(name, avatar, mood, reply, bgColor, speaking) {
+        const mapped = speaking ? "running" : ({
+          thinking: "running", listening: "waiting_user", happy: "completed_unread",
+          sad: "failed", shy: "waiting_user", sleepy: "idle", normal: "idle",
+          neutral: "idle", responding: "running"
+        })[String(mood || "normal").toLowerCase()] || "idle";
+        liveData = { ...liveData, hub_online: true, combined: mapped,
+          providers: { ...(liveData.providers || {}), hypercat: mapped } };
+        if (bgColor && /^#[0-9a-fA-F]{6}$/.test(String(bgColor))) {
+          document.documentElement.style.backgroundColor = bgColor;
+          document.body.style.backgroundColor = bgColor;
+        }
+        if (typeof renderBadges === "function") renderBadges();
+        if (typeof updateBanner === "function") updateBanner();
+      };
+      window.hyperCatSetState = function(mood, speaking) { window.__setAgentState(null, null, mood, null, null, speaking); };
+      window.__setAgentJson = function(value) {
+        try {
+          const d = typeof value === "string" ? JSON.parse(value) : value;
+          if (d) window.__setAgentState(d.avatar_name || d.avatarName, d.avatar_id || d.avatarId,
+            d.mood, d.reply, d.background_color || d.backgroundColor, d.speaking);
+        } catch (_) {}
+      };
+      window.__fit = function() { try { resizeCanvas(); } catch (_) {} };
+      window.__setAod = function(value) { document.body.style.filter = value ? "brightness(.28)" : ""; };
+      window.__debugSize = function() { return [innerWidth, innerHeight, devicePixelRatio || 1].join(" "); };
+      window.__setMoodIndex = function(value) {
+        const moods = ["normal", "happy", "thinking", "sleepy", "sad", "shy"];
+        window.__setAgentState(null, null, moods[Math.max(0, Math.min(5, Number(value) || 0))]);
+      };
+      window.__rearAction = function(action) {
+        try { if (window.maml && typeof window.maml.doAction === "function") window.maml.doAction(action); } catch (_) {}
+      };
+      function notifyHyperCat(action) {
+        try { if (window.maml && typeof window.maml.doAction === "function") window.maml.doAction(action); } catch (_) {}
+        try { if (window.HyperCatBridge && typeof window.HyperCatBridge.onPetInteraction === "function") window.HyperCatBridge.onPetInteraction(action); } catch (_) {}
+      }
+      if (isHyperCatNative && !window.maml) cfg.safeLeft = 0;
       let sseConnected = false;
 
       // Track transient completion events (catches Antigravity, Gemini, and foreground-read Codex/DSH!)
@@ -1461,7 +1501,7 @@
           : "实时同步中 · 所有 AI 助手当前空闲";
       }
 
-      connectSSE();
+      if (!isHyperCatNative && typeof EventSource !== "undefined") connectSSE();
 
       // ================= WAKE LOCK & FULLSCREEN =================
       let wakeLock = null;
@@ -1600,6 +1640,7 @@
           pressTimer = setTimeout(() => {
             if (activePointers.size === 1) {
               longPressed = true;
+              notifyHyperCat("avatar_long_press");
               openSettingsModal();
             }
           }, 2200);
@@ -1629,6 +1670,7 @@
           const py = e.clientY - rect.top;
           const isSwipe = Math.abs(e.clientX - downX) > 28;
           triggerTapInteraction(px, py, isSwipe);
+          notifyHyperCat(isSwipe ? "avatar_drag" : "avatar_touch");
         }
       });
 
