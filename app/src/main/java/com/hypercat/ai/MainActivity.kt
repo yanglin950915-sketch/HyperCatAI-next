@@ -5,6 +5,7 @@ import com.hypercat.ai.audio.AudioSessionCoordinator
 import com.hypercat.ai.audio.RealtimeAudioEngine
 import com.hypercat.ai.audio.RealtimeAgentSession
 import com.hypercat.ai.audio.OpenAiRealtimeAudioAdapter
+import com.hypercat.ai.audio.CallPcmCaptureController
 
 import android.content.Context
 import android.app.DownloadManager
@@ -1763,6 +1764,7 @@ private fun ChatPage(
     var showCallInfo by remember { mutableStateOf(false) }
     var callActive by remember { mutableStateOf(false) }
     var realtimeCallSession by remember { mutableStateOf<RealtimeAgentSession?>(null) }
+    var callPcmCaptureController by remember { mutableStateOf<CallPcmCaptureController?>(null) }
     var realtimeAssistantDraft by remember { mutableStateOf("") }
     val audioSessionCoordinator = remember(context) { AudioSessionCoordinator.get(context) }
     var speechAudioLease by remember { mutableStateOf<AudioSessionCoordinator.Lease?>(null) }
@@ -2250,6 +2252,88 @@ private fun ChatPage(
         }
         return true
     }
+    fun startPcmCallCapture() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            speechStatus = "尚未获得麦克风录音权限，正在请求授权…"
+            callMicPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        if (manager.isMicrophoneMute) {
+            speechStatus = "系统麦克风隐私开关已关闭，请先开启麦克风访问"
+            Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+            return
+        }
+        val controller = CallPcmCaptureController(
+            context = context,
+            onUtterance = { pcm ->
+                speechScope.launch(Dispatchers.IO) {
+                    try {
+                        val prefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
+                        val endpoint = prefs.getString("tts_endpoint", "").orEmpty()
+                        val apiKey = prefs.getString("tts_api_key", "").orEmpty()
+                        check(endpoint.isNotBlank() && apiKey.isNotBlank()) {
+                            "当前没有可用的 MiMo ASR 服务配置，请检查语音消息使用的 TTS 服务地址和 API Key"
+                        }
+                        val transcript = transcribeCapturedPcm(endpoint, apiKey, pcm, 16_000)
+                        Log.i("HyperCatVoice", "CALL_PCM_ASR_SUCCESS bytes=${pcm.size} chars=${transcript.length}")
+                        withContext(Dispatchers.Main) {
+                            if (callActive && micEnabled && transcript.isNotBlank()) {
+                                speechStatus = "已识别，正在发送给 AI…"
+                                latestOnSend(transcript, emptyList(), emptyList(), true, null, 0L)
+                            }
+                        }
+                    } catch (error: Exception) {
+                        Log.e("HyperCatVoice", "CALL_PCM_ASR_FAILED bytes=${pcm.size}", error)
+                        withContext(Dispatchers.Main) {
+                            if (callActive) speechStatus = "录音已采集并发送识别，但 AI 语音识别失败：${error.message ?: "服务异常"}"
+                        }
+                    }
+                }
+            },
+            onLevel = { level ->
+                Handler(Looper.getMainLooper()).post {
+                    if (callActive && micEnabled) {
+                        micRmsDb = if (level > 0.00001) (20.0 * kotlin.math.log10(level)).toFloat().coerceIn(-60f, 0f) else -60f
+                        isListening = true
+                    }
+                }
+            },
+            onError = { message, error ->
+                Log.e("HyperCatVoice", "CALL_PCM_CAPTURE_ERROR: $message", error)
+                Handler(Looper.getMainLooper()).post {
+                    if (callActive) {
+                        speechStatus = message
+                        isListening = false
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        )
+        try {
+            controller.start()
+            callPcmCaptureController?.close()
+            callPcmCaptureController = controller
+            callActive = true
+            micEnabled = true
+            videoEnabled = false
+            showCallInfo = true
+            lastCallSpokenText = ""
+            isListening = true
+            isSpeaking = false
+            speechStatus = "麦克风已启动，正在实时采集 PCM；检测到语句后自动发送给 AI"
+            Log.i("HyperCatVoice", "CALL_PCM_CAPTURE_STARTED sampleRate=16000 source=VOICE_COMMUNICATION")
+            latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+        } catch (error: Exception) {
+            controller.close()
+            callActive = false
+            micEnabled = false
+            isListening = false
+            speechStatus = "麦克风启动失败：${error.message ?: "未知错误"}"
+            Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+            Log.e("HyperCatVoice", "CALL_PCM_CAPTURE_START_FAILED", error)
+        }
+    }
     val callMicPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -2258,9 +2342,7 @@ private fun ChatPage(
             // Realtime sessions acquire their own communication audio route.
             // The legacy SpeechRecognizer path must retain the normal system route.
             if (!startRealtimeCallIfConfigured()) {
-                callActive = true; micEnabled = true; videoEnabled = false
-                showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
-                latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+                startPcmCallCapture()
             }
         } else Toast.makeText(context, "AI 通话需要麦克风录音权限，请在系统设置中允许", Toast.LENGTH_LONG).show()
     }
@@ -2268,7 +2350,7 @@ private fun ChatPage(
         if (pendingRecognitionStart) {
             pendingRecognitionStart = false
             delay(350L)
-            if (callActive && micEnabled) startInAppRecognition()
+            if (callActive && micEnabled && realtimeCallSession == null) callPcmCaptureController?.setEnabled(true)
         }
     }
     fun stopInAppRecognition() {
@@ -2352,9 +2434,7 @@ private fun ChatPage(
             // Legacy SpeechRecognizer keeps the normal system audio route.
             // Realtime manages its communication route inside RealtimeAudioEngine.
             if (!startRealtimeCallIfConfigured()) {
-                callActive = true; micEnabled = true; videoEnabled = false
-                showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
-                latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+                startPcmCallCapture()
             }
         }
     }
@@ -2892,6 +2972,7 @@ private fun ChatPage(
             callActive = false; micEnabled = false; videoEnabled = false; isListening = false
             recognitionStartJob?.cancel(); recognitionStartJob = null
             recognitionSessionActive = false; recognitionStartCommandSent = false
+            callPcmCaptureController?.close(); callPcmCaptureController = null
             speechAudioLease?.close(); speechAudioLease = null
             realtimeCallSession?.close(); realtimeCallSession = null
             realtimeAssistantDraft = ""
@@ -2910,6 +2991,7 @@ private fun ChatPage(
                         callActive = false; micEnabled = false; videoEnabled = false; isListening = false
                         recognitionStartJob?.cancel(); recognitionStartJob = null
                         recognitionSessionActive = false; recognitionStartCommandSent = false
+                        callPcmCaptureController?.close(); callPcmCaptureController = null
                         speechAudioLease?.close(); speechAudioLease = null
                         realtimeCallSession?.close(); realtimeCallSession = null
                         realtimeAssistantDraft = ""
@@ -2958,27 +3040,16 @@ private fun ChatPage(
                             isListening = false
                             if (realtimeCallSession != null) { realtimeCallSession?.setMicrophoneEnabled(false); speechStatus = "Realtime 麦克风已静音" }
                             else {
-                                recognitionStartJob?.cancel(); recognitionStartJob = null
-                                recognitionSessionActive = false; recognitionStartCommandSent = false
-                                recognitionReadyForSpeech = false; recognitionStopPending = false
-                                runCatching { speechRecognizer.cancel() }
-                                speechStatus = "麦克风已关闭"
+                                callPcmCaptureController?.setEnabled(false)
+                                isListening = false
+                                speechStatus = "麦克风已关闭，录音采集已暂停"
                             }
                         } else if (callActive) {
                             if (realtimeCallSession != null) { realtimeCallSession?.setMicrophoneEnabled(true); isListening = true; speechStatus = "Realtime 麦克风已恢复" }
                             else {
-                                speechStatus = "正在重新连接语音识别服务…"
-                                // Use a fresh service client after cancel() so late callbacks from
-                                // the muted session cannot terminate the resumed call session.
-                                recognitionSessionActive = false; recognitionStartCommandSent = false
-                                recognitionReadyForSpeech = false; recognitionStopPending = false
-                                runCatching { speechRecognizer.cancel() }
-                                runCatching { speechRecognizer = createCallSpeechRecognizer(context) }
-                                    .onFailure { speechStatus = "语音识别服务重建失败：${it.message ?: "请检查系统语音服务"}" }
-                                speechScope.launch {
-                                    delay(450L)
-                                    if (callActive && micEnabled && realtimeCallSession == null) startInAppRecognition()
-                                }
+                                speechStatus = "正在恢复麦克风录音…"
+                                runCatching { callPcmCaptureController?.setEnabled(true) }
+                                    .onFailure { speechStatus = "麦克风恢复失败：${it.message ?: "请检查录音权限"}" }
                             }
                         }
                     }
@@ -2988,6 +3059,7 @@ private fun ChatPage(
                         callActive = false; micEnabled = false; videoEnabled = false; isListening = false
                         recognitionStartJob?.cancel()
                         recognitionSessionActive = false
+                        callPcmCaptureController?.close(); callPcmCaptureController = null
                         speechAudioLease?.close(); speechAudioLease = null
                         realtimeCallSession?.close(); realtimeCallSession = null
                         realtimeAssistantDraft = ""
