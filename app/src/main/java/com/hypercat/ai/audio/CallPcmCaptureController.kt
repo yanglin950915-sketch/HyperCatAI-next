@@ -108,6 +108,7 @@ class CallPcmCaptureController(
         var collecting = false
         var utteranceBytes = 0
         val frame = ByteArray(FRAME_BYTES)
+        var levelFrameCounter = 0
         try {
             while (running && enabled && !Thread.currentThread().isInterrupted) {
                 val count = input.read(frame, 0, frame.size, AudioRecord.READ_BLOCKING)
@@ -118,7 +119,7 @@ class CallPcmCaptureController(
                 if (count == 0) continue
                 val copy = frame.copyOf(count)
                 val level = rms(copy, count)
-                onLevel(level)
+                if (++levelFrameCounter % 5 == 0) onLevel(level)
                 when (vad.process(copy, count)) {
                     PcmVoiceActivityDetector.Event.SPEECH_STARTED -> {
                         collecting = true
