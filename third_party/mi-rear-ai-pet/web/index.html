@@ -1,0 +1,3029 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <title>Mi Rear AI Pet</title>
+  <style>
+    :root {
+      --bg: #000000;
+      --text: #e8f4f8;
+      --muted: rgba(255, 255, 255, 0.42);
+      --cyan: #34e8ff;
+      --amber: #ffb830;
+      --mint: #38f59a;
+      --coral: #ff5a6e;
+      --brightness: 1;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000000;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "PingFang SC", "Segoe UI", sans-serif;
+    }
+
+    /* ================= FULLSCREEN REAR SCREEN MODE ================= */
+    body:not(.preview-mode) .preview-shell {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+
+    body:not(.preview-mode) .device-frame {
+      width: 100%;
+      height: 100%;
+      border-radius: 0;
+      border: none;
+      box-shadow: none;
+      background: #000;
+    }
+
+    body:not(.preview-mode) .camera-overlay,
+    body:not(.preview-mode) .preview-header,
+    body:not(.preview-mode) .preview-dock,
+    body:not(.preview-mode) .setup-console {
+      display: none !important;
+    }
+
+    /* ================= DESKTOP PREVIEW SIMULATOR MODE ================= */
+    body.preview-mode {
+      background: radial-gradient(circle at 50% 25%, #161a24 0%, #090b10 70%, #050608 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 22px;
+      padding: 26px 20px 48px;
+      overflow-y: auto;
+    }
+
+    /* ================= 1-CLICK SETUP & QR PAIRING CONSOLE ================= */
+    .setup-console {
+      width: min(92vw, 760px);
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    @media (max-width: 720px) {
+      .setup-console { grid-template-columns: 1fr; }
+    }
+
+    .setup-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 16px;
+      padding: 15px 16px;
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+
+    .setup-card.wide {
+      grid-column: 1 / -1;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #edf5fb;
+      letter-spacing: 0.2px;
+    }
+
+    .status-pill {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.72);
+      white-space: nowrap;
+    }
+
+    .status-pill.online {
+      border-color: rgba(56, 245, 154, 0.45);
+      background: rgba(56, 245, 154, 0.12);
+      color: #88ffcb;
+    }
+
+    .qr-tabs {
+      display: flex;
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.34);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .qr-tab {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.58);
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 7px 10px;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: all 0.16s ease;
+    }
+
+    .qr-tab.active {
+      background: rgba(52, 232, 255, 0.16);
+      color: #9bf6ff;
+      box-shadow: inset 0 0 0 1px rgba(52, 232, 255, 0.36);
+    }
+
+    .qr-stage {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 16px 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      text-align: center;
+    }
+
+    .qr-stage img {
+      width: 196px;
+      height: 196px;
+      border-radius: 12px;
+      background: #ffffff;
+      padding: 8px;
+      display: block;
+    }
+
+    .qr-label {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #e6f2fa;
+    }
+
+    .qr-sub {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.52);
+      line-height: 1.45;
+    }
+
+    .copy-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.38);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 7px 10px;
+      font-size: 11px;
+      color: rgba(220, 242, 255, 0.86);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .copy-row code {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .copy-row .btn {
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    details.dev-fold {
+      padding: 11px 16px;
+    }
+
+    details.dev-fold summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.58);
+      user-select: none;
+    }
+
+    details.dev-fold summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details.dev-fold summary .fold-arrow {
+      display: inline-block;
+      transition: transform 0.2s ease;
+      margin-right: 6px;
+      color: rgba(52, 232, 255, 0.72);
+    }
+
+    details.dev-fold[open] summary .fold-arrow {
+      transform: rotate(90deg);
+    }
+
+    details.dev-fold .fold-body {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* ================= BEGINNER 4-STEP GUIDE STRIP ================= */
+    .guide-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    @media (max-width: 720px) {
+      .guide-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    .guide-step {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 10px 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      transition: border-color 0.25s ease, background 0.25s ease;
+    }
+
+    .guide-step.done {
+      border-color: rgba(56, 245, 154, 0.42);
+      background: rgba(56, 245, 154, 0.06);
+    }
+
+    .guide-step-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #edf5fb;
+    }
+
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 19px;
+      height: 19px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(52, 232, 255, 0.16);
+      color: #8df4ff;
+      flex-shrink: 0;
+    }
+
+    .guide-step.done .step-num {
+      background: rgba(56, 245, 154, 0.22);
+      color: #88ffcb;
+    }
+
+    .guide-step p {
+      font-size: 11px;
+      line-height: 1.48;
+      color: rgba(255, 255, 255, 0.56);
+    }
+
+    .guide-step b {
+      color: rgba(235, 246, 255, 0.9);
+      font-weight: 600;
+    }
+
+    .guide-step a {
+      color: #6ceeff;
+      text-decoration: underline;
+    }
+
+    .faq-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    @media (max-width: 720px) {
+      .faq-grid { grid-template-columns: 1fr; }
+    }
+
+    .faq-box {
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 11px;
+      padding: 10px 12px;
+      font-size: 11.5px;
+      line-height: 1.6;
+      color: rgba(255, 255, 255, 0.66);
+    }
+
+    .faq-box h4 {
+      font-size: 12px;
+      color: #eaf6ff;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+
+    .faq-box ol, .faq-box ul {
+      padding-left: 16px;
+    }
+
+    .faq-box li {
+      margin-bottom: 3px;
+    }
+
+    .faq-box a {
+      color: #6ceeff;
+    }
+
+    .faq-box code {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 1px 5px;
+      border-radius: 5px;
+      font-size: 10.5px;
+      color: #c8f5ff;
+    }
+
+    .agent-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .agent-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .agent-meta {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .agent-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: #eef6fc;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .mini-tag {
+      font-size: 10px;
+      font-weight: 500;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.56);
+    }
+
+    .mini-tag.found {
+      background: rgba(52, 232, 255, 0.14);
+      color: #93f3ff;
+    }
+
+    .mini-tag.exp {
+      background: rgba(255, 184, 48, 0.16);
+      border: 1px solid rgba(255, 184, 48, 0.35);
+      color: #ffd37a;
+    }
+
+    .mini-tag.warn {
+      background: rgba(255, 112, 67, 0.18);
+      border: 1px solid rgba(255, 138, 101, 0.48);
+      color: #ffab91;
+    }
+
+    .agent-warn {
+      margin-top: 4px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      background: rgba(255, 152, 0, 0.12);
+      border: 1px solid rgba(255, 183, 77, 0.34);
+      font-size: 10px;
+      line-height: 1.45;
+      color: #ffd08a;
+    }
+
+    .agent-note {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.48);
+      line-height: 1.35;
+    }
+
+    .test-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .agent-select {
+      appearance: none;
+      -webkit-appearance: none;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: #e8f5ff;
+      font-size: 11px;
+      padding: 5px 22px 5px 9px;
+      border-radius: 999px;
+      cursor: pointer;
+      outline: none;
+      background-image: linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.7) 50%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.7) 50%, transparent 50%);
+      background-position: calc(100% - 11px) 50%, calc(100% - 7px) 50%;
+      background-size: 4px 4px, 4px 4px;
+      background-repeat: no-repeat;
+    }
+
+    .agent-select option {
+      background: #121722;
+      color: #e8f5ff;
+    }
+
+    .console-toast {
+      font-size: 11px;
+      color: #9ff8cb;
+      min-height: 15px;
+    }
+
+    .preview-header {
+      text-align: center;
+    }
+
+    .preview-header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      color: #f0f4f8;
+    }
+
+    .preview-header p {
+      margin-top: 4px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .preview-shell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      max-width: 100%;
+    }
+
+    /* Xiaomi 17 Pro Max 妙享背屏比例 (~976x596 ≈ 1.637:1) */
+    .device-frame {
+      position: relative;
+      width: min(720px, 92vw);
+      aspect-ratio: 976 / 596;
+      background: #000000;
+      border-radius: 44px;
+      border: 3px solid #2b2f3a;
+      box-shadow:
+        0 28px 80px rgba(0, 0, 0, 0.78),
+        0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+        0 0 40px rgba(52, 232, 255, 0.06);
+      overflow: hidden;
+    }
+
+    /* Realistic Leica Dual-Lens Cutout Overlay (Desktop Preview Only) */
+    .camera-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    .camera-lens {
+      position: absolute;
+      left: 4.8%;
+      width: 21.5%;
+      aspect-ratio: 1 / 1;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 38% 34%, rgba(65, 95, 130, 0.35) 0%, rgba(16, 20, 28, 0.95) 28%, #07080b 65%, #191c22 100%);
+      border: 2.5px solid rgba(130, 140, 160, 0.25);
+      box-shadow:
+        0 0 0 4px rgba(0, 0, 0, 0.95),
+        inset 0 0 18px rgba(0, 0, 0, 0.95);
+    }
+
+    .camera-lens::after {
+      content: "";
+      position: absolute;
+      inset: 28%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(90, 160, 255, 0.32), #05070c 60%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .camera-lens.top { top: 9%; }
+    .camera-lens.bottom { bottom: 9%; }
+
+    .camera-overlay.hidden-cutout {
+      opacity: 0;
+    }
+
+    /* ================= SCREEN CONTENT STAGE ================= */
+    #screen {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #000000;
+      filter: brightness(var(--brightness));
+      overflow: hidden;
+    }
+
+    #stage {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      will-change: transform;
+    }
+
+    #petCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: pointer;
+    }
+
+    /* Dynamic Agent Badges Row (Bottom of Safe Area) */
+    #badgeDock {
+      position: absolute;
+      bottom: 8.5%;
+      left: 0;
+      right: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 0 14px;
+      pointer-events: none;
+      z-index: 5;
+      transition: opacity 0.35s ease;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: clamp(11px, 2.5vmin, 15px);
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      line-height: 1;
+      backdrop-filter: blur(6px);
+      animation: badgeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    @keyframes badgeIn {
+      from { opacity: 0; transform: translateY(6px) scale(0.92); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .badge .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* Running: sleek active cyan pill */
+    .badge.state-running {
+      background: rgba(52, 232, 255, 0.14);
+      border: 1px solid rgba(52, 232, 255, 0.45);
+      color: #aaf4ff;
+      box-shadow: 0 0 14px rgba(52, 232, 255, 0.18);
+    }
+    .badge.state-running .dot {
+      background: var(--cyan);
+      box-shadow: 0 0 8px var(--cyan);
+      animation: pulseDot 1.1s ease-in-out infinite;
+    }
+
+    /* Waiting user: urgent amber pill */
+    .badge.state-waiting_user {
+      background: rgba(255, 184, 48, 0.18);
+      border: 1px solid rgba(255, 184, 48, 0.65);
+      color: #ffe09e;
+      box-shadow: 0 0 18px rgba(255, 184, 48, 0.25);
+      animation: badgeIn 0.28s ease, gentlePulse 1.5s ease-in-out infinite;
+    }
+    .badge.state-waiting_user .dot {
+      background: var(--amber);
+      box-shadow: 0 0 10px var(--amber);
+    }
+
+    /* Failed: coral pill */
+    .badge.state-failed {
+      background: rgba(255, 90, 110, 0.18);
+      border: 1px solid rgba(255, 90, 110, 0.55);
+      color: #ffb3bd;
+    }
+    .badge.state-failed .dot {
+      background: var(--coral);
+      box-shadow: 0 0 8px var(--coral);
+    }
+
+    /* Completed unread: small subtle indicator */
+    .badge.state-completed_unread {
+      padding: 4px 9px;
+      gap: 5px;
+      font-size: clamp(10px, 2.1vmin, 13px);
+      font-weight: 500;
+      background: rgba(56, 245, 154, 0.1);
+      border: 1px solid rgba(56, 245, 154, 0.35);
+      color: rgba(160, 255, 208, 0.9);
+    }
+    .badge.state-completed_unread .check {
+      color: var(--mint);
+      font-weight: 700;
+      font-size: 1.05em;
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { transform: scale(0.85); opacity: 0.65; }
+      50% { transform: scale(1.25); opacity: 1; }
+    }
+
+    @keyframes gentlePulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+    }
+
+    /* Minimal subtle clock shown only when all agents are idle */
+    #idleClock {
+      position: absolute;
+      bottom: 8.5%;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: clamp(13px, 3.0vmin, 19px);
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 2px;
+      color: rgba(190, 228, 246, 0.36);
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+
+    /* Subtle offline dot (top-right of safe area, only visible if disconnected) */
+    #connDot {
+      position: absolute;
+      top: 10px;
+      right: 14px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #ff5a6e;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      z-index: 6;
+    }
+    #connDot.offline { opacity: 0.65; }
+
+    /* Hidden settings trigger corner (double-tap top-right on phone) */
+    #settingsCorner {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 64px;
+      height: 64px;
+      z-index: 15;
+    }
+
+    /* ================= DESKTOP CONTROL DOCK ================= */
+    .preview-dock {
+      width: min(720px, 92vw);
+      background: rgba(20, 24, 34, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 18px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      backdrop-filter: blur(12px);
+    }
+
+    .dock-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dock-label {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.5);
+      margin-right: 4px;
+      min-width: 60px;
+    }
+
+    .btn {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      color: #dce6f0;
+      font-size: 12px;
+      padding: 6px 11px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .btn.active {
+      background: rgba(52, 232, 255, 0.18);
+      border-color: rgba(52, 232, 255, 0.6);
+      color: #9bf3ff;
+    }
+
+    .btn.warn.active {
+      background: rgba(255, 184, 48, 0.2);
+      border-color: rgba(255, 184, 48, 0.7);
+      color: #ffe09e;
+    }
+
+    .btn.mint.active {
+      background: rgba(56, 245, 154, 0.18);
+      border-color: rgba(56, 245, 154, 0.6);
+      color: #a8ffd4;
+    }
+
+    .slider-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    input[type="range"] {
+      width: 92px;
+      accent-color: #34e8ff;
+    }
+
+    /* ================= PHONE IN-SCREEN SETTINGS MODAL (FIXED POSITION WHILE DRAGGING) ================= */
+    #settingsModal {
+      position: fixed;
+      inset: 0;
+      padding: 12px 14px;
+      background: rgba(0, 0, 0, 0.56);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(6px);
+    }
+
+    /* On compact landscape rear screen, anchor drawer to the right away from left camera lenses,
+       using a fixed offset so dragging the safeLeft slider NEVER shifts the drawer under your finger */
+    @media (max-height: 460px) and (orientation: landscape) {
+      #settingsModal {
+        padding: 8px 12px 8px 30%;
+        justify-content: flex-end;
+      }
+    }
+
+    #settingsModal.open {
+      display: flex;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 340px;
+      max-height: 100%;
+      overflow-y: auto;
+      background: #12151e;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 14px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .modal-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.82);
+      gap: 8px;
+    }
+
+    .modal-row input[type="range"] {
+      width: 78px;
+    }
+
+    .modal-card .btn {
+      font-size: 11px;
+      padding: 4px 9px;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-shell">
+    <div class="preview-header">
+      <h1>小米妙享背屏 · AI 桌宠模拟器</h1>
+      <p id="liveBanner">正在连接本机实时状态流...</p>
+    </div>
+
+    <div class="device-frame">
+      <div class="camera-overlay" id="cameraOverlay">
+        <div class="camera-lens top"></div>
+        <div class="camera-lens bottom"></div>
+      </div>
+
+      <div id="screen">
+        <div id="stage">
+          <canvas id="petCanvas"></canvas>
+          <div id="badgeDock"></div>
+          <div id="idleClock"></div>
+          <div id="connDot" title="离线"></div>
+        </div>
+        <div id="settingsCorner"></div>
+      </div>
+    </div>
+
+    <div class="preview-dock">
+      <div class="dock-row">
+        <span class="dock-label">状态源</span>
+        <button class="btn active" data-sim="live">实时同步</button>
+        <button class="btn" data-sim="idle">空闲</button>
+        <button class="btn" data-sim="running">运行中</button>
+        <button class="btn warn" data-sim="waiting">等待审批</button>
+        <button class="btn mint" data-sim="completed">完成未读</button>
+        <button class="btn" data-sim="failed">失败</button>
+        <button class="btn" data-sim="multi">多 Agent 并发</button>
+      </div>
+      <div class="dock-row">
+        <span class="dock-label">背屏校准</span>
+        <label class="slider-group">
+          左侧挖孔避让
+          <input type="range" id="deskSafeLeft" min="0" max="42" step="1" />
+          <span id="deskSafeLeftVal">28%</span>
+        </label>
+        <label class="slider-group">
+          眼睛大小
+          <input type="range" id="deskEyeScale" min="0.65" max="1.35" step="0.05" />
+          <span id="deskEyeScaleVal">1.0</span>
+        </label>
+        <label class="slider-group">
+          亮度
+          <input type="range" id="deskBright" min="0.35" max="1.0" step="0.05" />
+          <span id="deskBrightVal">100%</span>
+        </label>
+        <button class="btn" id="deskClockToggle">空闲时钟: 开</button>
+        <button class="btn" id="deskCutoutToggle">显示挖孔框</button>
+        <button class="btn" id="deskResetBtn">重置默认</button>
+      </div>
+    </div>
+
+    <div class="setup-console" id="setupConsole">
+      <div class="setup-card wide">
+        <div class="card-head">
+          <span class="card-title">新手 4 步上手指南（不用翻文档，照着做 3 分钟搞定）</span>
+          <span class="status-pill" id="guideProgressPill">按 ① → ④ 顺序操作</span>
+        </div>
+        <div class="guide-grid">
+          <div class="guide-step">
+            <div class="guide-step-head">
+              <span>① 接入电脑 AI</span>
+              <span class="step-num">1</span>
+            </div>
+            <p>在下方<b>卡片 1</b> 找到你用的软件点<b>「一键接入」</b>，然后<b>重启一次该 AI 软件</b>生效。</p>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-head">
+              <span>② 手机装 App</span>
+              <span class="step-num">2</span>
+            </div>
+            <p>用<b>小米浏览器 / Via</b> 扫<b>卡片 2</b> 二维码安装 <b>背屏 AI 桌宠</b>（投小米背屏所需的 Shizuku 可在手机 App 内直接下载）。</p>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-head">
+              <span>③ 一键投背屏</span>
+              <span class="step-num">3</span>
+            </div>
+            <p>打开手机 App 自动连上本机 → 按 App 顶部提示装好并授权 Shizuku → 点<b>「一键投到妙享背屏」</b>。</p>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-head">
+              <span>④ 校准与实测</span>
+              <span class="step-num">4</span>
+            </div>
+            <p>背屏上<b>单指长按 2 秒</b>微调双摄挖孔避让；点卡片 1 底部的<b>「实机联调」</b>验证实时同步。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="setup-card">
+        <div class="card-head">
+          <span class="card-title">1. 一键接入本机 AI Agent</span>
+          <span class="status-pill online" id="hubModePill">独立模式在线</span>
+        </div>
+        <div class="agent-list" id="agentList">
+          <div style="font-size:11px; color:rgba(255,255,255,0.45);">正在检测本机已安装的 AI 编程助手...</div>
+        </div>
+        <div class="test-bar">
+          <span style="font-size:11px; color:rgba(255,255,255,0.5);">实机联调：</span>
+          <select class="agent-select" id="testProviderSelect" aria-label="选择测试 Agent">
+            <option value="codex">Codex</option>
+            <option value="dsh">DSH</option>
+            <option value="antigravity">AGY</option>
+            <option value="claude">Claude</option>
+            <option value="workbuddy">WorkBuddy</option>
+            <option value="cursor">Cursor</option>
+            <option value="custom">Task</option>
+          </select>
+          <button class="btn" data-live-test="running">推「运行中」</button>
+          <button class="btn warn" data-live-test="waiting_user">推「等审批」</button>
+          <button class="btn mint" data-live-test="completed_unread">推「任务完成」</button>
+          <button class="btn" data-live-test="idle">恢复空闲</button>
+        </div>
+        <div class="console-toast" id="consoleToast"></div>
+      </div>
+
+      <div class="setup-card">
+        <div class="card-head">
+          <span class="card-title">2. 手机扫码配对 & 专属 App 直装</span>
+          <span class="status-pill" id="phoneConnPill">等待手机连入</span>
+        </div>
+        <div class="qr-tabs" role="tablist">
+          <button class="qr-tab active" id="tabApkQr" data-qr-tab="apk">背屏桌宠 App</button>
+          <button class="qr-tab" id="tabShizukuQr" data-qr-tab="shizuku">Shizuku 直装</button>
+          <button class="qr-tab" id="tabWebQr" data-qr-tab="web">纯黑网页版</button>
+        </div>
+        <div class="qr-stage">
+          <img id="activeQrImg" alt="Scan QR Code" />
+          <div class="qr-label" id="activeQrLabel">扫码安装 MiRearPet.apk</div>
+          <div class="qr-sub" id="activeQrSub">打开 App 自动发现本机 · 一键投背屏</div>
+          <a class="btn active" id="apkDownloadLink" href="/download/MiRearPet.apk" style="text-decoration:none;">直接下载 APK</a>
+        </div>
+        <div style="font-size:10.5px; color:rgba(255,255,255,0.5); line-height:1.45;">
+          提示：推荐用<b>小米自带浏览器 / Via</b>扫码打开（微信会拦截局域网；若手机 Edge / Chrome 报 <code>ERR_TOO_MANY_RETRIES</code>，换系统浏览器或在浏览器设置里关掉「安全 DNS / 始终使用安全连接」）。
+        </div>
+        <div class="copy-row">
+          <code id="lanUrlText">http://127.0.0.1:8765/</code>
+          <button class="btn" id="copyLanBtn">复制地址</button>
+        </div>
+      </div>
+
+      <details class="setup-card wide dev-fold">
+        <summary>
+          <span><span class="fold-arrow">▸</span>手机端详细步骤：Shizuku 激活、小米背屏设置、普通手机玩法与连不上排查</span>
+          <span class="status-pill">展开查看</span>
+        </summary>
+        <div class="fold-body">
+          <div class="faq-grid">
+            <div class="faq-box">
+              <h4>1. 小米手机怎么免 Root 激活 Shizuku？</h4>
+              <ol>
+                <li>先扫码装好<b>背屏 AI 桌宠</b> App，打开后点里面的<b>「下载安装 Shizuku」</b>即可在手机上直接下载安装。</li>
+                <li>手机进「设置 → 我的设备 → 全部参数与信息」连点<b>OS 版本</b>打开开发者选项。</li>
+                <li>进「更多设置 → 开发者选项」打开 <b>USB 调试</b>、<b>无线调试</b>、<b>USB 调试（安全设置）</b>。</li>
+                <li>打开 Shizuku 点<b>「配对」</b>，回「无线调试 → 使用配对码配对设备」把 6 位配对码填进通知栏，再回 Shizuku 点<b>「启动」</b>。</li>
+              </ol>
+              <div style="margin-top:4px; color:rgba(255,211,122,0.85);">小坑：通知栏看不到输入框时，去「设置 → 通知与控制中心 → 通知显示设置」临时切一次「原生样式」即可。</div>
+            </div>
+            <div class="faq-box">
+              <h4>2. 装好手机 App 后怎么投背屏？</h4>
+              <ol>
+                <li>确保手机和电脑连<b>同一个 Wi-Fi</b>，打开手机上的<b>「背屏 AI 桌宠」</b>，会自动搜到你的电脑并连上。</li>
+                <li>点<b>「一键授权 Shizuku」</b>→ 选「始终允许」，然后点<b>「一键投到妙享背屏」</b>，翻转手机即可看到大眼睛！</li>
+                <li>若希望正面锁屏时背屏也常亮不退出，打开 App 里的<b>「守护模式」</b>开关，并把 Shizuku 与本 App 省电策略设为<b>无限制</b>。</li>
+                <li><b>没有小米背屏？</b>任意旧安卓手机/平板不用装 Shizuku，直接点 App 底部的<b>「当前屏幕全屏运行 AI 桌宠」</b>；iPhone/iPad 切上方「纯黑背屏网页」扫码即可。</li>
+              </ol>
+            </div>
+            <div class="faq-box">
+              <h4>3. 手机扫码打不开 / 报 ERR_TOO_MANY_RETRIES？</h4>
+              <ul>
+                <li><b>换浏览器</b>：别用微信扫码；若手机 Edge / Chrome 报 <code>ERR_TOO_MANY_RETRIES</code>，换<b>小米自带浏览器 / Via</b>，或在浏览器设置里关闭「使用安全 DNS」与「始终使用安全连接」。</li>
+                <li><b>Windows 电脑</b>：右键以管理员身份运行一次文件夹里的 <code>Windows放行防火墙8765端口.bat</code>。</li>
+                <li><b>macOS 电脑</b>：去「系统设置 → 隐私与安全性 → 本地网络」确认 <code>终端</code> 已允许访问本地网络。</li>
+                <li><b>代理干扰</b>：确认手机未开梯子/VPN，且与电脑在同一 Wi-Fi 网段。</li>
+              </ul>
+            </div>
+            <div class="faq-box">
+              <h4>4. 接入 Agent 后背屏没反应 & 背屏手势</h4>
+              <ul>
+                <li><b>没反应先重启软件 & 信任钩子</b>：在卡片 1 点完「一键接入」后，务必<b>完全退出并重开一次</b>对应 AI 软件；如果使用的是 <b>Codex</b>，重启后还需进入 <b>Codex 设置 → Hooks</b>（或在命令行 Codex 输入 <code>/hooks</code>）逐条<b>信任</b>「Mi Rear AI Pet status」钩子（Codex 安全机制默认拦截未信任的外部 Hook）。</li>
+                <li><b>背屏手势说明</b>：单击左/右眼眨眼，点眉心雷达审视，左右轻滑触发超频/无语彩蛋，<b>单指长按 2 秒</b>调出校准面板（支持一键重置默认）。</li>
+                <li><b>遇到问题反馈</b>：展开手机 App 最底部的「诊断日志」点「复制日志」即可发给作者排查。</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="setup-card wide dev-fold">
+        <summary>
+          <span><span class="fold-arrow">▸</span>进阶（可选）：开发者通用 Webhook 接口 · 接入其他 Agent 或自定义脚本</span>
+          <span class="status-pill">POST /api/event</span>
+        </summary>
+        <div class="fold-body">
+          <div style="font-size:11px; color:rgba(255,255,255,0.48); line-height:1.45;">
+            仅用上方已支持 Agent 时无需配置；如需接入其他工具、编译或训练脚本，发送如下 HTTP 请求即可联动背屏（state 支持 <code>running</code> / <code>waiting_user</code> / <code>completed_unread</code> / <code>failed</code> / <code>idle</code>）：
+          </div>
+          <div class="copy-row">
+            <code id="webhookCmdText">curl -X POST http://127.0.0.1:8765/api/event -H "Content-Type: application/json" -d '{"provider":"custom","state":"running"}'</code>
+            <button class="btn" id="copyWebhookBtn">复制示例</button>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- Phone Touch Settings Drawer (Long-press screen or double-tap top-right) -->
+  <div id="settingsModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span>背屏布局校准</span>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button class="btn" id="mobResetBtn">重置默认</button>
+          <button class="btn active" id="closeModalBtn">完成</button>
+        </div>
+      </div>
+      <div class="modal-row">
+        <span>左侧挖孔避让 (<b id="mobSafeVal">28%</b>)</span>
+        <input type="range" id="mobSafeLeft" min="0" max="42" step="1" />
+      </div>
+      <div class="modal-row">
+        <span>眼睛大小 (<b id="mobScaleVal">1.0</b>)</span>
+        <input type="range" id="mobEyeScale" min="0.65" max="1.35" step="0.05" />
+      </div>
+      <div class="modal-row">
+        <span>OLED 亮度 (<b id="mobBrightVal">100%</b>)</span>
+        <input type="range" id="mobBright" min="0.3" max="1.0" step="0.05" />
+      </div>
+      <div class="modal-row">
+        <span>空闲时显示微弱时钟</span>
+        <button class="btn" id="mobClockToggle">开</button>
+      </div>
+      <div class="modal-row">
+        <span>全屏 / 防息屏</span>
+        <button class="btn active" id="mobFullscreenBtn">进入全屏</button>
+      </div>
+      <div style="font-size:10px; color:rgba(255,255,255,0.45); line-height:1.4;">
+        单击互动 · 左右轻滑触发超频/无语彩蛋 · 单指长按 2 秒唤出校准
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const params = new URLSearchParams(location.search);
+      const isPreview = params.get("preview") === "1";
+      if (isPreview) document.body.classList.add("preview-mode");
+
+      // ================= PERSISTED CONFIG =================
+      const DEFAULT_CFG = {
+        safeLeft: 28,    // % reserved on the left for Xiaomi 17 Pro Max dual camera lenses
+        eyeScale: 1.0,
+        brightness: 1.0,
+        showClock: true,
+        showCutout: true,
+      };
+
+      let cfg = { ...DEFAULT_CFG };
+      try {
+        const saved = JSON.parse(localStorage.getItem("mi_rear_pet_cfg_v1") || "{}");
+        cfg = { ...DEFAULT_CFG, ...saved };
+      } catch (_) {}
+
+      function saveCfg() {
+        try { localStorage.setItem("mi_rear_pet_cfg_v1", JSON.stringify(cfg)); } catch (_) {}
+      }
+
+      const stage = document.getElementById("stage");
+      const canvas = document.getElementById("petCanvas");
+      const ctx = canvas.getContext("2d");
+      const badgeDock = document.getElementById("badgeDock");
+      const idleClock = document.getElementById("idleClock");
+      const connDot = document.getElementById("connDot");
+      const liveBanner = document.getElementById("liveBanner");
+      const cameraOverlay = document.getElementById("cameraOverlay");
+
+      // ================= PROVIDER METADATA =================
+      const PROVIDER_META = {
+        codex: { label: "Codex" },
+        dsh: { label: "DSH" },
+        antigravity: { label: "AGY" },
+        claude: { label: "Claude" },
+        workbuddy: { label: "WorkBuddy" },
+        cursor: { label: "Cursor" },
+        gemini: { label: "Gemini" },
+        custom: { label: "Task" },
+      };
+
+      const STATE_PRIORITY = {
+        waiting_user: 4,
+        running: 3,
+        failed: 2,
+        completed_unread: 1,
+        idle: 0,
+      };
+
+      // ================= LIVE & SIMULATED STATE =================
+      let liveData = {
+        hub_online: false,
+        providers: { codex: "idle", dsh: "idle", claude: "idle", antigravity: "idle" },
+        combined: "idle",
+        completion_epoch: "",
+        completions: [],
+      };
+      let simMode = "live";
+      let sseConnected = false;
+
+      // Track transient completion events (catches Antigravity, Gemini, and foreground-read Codex/DSH!)
+      let seenCompletionEpoch = null;
+      let seenCompletionSeq = 0;
+      const transientCompletedUntil = {}; // provider -> perf.now() deadline for badge
+      let celebrateBurstUntil = 0;        // perf.now() deadline for green crescent celebration
+
+      function processLiveCompletions(payload) {
+        const epoch = payload.completion_epoch || "";
+        const list = Array.isArray(payload.completions) ? payload.completions : [];
+        const nowPerf = performance.now();
+        const serverNow = typeof payload.server_time === "number" ? payload.server_time : Date.now() / 1000;
+
+        if (seenCompletionEpoch === null || seenCompletionEpoch !== epoch) {
+          seenCompletionEpoch = epoch;
+          let maxSeq = 0;
+          for (const item of list) {
+            if (typeof item.sequence === "number" && item.sequence > maxSeq) maxSeq = item.sequence;
+            // On fresh page connect, celebrate only if completion happened within last 5 seconds
+            if (item.provider && typeof item.at === "number" && (serverNow - item.at) < 5.0) {
+              transientCompletedUntil[item.provider] = Math.max(transientCompletedUntil[item.provider] || 0, nowPerf + 6000);
+              celebrateBurstUntil = Math.max(celebrateBurstUntil, nowPerf + 4500);
+            }
+          }
+          seenCompletionSeq = maxSeq;
+          return;
+        }
+
+        let gotNew = false;
+        for (const item of list) {
+          if (typeof item.sequence === "number" && item.sequence > seenCompletionSeq) {
+            seenCompletionSeq = item.sequence;
+            const p = item.provider;
+            if (p && PROVIDER_META[p]) {
+              transientCompletedUntil[p] = nowPerf + 8000;
+              gotNew = true;
+            }
+          }
+        }
+        if (gotNew) {
+          const isBusyElsewhere = payload.combined === "running";
+          celebrateBurstUntil = Math.max(celebrateBurstUntil, nowPerf + (isBusyElsewhere ? 4000 : 6500));
+          // Elastic joyful pop + emerald completion sparks!
+          if (typeof anim !== "undefined" && anim.bounceY) {
+            anim.bounceY.vel -= 190;
+            anim.squashX.vel += 2.0;
+            anim.squashY.vel -= 2.0;
+          }
+          if (typeof spawnParticle === "function" && typeof cw === "number") {
+            const winGlyphs = ["✓", "✦", "◆"];
+            for (let i = 0; i < 6; i++) {
+              spawnParticle("text", cw * 0.5 + (Math.random() - 0.5) * cw * 0.48, ch * 0.36, {
+                text: winGlyphs[i % winGlyphs.length],
+                vx: (Math.random() - 0.5) * 60,
+                vy: -32 - Math.random() * 30,
+                size: 9 + Math.random() * 4,
+                color: "rgba(64, 248, 166, 0.95)",
+              });
+            }
+          }
+        }
+      }
+
+      const SIM_PRESETS = {
+        idle: {
+          hub_online: true,
+          providers: { codex: "idle", dsh: "idle", claude: "idle", antigravity: "idle" },
+          combined: "idle",
+        },
+        running: {
+          hub_online: true,
+          providers: { codex: "running", dsh: "idle", claude: "idle", antigravity: "idle" },
+          combined: "running",
+        },
+        dsh_running: {
+          hub_online: true,
+          providers: { codex: "idle", dsh: "running", claude: "idle", antigravity: "idle" },
+          combined: "running",
+        },
+        waiting: {
+          hub_online: true,
+          providers: { codex: "waiting_user", dsh: "idle", claude: "idle", antigravity: "idle" },
+          combined: "waiting_user",
+        },
+        completed: {
+          hub_online: true,
+          providers: { codex: "completed_unread", dsh: "idle", claude: "idle", antigravity: "idle" },
+          combined: "completed_unread",
+        },
+        multi: {
+          hub_online: true,
+          providers: { codex: "completed_unread", dsh: "running", claude: "idle", antigravity: "running" },
+          combined: "running",
+        },
+        failed: {
+          hub_online: true,
+          providers: { codex: "idle", dsh: "failed", claude: "idle", antigravity: "idle" },
+          combined: "failed",
+        },
+      };
+
+      function getActiveState() {
+        if (simMode !== "live") return SIM_PRESETS[simMode] || liveData;
+        const nowPerf = performance.now();
+        const mergedProviders = { ...(liveData.providers || {}) };
+        let hasTransient = false;
+        for (const [p, until] of Object.entries(transientCompletedUntil)) {
+          if (nowPerf < until) {
+            if (!mergedProviders[p] || mergedProviders[p] === "idle") {
+              mergedProviders[p] = "completed_unread";
+              hasTransient = true;
+            }
+          }
+        }
+        let combined = liveData.combined || "idle";
+        // Briefly celebrate a freshly completed task (unless waiting_user requires urgent attention!)
+        if (nowPerf < celebrateBurstUntil && combined !== "waiting_user") {
+          combined = "completed_unread";
+        } else if (combined === "idle" && hasTransient) {
+          combined = "completed_unread";
+        }
+        return { ...liveData, providers: mergedProviders, combined };
+      }
+
+      // ================= APPLY LAYOUT & CONTROLS =================
+      function applyConfig() {
+        stage.style.left = `${cfg.safeLeft}%`;
+        document.documentElement.style.setProperty("--safe-left", `${cfg.safeLeft}%`);
+        document.documentElement.style.setProperty("--brightness", String(cfg.brightness));
+        cameraOverlay.classList.toggle("hidden-cutout", !cfg.showCutout);
+
+        // Sync desktop UI
+        const dSafe = document.getElementById("deskSafeLeft");
+        if (dSafe) {
+          dSafe.value = cfg.safeLeft;
+          document.getElementById("deskSafeLeftVal").textContent = `${cfg.safeLeft}%`;
+          document.getElementById("deskEyeScale").value = cfg.eyeScale;
+          document.getElementById("deskEyeScaleVal").textContent = cfg.eyeScale.toFixed(2);
+          document.getElementById("deskBright").value = cfg.brightness;
+          document.getElementById("deskBrightVal").textContent = `${Math.round(cfg.brightness * 100)}%`;
+          document.getElementById("deskClockToggle").textContent = `空闲时钟: ${cfg.showClock ? "开" : "关"}`;
+          document.getElementById("deskCutoutToggle").classList.toggle("active", cfg.showCutout);
+        }
+
+        // Sync mobile modal UI
+        document.getElementById("mobSafeLeft").value = cfg.safeLeft;
+        document.getElementById("mobSafeVal").textContent = `${cfg.safeLeft}%`;
+        document.getElementById("mobEyeScale").value = cfg.eyeScale;
+        document.getElementById("mobScaleVal").textContent = cfg.eyeScale.toFixed(2);
+        document.getElementById("mobBright").value = cfg.brightness;
+        document.getElementById("mobBrightVal").textContent = `${Math.round(cfg.brightness * 100)}%`;
+        document.getElementById("mobClockToggle").textContent = cfg.showClock ? "开" : "关";
+
+        resizeCanvas();
+        renderBadges();
+      }
+
+      // ================= BADGE RENDERING (ONLY NON-IDLE AGENTS) =================
+      let lastBadgeSignature = "";
+      function renderBadges() {
+        const st = getActiveState();
+        const providers = st.providers || {};
+        const entries = Object.entries(providers)
+          .filter(([k, v]) => PROVIDER_META[k] && v && v !== "idle")
+          .sort((a, b) => (STATE_PRIORITY[b[1]] || 0) - (STATE_PRIORITY[a[1]] || 0));
+
+        const sig = JSON.stringify(entries) + "|" + cfg.showClock;
+        if (sig === lastBadgeSignature) return;
+        lastBadgeSignature = sig;
+
+        badgeDock.innerHTML = "";
+
+        if (entries.length === 0) {
+          badgeDock.style.opacity = "0";
+          idleClock.style.opacity = cfg.showClock ? "1" : "0";
+          return;
+        }
+
+        idleClock.style.opacity = "0";
+        badgeDock.style.opacity = "1";
+
+        for (const [key, state] of entries) {
+          const el = document.createElement("div");
+          el.className = `badge state-${state}`;
+          const name = PROVIDER_META[key].label;
+
+          if (state === "completed_unread") {
+            el.innerHTML = `<span class="check">✓</span><span>${name}</span>`;
+          } else if (state === "waiting_user") {
+            el.innerHTML = `<span class="dot"></span><span>${name} ?</span>`;
+          } else if (state === "failed") {
+            el.innerHTML = `<span class="dot"></span><span>${name} !</span>`;
+          } else {
+            el.innerHTML = `<span class="dot"></span><span>${name}</span>`;
+          }
+          badgeDock.appendChild(el);
+        }
+      }
+
+      function updateClock() {
+        const d = new Date();
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mm = String(d.getMinutes()).padStart(2, "0");
+        idleClock.textContent = `${hh}:${mm}`;
+      }
+      updateClock();
+      setInterval(updateClock, 5000);
+
+      // ================= SSE CONNECTION =================
+      let eventSource = null;
+      let reconnectTimer = null;
+
+      function connectSSE() {
+        if (eventSource) eventSource.close();
+        eventSource = new EventSource(isPreview ? "/api/events?role=preview" : "/api/events?role=phone");
+
+        eventSource.onopen = () => {
+          sseConnected = true;
+          connDot.classList.remove("offline");
+          updateBanner();
+        };
+
+        eventSource.onmessage = (ev) => {
+          try {
+            const payload = JSON.parse(ev.data);
+            liveData = payload;
+            processLiveCompletions(payload);
+            renderBadges();
+            updateBanner();
+            if (isPreview) updatePhoneConnIndicator(payload.connected_phones || 0);
+          } catch (_) {}
+        };
+
+        eventSource.onerror = () => {
+          sseConnected = false;
+          connDot.classList.add("offline");
+          updateBanner();
+          eventSource.close();
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(connectSSE, 2000);
+        };
+      }
+
+      function updateBanner() {
+        if (!liveBanner) return;
+        if (simMode !== "live") {
+          liveBanner.textContent = `当前为演示模式 (${simMode}) · 点「实时同步」切回本机真实状态`;
+          return;
+        }
+        if (!sseConnected) {
+          liveBanner.textContent = "等待连接本机本地服务...";
+          return;
+        }
+        const activeList = Object.entries(liveData.providers || {})
+          .filter(([, v]) => v !== "idle")
+          .map(([k, v]) => `${PROVIDER_META[k]?.label || k}: ${v}`);
+        liveBanner.textContent = activeList.length
+          ? `实时同步中 · ${activeList.join(" / ")}`
+          : "实时同步中 · 所有 AI 助手当前空闲";
+      }
+
+      connectSSE();
+
+      // ================= WAKE LOCK & FULLSCREEN =================
+      let wakeLock = null;
+      async function requestWakeLock() {
+        try {
+          if ("wakeLock" in navigator) {
+            wakeLock = await navigator.wakeLock.request("screen");
+          }
+        } catch (_) {}
+      }
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") requestWakeLock();
+      });
+      requestWakeLock();
+
+      // ================= EXPRESSIVE BIG-EYES ENGINE (SPRING + PERSONALITY) =================
+      let cw = 300, ch = 200, dpr = 1;
+      function resizeCanvas() {
+        const rect = stage.getBoundingClientRect();
+        dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        cw = Math.max(100, rect.width);
+        ch = Math.max(100, rect.height);
+        canvas.width = Math.round(cw * dpr);
+        canvas.height = Math.round(ch * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      window.addEventListener("resize", resizeCanvas);
+
+      // 2nd-order damped spring for organic Pixar / EMO motion with natural overshoot
+      function makeSpring(val = 0, stiffness = 170, damping = 16) {
+        return { v: val, vel: 0, target: val, k: stiffness, d: damping };
+      }
+      function stepSpring(s, dt) {
+        const force = (s.target - s.v) * s.k;
+        s.vel += force * dt;
+        s.vel *= Math.exp(-s.d * dt);
+        s.v += s.vel * dt;
+        return s.v;
+      }
+
+      // Color palettes by emotion (each state has an unmistakably distinct color & energy!)
+      const COLORS = {
+        idle:             { r: 158, g: 196, b: 228 }, // calm moonlit silver-ice blue (quiet standby)
+        sleepy:           { r: 102, g: 136, b: 172 }, // dim cool slate-blue low-power rest
+        running:          { r: 28,  g: 240, b: 255 }, // vivid electric cyan (active high-energy)
+        waiting_user:     { r: 255, g: 180, b: 36  }, // vivid amber gold
+        completed_unread: { r: 44,  g: 245, b: 158 }, // emerald mint
+        failed:           { r: 255, g: 72,  b: 92  }, // crimson alert
+        petted:           { r: 80,  g: 248, b: 255 },
+      };
+
+      // Smooth animated cyber-eye + bold sculpted floating brow state
+      const anim = {
+        r: 58, g: 218, b: 255,
+        lw: 1, lh: 1, lAngle: 0,
+        rw: 1, rh: 1, rAngle: 0,
+        lBrowY: -0.78, lBrowA: 0.04, lBrowC: 0.10,
+        rBrowY: -0.78, rBrowA: -0.04, rBrowC: 0.10,
+        browAlpha: 1,
+        happy: 0,
+        alertMode: 0,
+        gazeX: makeSpring(0, 160, 14),
+        gazeY: makeSpring(0, 160, 14),
+        headTilt: makeSpring(0, 130, 13),
+        bounceY: makeSpring(0, 220, 15),
+        squashX: makeSpring(1, 250, 15),
+        squashY: makeSpring(1, 250, 15),
+      };
+
+      // Micro-life choreography timers
+      let lastTs = performance.now();
+      let idleStart = performance.now();
+      let prevCombined = "idle";
+      let nextBlinkAt = performance.now() + 2400;
+      let blinkPhase = 0;
+      let doubleBlinkQueued = false;
+
+      // Multi-phase personality choreographer
+      let choreoNextAt = performance.now() + 1400;
+      let idleBeat = "center";   // center | curious_l | curious_r | peek_up | mini_smile
+      let runStep = 0;           // saccadic line-reading steps
+      let runPhase = "read";     // read | think | groove
+      let runPhaseEndAt = performance.now() + 3600;
+      let nextWaitHopAt = performance.now() + 1200;
+      let nextHappyHopAt = performance.now() + 1800;
+      let nextFailShiverAt = performance.now() + 1600;
+      let shiverUntil = 0;
+      let tapReact = { kind: null, until: 0, start: 0, tx: 0, ty: 0, side: 1 };
+      let tapCombo = 0;
+      let lastTapAt = 0;
+      let idleTapIdx = 0;
+      let particles = [];
+      let ripples = [];
+
+      function spawnParticle(type, x, y, opts = {}) {
+        particles.push({
+          type,
+          x,
+          y,
+          vx: opts.vx ?? (Math.random() - 0.5) * 26,
+          vy: opts.vy ?? (-24 - Math.random() * 28),
+          gravity: opts.gravity ?? 0,
+          wobble: Math.random() * Math.PI * 2,
+          life: 1.0,
+          decay: opts.decay ?? (0.5 + Math.random() * 0.35),
+          size: opts.size ?? (8 + Math.random() * 6),
+          color: opts.color ?? null,
+          text: opts.text ?? null,
+        });
+      }
+
+      function spawnRipple(x, y, maxR = 72, color = null) {
+        ripples.push({ x, y, r: 8, maxR, life: 1.0, color });
+      }
+
+      // Single-tap & horizontal swipe trigger state-aware interactions (avoids HyperOS double-tap!)
+      // Deliberate 2.2s single-finger long-press opens camera-safe calibration drawer on phone (prevents pocket mistouch).
+      let pressTimer = null;
+      let longPressed = false;
+      let downX = 0, downY = 0;
+      const activePointers = new Set();
+
+      canvas.addEventListener("pointerdown", (e) => {
+        activePointers.add(e.pointerId);
+        if (activePointers.size > 1) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+          return;
+        }
+        longPressed = false;
+        downX = e.clientX;
+        downY = e.clientY;
+        requestWakeLock();
+        if (!isPreview) {
+          clearTimeout(pressTimer);
+          pressTimer = setTimeout(() => {
+            if (activePointers.size === 1) {
+              longPressed = true;
+              openSettingsModal();
+            }
+          }, 2200);
+        }
+      });
+
+      canvas.addEventListener("pointermove", (e) => {
+        if (Math.hypot(e.clientX - downX, e.clientY - downY) > 12) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+      });
+
+      canvas.addEventListener("pointercancel", (e) => {
+        activePointers.delete(e.pointerId);
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      });
+
+      canvas.addEventListener("pointerup", (e) => {
+        activePointers.delete(e.pointerId);
+        clearTimeout(pressTimer);
+        pressTimer = null;
+        if (!longPressed) {
+          const rect = canvas.getBoundingClientRect();
+          const px = e.clientX - rect.left;
+          const py = e.clientY - rect.top;
+          const isSwipe = Math.abs(e.clientX - downX) > 28;
+          triggerTapInteraction(px, py, isSwipe);
+        }
+      });
+
+      canvas.addEventListener("pointercancel", () => clearTimeout(pressTimer));
+
+      function triggerTapInteraction(px, py, isSwipe = false) {
+        const now = performance.now();
+        const normX = Math.max(-1, Math.min(1, (px / Math.max(1, cw) - 0.5) * 2));
+        const normY = Math.max(-1, Math.min(1, (py / Math.max(1, ch) - 0.5) * 2));
+        const side = normX < 0 ? -1 : 1;
+
+        // Wider combo window (2.6s) so slow taps (>0.6s apart, never triggering HyperOS double-tap!) still combo
+        tapCombo = (now - lastTapAt < 2600) ? Math.min(tapCombo + 1, 5) : 1;
+        lastTapAt = now;
+
+        const st = getActiveState();
+        const combined = st.combined || "idle";
+        const currentlySleepy = combined === "idle" && (now - idleStart > 22000);
+
+        // Single crisp ripple right where you tap (never random center rings)
+        spawnRipple(px, py, 58 + tapCombo * 8);
+
+        if (currentlySleepy) {
+          // Poked awake from standby sleep: "!" + scattered sleepy "z" particles
+          idleStart = now;
+          tapReact = { kind: "wake_startle", start: now, until: now + 1150, tx: normX, ty: normY, side };
+          anim.bounceY.vel -= 220;
+          anim.squashX.vel -= 2.0;
+          anim.squashY.vel += 2.2;
+          anim.headTilt.vel += side * 1.4;
+          spawnParticle("text", px, py - 12, { text: "!", size: 13, vy: -42, vx: side * 14 });
+          for (let i = 0; i < 2; i++) {
+            spawnParticle("z", px + (Math.random() - 0.5) * 40, py - 8, {
+              vx: (Math.random() - 0.5) * 65,
+              vy: -30 - Math.random() * 20,
+              size: 8 + Math.random() * 3,
+            });
+          }
+          return;
+        }
+
+        if (combined === "idle") {
+          idleStart = now;
+          if (isSwipe || tapCombo >= 3) {
+            // Swipe or 3 slow taps in idle -> cool unimpressed deadpan stare ("...really?")
+            const alreadyDeadpan = tapReact.kind === "idle_dodge" && now < tapReact.until;
+            tapReact = { kind: "idle_dodge", start: alreadyDeadpan ? tapReact.start : now, until: now + 1300, tx: normX, ty: normY, side };
+            if (!alreadyDeadpan || isSwipe || tapCombo % 2 === 1) {
+              if (!alreadyDeadpan) anim.headTilt.vel -= side * 1.1;
+              spawnParticle("text", px + (Math.random() - 0.5) * 24, py - 10, {
+                text: alreadyDeadpan ? "…" : "...",
+                vx: side * 10,
+                vy: -22,
+                size: 11,
+                decay: 0.65,
+              });
+            }
+          } else if (Math.abs(normX) > 0.18) {
+            // Left/Right eye spatial wink + crisp silver-ice sparks
+            tapReact = { kind: "idle_wink", start: now, until: now + 900, tx: normX, ty: normY, side };
+            anim.bounceY.vel -= 95;
+            anim.headTilt.vel += side * 1.15;
+            const winkGlyphs = ["✦", "✧", "◈"];
+            for (let i = 0; i < 3; i++) {
+              spawnParticle("text", px + (Math.random() - 0.5) * 34, py - 4, {
+                text: winkGlyphs[i % winkGlyphs.length],
+                vx: (Math.random() - 0.5) * 52,
+                vy: -28 - Math.random() * 22,
+                size: 8 + Math.random() * 3,
+              });
+            }
+          } else {
+            // Center tap -> radar lock-on inspection + cyber crosshair glyph
+            tapReact = { kind: "idle_scan", start: now, until: now + 1150, tx: normX, ty: normY, side };
+            anim.squashX.vel += 1.2;
+            anim.squashY.vel -= 1.2;
+            const scanGlyphs = ["⌖", "◎", "◈"];
+            spawnParticle("text", px, py - 8, {
+              text: scanGlyphs[Math.floor(Math.random() * scanGlyphs.length)],
+              vx: (Math.random() - 0.5) * 14,
+              vy: -26,
+              size: 12,
+              decay: 0.68,
+            });
+          }
+          return;
+        }
+
+        if (combined === "running") {
+          if (isSwipe || tapCombo >= 2) {
+            // Horizontal swipe or slow 2nd tap while busy -> OVERCLOCK / TURBO MODE (no double-tap needed!)
+            tapReact = { kind: "busy_turbo", start: now, until: now + 1350, tx: normX, ty: normY, side };
+            shiverUntil = now + 260;
+            anim.squashX.vel += 2.2;
+            anim.squashY.vel -= 1.8;
+            const turboGlyphs = ["⚡", "⚡", "»", "✦"];
+            for (let i = 0; i < 6; i++) {
+              spawnParticle("text", px + (Math.random() - 0.5) * cw * 0.42, py + (Math.random() - 0.5) * 28, {
+                text: turboGlyphs[Math.floor(Math.random() * turboGlyphs.length)],
+                vx: (Math.random() - 0.5) * 82,
+                vy: -36 - Math.random() * 34,
+                size: 9 + Math.random() * 4,
+                color: "rgba(195, 255, 255, 0.95)",
+              });
+            }
+          } else {
+            // Single tap while busy -> sharp side-glare + coding syntax glyph!
+            tapReact = { kind: "busy_glare", start: now, until: now + 1050, tx: normX, ty: normY, side };
+            shiverUntil = now + 150;
+            anim.headTilt.vel -= side * 1.1;
+            const codeGlyphs = ["#", "</>", "{ }", "//"];
+            spawnParticle("text", px, py - 10, {
+              text: codeGlyphs[Math.floor(Math.random() * codeGlyphs.length)],
+              vx: side * 16,
+              vy: -32,
+              size: 10,
+              decay: 0.72,
+            });
+          }
+          return;
+        }
+
+        if (combined === "waiting_user") {
+          // Urgent eager hop: "Go check your Mac!" + amber alert glyphs
+          tapReact = { kind: "urge_eager", start: now, until: now + 1200, tx: normX, ty: normY, side };
+          anim.bounceY.vel -= 250;
+          anim.squashX.vel -= 1.9;
+          anim.squashY.vel += 2.1;
+          const urgeGlyphs = ["?!", "!", "⇧"];
+          for (let i = 0; i < 3; i++) {
+            spawnParticle("text", px + (Math.random() - 0.5) * 56, py - 8, {
+              text: urgeGlyphs[i % urgeGlyphs.length],
+              vx: (Math.random() - 0.5) * 46,
+              vy: -42 - Math.random() * 24,
+              size: 11 + Math.random() * 3,
+            });
+          }
+          return;
+        }
+
+        if (combined === "completed_unread") {
+          // Proud mission-accomplished celebration + crisp emerald check & star glyphs!
+          tapReact = { kind: "celebrate_highfive", start: now, until: now + 1450, tx: normX, ty: normY, side };
+          anim.bounceY.vel -= 215 + tapCombo * 22;
+          anim.squashX.vel += 2.4;
+          anim.squashY.vel -= 2.4;
+          anim.headTilt.vel += (tapCombo % 2 === 0 ? -1 : 1) * 1.5;
+          const winGlyphs = ["✓", "✦", "◆", "★"];
+          for (let i = 0; i < 4 + tapCombo; i++) {
+            spawnParticle("text", px + (Math.random() - 0.5) * 70, py - 6, {
+              text: winGlyphs[i % winGlyphs.length],
+              vx: (Math.random() - 0.5) * 82,
+              vy: -36 - Math.random() * 38,
+              size: 9 + Math.random() * 4,
+            });
+          }
+          return;
+        }
+
+        if (combined === "failed") {
+          // Mech self-check / reboot recovery + "↻" reset & glitch glyphs!
+          tapReact = { kind: "fail_reboot", start: now, until: now + 1250, tx: normX, ty: normY, side };
+          shiverUntil = now + 260;
+          anim.squashX.vel += 1.6;
+          anim.squashY.vel -= 1.8;
+          spawnParticle("text", px, py - 12, {
+            text: "↻",
+            vx: 0,
+            vy: -26,
+            size: 14,
+            decay: 0.68,
+            color: "rgba(255, 200, 205, 0.95)",
+          });
+          for (let i = 0; i < 2; i++) {
+            spawnParticle("text", px + (Math.random() - 0.5) * 48, py, {
+              text: i === 0 ? "×" : "!",
+              vx: (Math.random() - 0.5) * 54,
+              vy: -30 - Math.random() * 18,
+              size: 9 + Math.random() * 3,
+            });
+          }
+        }
+      }
+
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+
+      // Bold, sculpted cyber-visor eyebrow (chunky luminous tapered bar matching the weight of the eyes)
+      function drawEyebrow(cx, cy, w, thickness, angle, curve, browCss, glowCss, isLeft, alpha) {
+        if (alpha <= 0.02) return;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+
+        const halfW = w * 0.49;
+        const arch = -curve * thickness * 0.85;
+        // Slightly fuller on the inner brow edge, sleekly tapered toward the outer tail
+        const innerR = thickness * 0.56;
+        const outerR = thickness * 0.36;
+        const leftR = isLeft ? outerR : innerR;
+        const rightR = isLeft ? innerR : outerR;
+        const midR = (innerR + outerR) * 0.52;
+
+        ctx.shadowColor = glowCss;
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = browCss;
+
+        ctx.beginPath();
+        ctx.moveTo(-halfW, -leftR);
+        ctx.quadraticCurveTo(0, arch - midR, halfW, -rightR);
+        ctx.arc(halfW, 0, rightR, -Math.PI / 2, Math.PI / 2);
+        ctx.quadraticCurveTo(0, arch + midR, -halfW, leftR);
+        ctx.arc(-halfW, 0, leftR, Math.PI / 2, -Math.PI / 2);
+        ctx.closePath();
+        ctx.fill();
+
+        // Crisp bright specular ridge along upper edge
+        ctx.shadowBlur = 0;
+        ctx.lineCap = "round";
+        ctx.lineWidth = Math.max(2, thickness * 0.18);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.38)";
+        ctx.beginPath();
+        ctx.moveTo(-halfW * 0.72, arch * 0.25 - leftR * 0.42);
+        ctx.quadraticCurveTo(0, arch - midR * 0.48, halfW * 0.72, arch * 0.25 - rightR * 0.42);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawExpressiveEye(opts) {
+        const {
+          cx, cy, w, h, blink, eyeAngle, happy, alertMode,
+          colorCss, glowCss, gazeX, gazeY, isLeft, t, isRunning, glitchSlice
+        } = opts;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(eyeAngle);
+
+        // 1. Bold filled luminous crescent-visor eye (EVE / Vector proud "mission done" smile, NOT skinny wire!)
+        if (happy > 0.52) {
+          const cw2 = w * 0.56;
+          const topY = -h * 0.42;
+          const botY = h * 0.26;
+          const innerPeak = -h * 0.04;
+
+          ctx.shadowColor = glowCss;
+          ctx.shadowBlur = 28;
+          ctx.fillStyle = colorCss;
+
+          ctx.beginPath();
+          // Thick sculptural upward crescent with rounded tips
+          ctx.moveTo(-cw2, botY);
+          ctx.bezierCurveTo(-cw2 * 0.85, topY * 1.15, cw2 * 0.85, topY * 1.15, cw2, botY);
+          ctx.quadraticCurveTo(cw2 * 0.92, botY + h * 0.14, cw2 * 0.72, botY + h * 0.04);
+          ctx.quadraticCurveTo(0, innerPeak, -cw2 * 0.72, botY + h * 0.04);
+          ctx.quadraticCurveTo(-cw2 * 0.92, botY + h * 0.14, -cw2, botY);
+          ctx.closePath();
+          ctx.fill();
+
+          // Clip inner scanlines + glossy highlight onto filled crescent
+          ctx.save();
+          ctx.clip();
+          ctx.shadowBlur = 0;
+
+          ctx.fillStyle = "rgba(0, 0, 0, 0.075)";
+          const step = Math.max(4, Math.round(h / 16));
+          for (let sy = Math.floor(topY * 1.3); sy < botY + h * 0.2; sy += step) {
+            ctx.fillRect(-cw2 - 4, sy, cw2 * 2 + 8, 1.2);
+          }
+
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.42)";
+          ctx.lineCap = "round";
+          ctx.lineWidth = Math.max(3, h * 0.075);
+          ctx.beginPath();
+          ctx.moveTo(-cw2 * 0.52, -h * 0.06);
+          ctx.quadraticCurveTo(0, topY * 0.72, cw2 * 0.42, -h * 0.12);
+          ctx.stroke();
+          ctx.restore();
+
+          ctx.restore();
+          return;
+        }
+
+        // 2. Pure luminous cyber-visor eye (used for idle, running, waiting_user, AND badass mecha failed!)
+        const effH = Math.max(6, h * (1 - blink * 0.92));
+        const effW = w * (1 + blink * 0.08);
+        const radius = alertMode > 0.5
+          ? Math.min(effW * 0.22, effH * 0.34)   // sharper angular mecha-alert visor corners
+          : Math.min(effW * 0.36, effH * 0.46);
+        const x = -effW / 2;
+        const y = -effH / 2 + (h - effH) * 0.14;
+
+        ctx.shadowColor = glowCss;
+        ctx.shadowBlur = 26;
+        ctx.fillStyle = colorCss;
+
+        // Occasional horizontal cyber glitch slice in failed mode
+        if (glitchSlice !== 0) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(x - 20, y - 4, effW + 40, effH * 0.52 + 4);
+          ctx.clip();
+          ctx.translate(glitchSlice, 0);
+          ctx.beginPath();
+          ctx.roundRect(x, y, effW, effH, radius);
+          ctx.fill();
+          ctx.restore();
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(x - 20, y + effH * 0.52, effW + 40, effH * 0.55);
+          ctx.clip();
+          ctx.translate(-glitchSlice * 0.7, 0);
+          ctx.beginPath();
+          ctx.roundRect(x, y, effW, effH, radius);
+          ctx.fill();
+          ctx.restore();
+        } else {
+          ctx.beginPath();
+          ctx.roundRect(x, y, effW, effH, radius);
+          ctx.fill();
+        }
+
+        // Clip inner futuristic depth + scanlines + sharp speculars
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(x, y, effW, effH, radius);
+        ctx.clip();
+        ctx.shadowBlur = 0;
+
+        // Subtle inner iris depth tracking gaze
+        const px = gazeX * 0.45;
+        const py = gazeY * 0.34;
+        const irisGrad = ctx.createRadialGradient(
+          px, y + effH * 0.5 + py, Math.min(effW, effH) * 0.05,
+          px, y + effH * 0.5 + py, Math.max(effW, effH) * 0.72
+        );
+        irisGrad.addColorStop(0, alertMode > 0.5 ? "rgba(45, 0, 8, 0.34)" : "rgba(0, 16, 32, 0.24)");
+        irisGrad.addColorStop(0.58, "rgba(0, 8, 18, 0.04)");
+        irisGrad.addColorStop(1, "rgba(255, 255, 255, 0.18)");
+        ctx.fillStyle = irisGrad;
+        ctx.fillRect(x, y, effW, effH);
+
+        // Subtle cyber horizontal scanlines
+        ctx.fillStyle = "rgba(0, 0, 0, 0.085)";
+        const step = Math.max(4, Math.round(effH / 16));
+        for (let sy = Math.floor(y); sy < y + effH; sy += step) {
+          ctx.fillRect(x, sy, effW, 1.2);
+        }
+
+        // Active computation sweep while running, or alert warning pulse while failed
+        if ((isRunning || alertMode > 0.5) && effH > 16) {
+          const speed = alertMode > 0.5 ? 1.5 : 0.9;
+          const sweepPhase = ((t * speed + (isLeft ? 0 : 0.12)) % 1.4) - 0.2;
+          const sweepY = y + sweepPhase * effH;
+          const sweepGrad = ctx.createLinearGradient(0, sweepY - 14, 0, sweepY + 14);
+          sweepGrad.addColorStop(0, "rgba(255, 255, 255, 0)");
+          sweepGrad.addColorStop(0.5, "rgba(255, 255, 255, 0.24)");
+          sweepGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
+          ctx.fillStyle = sweepGrad;
+          ctx.fillRect(x, sweepY - 14, effW, 28);
+        }
+
+        // Crisp visor catchlight
+        if (effH > 20) {
+          const shimmer = 0.36 + Math.sin(t * 4.2 + (isLeft ? 0 : 0.6)) * 0.06;
+          const sx = effW * 0.20 + gazeX * 0.26;
+          const sy = y + effH * 0.28 + gazeY * 0.16;
+          const rw = Math.min(effW, effH) * 0.15;
+          const rh = Math.min(effW, effH) * 0.095;
+
+          ctx.fillStyle = `rgba(255, 255, 255, ${shimmer.toFixed(2)})`;
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, rw, rh, -0.35, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = "rgba(255, 255, 255, 0.28)";
+          ctx.beginPath();
+          ctx.arc(sx - rw * 1.15, sy + rh * 1.35, rh * 0.48, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+
+        ctx.restore();
+      }
+
+      function tick(now) {
+        const dt = Math.min(0.05, Math.max(0.001, (now - lastTs) / 1000));
+        lastTs = now;
+        const t = now * 0.001;
+
+        const st = getActiveState();
+        const combined = st.combined || "idle";
+        const hasBadges = Object.entries(st.providers || {}).some(([k, v]) => PROVIDER_META[k] && v && v !== "idle");
+        // Refresh badges automatically when transient completion badges expire
+        renderBadges();
+
+        // React lively on state transitions!
+        if (combined !== prevCombined) {
+          prevCombined = combined;
+          if (combined === "idle") {
+            idleStart = now;
+            idleBeat = "center";
+            anim.bounceY.vel += 40;
+          } else if (combined === "running") {
+            runPhase = "read";
+            runStep = 0;
+            runPhaseEndAt = now + 3800;
+            choreoNextAt = now + 220;
+            anim.squashX.vel += 1.5;
+            anim.squashY.vel -= 1.6;
+          } else if (combined === "waiting_user") {
+            anim.bounceY.vel -= 220;
+            anim.squashX.vel -= 1.8;
+            anim.squashY.vel += 2.0;
+            nextWaitHopAt = now + 1800;
+          } else if (combined === "completed_unread") {
+            anim.bounceY.vel -= 200;
+            anim.squashX.vel += 2.2;
+            anim.squashY.vel -= 2.2;
+            nextHappyHopAt = now + 2000;
+            for (let i = 0; i < 6; i++) {
+              spawnParticle("spark", cw * 0.5 + (Math.random() - 0.5) * cw * 0.48, ch * 0.36, {
+                vx: (Math.random() - 0.5) * 55,
+                vy: -32 - Math.random() * 32,
+              });
+            }
+          } else if (combined === "failed") {
+            shiverUntil = now + 450;
+            anim.headTilt.vel += 1.8;
+          }
+        }
+
+        const isReacting = now < tapReact.until;
+        const reactKind = isReacting ? tapReact.kind : null;
+        const reactProgress = isReacting
+          ? Math.max(0, Math.min(1, (now - tapReact.start) / Math.max(1, tapReact.until - tapReact.start)))
+          : 0;
+        const isSleepy = !isReacting && combined === "idle" && (now - idleStart > 22000);
+        const mood = isSleepy ? "sleepy" : combined;
+
+        // Smooth OLED Pixel Shift (±3.5px over ~4 minutes)
+        const shiftX = Math.sin(now * 0.000028) * 3.5;
+        const shiftY = Math.cos(now * 0.000021) * 3.0;
+        stage.style.transform = `translate3d(${shiftX.toFixed(2)}px, ${shiftY.toFixed(2)}px, 0)`;
+
+        // Natural blinking with cute micro-squash
+        if (now >= nextBlinkAt && blinkPhase === 0 && mood !== "completed_unread" && !isReacting && mood !== "failed") {
+          blinkPhase = 0.001;
+          doubleBlinkQueued = Math.random() < (mood === "idle" ? 0.3 : 0.18);
+        }
+        let blinkLid = 0;
+        if (blinkPhase > 0) {
+          blinkPhase += dt * (mood === "sleepy" ? 5.2 : 8.8);
+          if (blinkPhase >= 1) {
+            blinkPhase = 0;
+            anim.squashY.vel += 0.65; // tiny lively pop when eyelids reopen
+            if (doubleBlinkQueued) {
+              doubleBlinkQueued = false;
+              nextBlinkAt = now + 115;
+            } else {
+              nextBlinkAt = now + (mood === "sleepy" ? 3800 + Math.random() * 3200 : 2100 + Math.random() * 3100);
+            }
+          } else {
+            blinkLid = Math.sin(blinkPhase * Math.PI);
+          }
+        }
+
+        // ================= PER-MOOD COOL CYBER PERSONALITY =================
+        let tLW = 1, tLH = 1, tLAngle = 0;
+        let tRW = 1, tRH = 1, tRAngle = 0;
+        let tLBrowY = -0.80, tLBrowA = 0.04, tLBrowC = 0.10;
+        let tRBrowY = -0.80, tRBrowA = -0.04, tRBrowC = 0.10;
+        let tBrowAlpha = 1;
+        let tHappy = 0, tAlertMode = 0;
+        let colOverride = null;
+        let forceSweep = false;
+
+        if (reactKind === "wake_startle") {
+          // Jolted awake from sleep! Stays in bright moonlit silver-ice palette (never collides with running cyan)
+          colOverride = { r: 212, g: 232, b: 252 };
+          tLW = 1.04; tRW = 1.04;
+          tLH = 1.18; tRH = 1.18;
+          tBrowAlpha = 0.85;
+          tLBrowY = -0.98; tLBrowA = -0.14; tLBrowC = 0.42;
+          tRBrowY = -0.98; tRBrowA =  0.14; tRBrowC = 0.42;
+          anim.gazeX.target = tapReact.tx * 20;
+          anim.gazeY.target = tapReact.ty * 10 - 4;
+          anim.headTilt.target = tapReact.side * 0.08;
+          anim.bounceY.target = -4;
+          anim.squashX.target = 1;
+          anim.squashY.target = 1;
+
+        } else if (reactKind === "idle_wink") {
+          // Direct spatial wink (left tap -> left eye winks, right tap -> right eye winks) in crisp silver-white!
+          colOverride = { r: 204, g: 228, b: 250 };
+          const winkLeft = tapReact.side < 0;
+          tLW = winkLeft ? 1.10 : 0.94;
+          tLH = winkLeft ? 0.14 : 1.10;
+          tRW = winkLeft ? 0.94 : 1.10;
+          tRH = winkLeft ? 1.10 : 0.14;
+          tBrowAlpha = 0.82;
+          tLBrowY = winkLeft ? -0.52 : -0.94;
+          tLBrowA = winkLeft ?  0.10 : -0.12;
+          tLBrowC = winkLeft ?  0.06 :  0.34;
+          tRBrowY = winkLeft ? -0.94 : -0.52;
+          tRBrowA = winkLeft ?  0.12 : -0.10;
+          tRBrowC = winkLeft ?  0.34 :  0.06;
+          anim.gazeX.target = -tapReact.side * 8;
+          anim.gazeY.target = -2;
+          anim.headTilt.target = tapReact.side * 0.095;
+          anim.bounceY.target = -2;
+          anim.squashX.target = 1.02;
+          anim.squashY.target = 0.98;
+
+        } else if (reactKind === "idle_scan") {
+          // Center tap -> cool silver-ice lock-on inspection looking right at your finger!
+          colOverride = { r: 214, g: 234, b: 254 };
+          forceSweep = true;
+          tLW = 0.96; tRW = 0.96;
+          tLH = tapReact.side < 0 ? 1.10 : 0.86;
+          tRH = tapReact.side < 0 ? 0.86 : 1.10;
+          tBrowAlpha = 0.88;
+          tLBrowY = tapReact.side < 0 ? -0.94 : -0.70;
+          tLBrowA = tapReact.side < 0 ? -0.10 :  0.14;
+          tLBrowC = tapReact.side < 0 ?  0.32 :  0.06;
+          tRBrowY = tapReact.side < 0 ? -0.70 : -0.94;
+          tRBrowA = tapReact.side < 0 ? -0.14 :  0.10;
+          tRBrowC = tapReact.side < 0 ?  0.06 :  0.32;
+          anim.gazeX.target = tapReact.tx * 24;
+          anim.gazeY.target = tapReact.ty * 14;
+          anim.headTilt.target = tapReact.tx * 0.08;
+          anim.bounceY.target = 0;
+          anim.squashX.target = 1;
+          anim.squashY.target = 1;
+
+        } else if (reactKind === "idle_dodge") {
+          // Rapid combo >= 3 in idle -> cool deadpan unimpressed stare ("...stop poking me"), super steady & clean!
+          colOverride = { r: 178, g: 208, b: 236 };
+          tLW = 1.08; tRW = 1.08;
+          tLH = 0.44; tRH = 0.44;
+          tBrowAlpha = 0.92;
+          tLBrowY = -0.50; tLBrowA = 0.02; tLBrowC = 0.0;
+          tRBrowY = -0.50; tRBrowA = -0.02; tRBrowC = 0.0;
+          anim.gazeX.target = tapReact.tx * 18;
+          anim.gazeY.target = 0;
+          anim.headTilt.target = -tapReact.side * 0.06;
+          anim.bounceY.target = 2;
+          anim.squashX.target = 1;
+          anim.squashY.target = 1;
+
+        } else if (reactKind === "busy_glare") {
+          // "Don't distract me, I'm coding!" — sharp annoyed side-glare directly toward your finger
+          colOverride = { r: 22, g: 226, b: 255 };
+          tLW = 1.12; tRW = 1.12;
+          tLH = 0.50; tRH = 0.50;
+          tLAngle =  0.10; tRAngle = -0.10;
+          tBrowAlpha = 1.0;
+          tLBrowY = -0.52; tLBrowA =  0.28; tLBrowC = 0.02;
+          tRBrowY = -0.52; tRBrowA = -0.28; tRBrowC = 0.02;
+          anim.gazeX.target = tapReact.tx * 28;
+          anim.gazeY.target = tapReact.ty * 10;
+          anim.headTilt.target = -tapReact.side * 0.075;
+          anim.bounceY.target = 2;
+          anim.squashX.target = 1.04;
+          anim.squashY.target = 0.94;
+
+        } else if (reactKind === "busy_turbo") {
+          // Overclocked TURBO mode from rapid taps while busy!
+          colOverride = { r: 155, g: 255, b: 255 };
+          forceSweep = true;
+          tLW = 1.16; tRW = 1.16;
+          tLH = 0.62; tRH = 0.62;
+          tLAngle =  0.08; tRAngle = -0.08;
+          tBrowAlpha = 1.0;
+          tLBrowY = -0.58; tLBrowA =  0.26; tLBrowC = 0.04;
+          tRBrowY = -0.58; tRBrowA = -0.26; tRBrowC = 0.04;
+          anim.gazeX.target = Math.sin(t * 28) * 18;
+          anim.gazeY.target = Math.cos(t * 22) * 5;
+          anim.headTilt.target = Math.sin(t * 16) * 0.05;
+          anim.bounceY.target = Math.sin(t * 22) * 3.5;
+          anim.squashX.target = 1.05;
+          anim.squashY.target = 0.95;
+
+        } else if (reactKind === "urge_eager") {
+          // Waiting user tapped -> eager wide-eyed upward glance urging you to check your Mac!
+          colOverride = { r: 255, g: 204, b: 64 };
+          tLW = 1.12; tRW = 1.16;
+          tLH = 1.18; tRH = 1.24;
+          tBrowAlpha = 1.0;
+          tLBrowY = -0.98; tLBrowA = -0.20; tLBrowC = 0.45;
+          tRBrowY = -1.02; tRBrowA =  0.20; tRBrowC = 0.52;
+          anim.gazeX.target = Math.sin(t * 10) * 8;
+          anim.gazeY.target = -14;
+          anim.headTilt.target = Math.sin(t * 12) * 0.09;
+          anim.bounceY.target = Math.abs(Math.sin(t * 10)) * -10;
+          anim.squashX.target = 0.98;
+          anim.squashY.target = 1.04;
+
+        } else if (reactKind === "celebrate_highfive") {
+          // Completed task tapped -> ecstatic celebratory sway & bright emerald crescent!
+          colOverride = { r: 85, g: 255, b: 178 };
+          tHappy = 1;
+          tBrowAlpha = 0;
+          anim.gazeX.target = Math.sin(t * 8) * 10;
+          anim.gazeY.target = -5;
+          anim.headTilt.target = Math.sin(t * 9) * 0.11;
+          anim.bounceY.target = Math.abs(Math.sin(t * 9)) * -9;
+          anim.squashX.target = 1.05;
+          anim.squashY.target = 0.95;
+
+        } else if (reactKind === "fail_reboot") {
+          // Failed task tapped -> cyber self-check / reboot recovery sequence!
+          tAlertMode = 1;
+          forceSweep = true;
+          if (reactProgress < 0.45) {
+            // Phase 1: shut down / reset eyes to a sharp scanning slit
+            colOverride = { r: 255, g: 120, b: 130 };
+            tLW = 1.18; tRW = 1.18;
+            tLH = 0.14; tRH = 0.14;
+            tLAngle = 0; tRAngle = 0;
+            tBrowAlpha = 0.25;
+            tLBrowY = -0.44; tLBrowA = 0; tLBrowC = 0;
+            tRBrowY = -0.44; tRBrowA = 0; tRBrowC = 0;
+          } else {
+            // Phase 2: steady reboot pulse — eyes reopen crisply in cool white-pink then return to crimson alert
+            colOverride = { r: 255, g: 165, b: 175 };
+            tLW = 1.08; tRW = 1.08;
+            tLH = 0.72; tRH = 0.72;
+            tLAngle =  0.10; tRAngle = -0.10;
+            tBrowAlpha = 1.0;
+            tLBrowY = -0.66; tLBrowA =  0.18; tLBrowC = 0.04;
+            tRBrowY = -0.66; tRBrowA = -0.18; tRBrowC = 0.04;
+          }
+          anim.gazeX.target = 0;
+          anim.gazeY.target = 0;
+          anim.headTilt.target = 0;
+          anim.bounceY.target = 0;
+          anim.squashX.target = 1;
+          anim.squashY.target = 1;
+
+        } else if (mood === "idle") {
+          // Chill, minimalist moonlit standby: tall relaxed eyes, brows mostly hidden/whisper-soft,
+          // slow calm breathing & unhurried glances — instantly distinct from active electric-cyan running!
+          if (now >= choreoNextAt) {
+            const roll = Math.random();
+            if (roll < 0.44) {
+              idleBeat = "center";
+              anim.gazeX.target = (Math.random() - 0.5) * 4;
+              anim.gazeY.target = (Math.random() - 0.5) * 2;
+              anim.headTilt.target = 0;
+              choreoNextAt = now + 2600 + Math.random() * 2200;
+            } else if (roll < 0.72) {
+              idleBeat = "chill_l";
+              anim.gazeX.target = -18 - Math.random() * 8;
+              anim.gazeY.target = 2;
+              anim.headTilt.target = -0.055;
+              choreoNextAt = now + 1800 + Math.random() * 1400;
+            } else {
+              idleBeat = "chill_r";
+              anim.gazeX.target = 18 + Math.random() * 8;
+              anim.gazeY.target = 2;
+              anim.headTilt.target = 0.055;
+              choreoNextAt = now + 1800 + Math.random() * 1400;
+            }
+          }
+
+          const breath = Math.sin(t * 1.45) * 0.035;
+          tLW = 0.90; tRW = 0.90;          // sleeker, calmer relaxed oval eyes
+          tLH = 1.06 + breath;
+          tRH = 1.06 + breath;
+          tBrowAlpha = 0.0;                 // clean eyebrow-free calm visor at rest!
+          tLBrowY = -0.84; tLBrowA = -0.04; tLBrowC = 0.14;
+          tRBrowY = -0.84; tRBrowA =  0.04; tRBrowC = 0.14;
+          anim.bounceY.target = Math.sin(t * 1.45) * 2.2;
+          anim.squashX.target = 1;
+          anim.squashY.target = 1;
+
+          if (idleBeat === "chill_l") {
+            tLH = 1.10; tRH = 0.96;
+            tBrowAlpha = 0.45;              // faint curious brow hint only when glancing aside
+            tLBrowY = -0.92; tLBrowA = -0.10; tLBrowC = 0.28;
+          } else if (idleBeat === "chill_r") {
+            tRH = 1.10; tLH = 0.96;
+            tBrowAlpha = 0.45;
+            tRBrowY = -0.92; tRBrowA =  0.10; tRBrowC = 0.28;
+          }
+
+        } else if (mood === "sleepy") {
+          // Low-power mech standby visor: ultra-clean thin breathing light slits (no brows)
+          const breath = Math.sin(t * 1.05) * 0.03;
+          tLW = 1.14; tRW = 1.14;
+          tLH = 0.18 + breath; tRH = 0.18 + breath;
+          tBrowAlpha = 0.0;
+          anim.gazeX.target = Math.sin(t * 0.35) * 3;
+          anim.gazeY.target = 4;
+          anim.headTilt.target = Math.sin(t * 0.45) * 0.03;
+          anim.bounceY.target = Math.sin(t * 1.05) * 2.2 + 4;
+          anim.squashX.target = 1.02;
+          anim.squashY.target = 0.98;
+
+          if (Math.random() < dt * 0.50) {
+            spawnParticle("z", cw * 0.67 + (Math.random() - 0.5) * 10, ch * 0.36, {
+              vx: 7 + Math.random() * 7,
+              vy: -16 - Math.random() * 10,
+              decay: 0.36,
+            });
+          }
+
+        } else if (mood === "running") {
+          if (now >= runPhaseEndAt) {
+            const roll = Math.random();
+            if (roll < 0.60) {
+              runPhase = "read";
+              runStep = 0;
+              runPhaseEndAt = now + 3200 + Math.random() * 2000;
+            } else if (roll < 0.84) {
+              runPhase = "think";
+              runPhaseEndAt = now + 1800 + Math.random() * 1200;
+              const side = Math.random() < 0.5 ? -1 : 1;
+              anim.gazeX.target = side * 22;
+              anim.gazeY.target = -10;
+              anim.headTilt.target = side * 0.075;
+              anim.bounceY.vel -= 35;
+            } else {
+              runPhase = "groove";
+              runPhaseEndAt = now + 1900 + Math.random() * 1100;
+              anim.gazeX.target = 0;
+              anim.gazeY.target = 1;
+              anim.headTilt.target = 0;
+            }
+          }
+
+          if (runPhase === "read") {
+            if (now >= choreoNextAt) {
+              const linePositions = [-22, -7, 9, 23];
+              anim.gazeX.target = linePositions[runStep % linePositions.length];
+              anim.gazeY.target = -2 + ((Math.floor(runStep / 4) % 3) - 1) * 5;
+              anim.headTilt.target = anim.gazeX.target * 0.0022;
+              const isLineReturn = (runStep % linePositions.length) === 0;
+              if (isLineReturn) anim.bounceY.vel -= 32;
+              runStep++;
+              choreoNextAt = now + (isLineReturn ? 440 : 260 + Math.random() * 210);
+
+              if (Math.random() < 0.32) {
+                spawnParticle("dot", cw * 0.5 + (Math.random() - 0.5) * cw * 0.44, ch * 0.46, {
+                  vx: (Math.random() - 0.5) * 16,
+                  vy: -24 - Math.random() * 18,
+                });
+              }
+            }
+            // Razor-focused tactical visor eyes + sharp \ / cyber brows (ZERO black chunks!)
+            tLW = 1.08; tRW = 1.08;
+            tLH = 0.68; tRH = 0.68;
+            tLAngle = 0.04; tRAngle = -0.04;
+            tLBrowY = -0.60; tLBrowA =  0.22; tLBrowC = 0.06;
+            tRBrowY = -0.60; tRBrowA = -0.22; tRBrowC = 0.06;
+            anim.bounceY.target = Math.sin(t * 7.2) * 2.0;
+
+          } else if (runPhase === "think") {
+            // Sharp asymmetric analytical brow (one raised, one locked-in)
+            tLW = 1.06; tRW = 1.06;
+            tLH = 0.88; tRH = 0.60;
+            tLAngle = -0.02; tRAngle = -0.05;
+            tLBrowY = -0.88; tLBrowA = -0.14; tLBrowC = 0.42;
+            tRBrowY = -0.58; tRBrowA = -0.20; tRBrowC = 0.04;
+            anim.bounceY.target = Math.sin(t * 2.4) * 2.2 - 2;
+            if (Math.random() < dt * 1.2) {
+              spawnParticle("spark", cw * 0.5 + (anim.gazeX.target > 0 ? 1 : -1) * cw * 0.26, ch * 0.28, {
+                vx: (Math.random() - 0.5) * 14,
+                vy: -20 - Math.random() * 14,
+                size: 6 + Math.random() * 4,
+              });
+            }
+
+          } else {
+            // In-the-zone cyber groove
+            tLW = 1.08; tRW = 1.08;
+            tLH = 0.76; tRH = 0.76;
+            tLAngle = 0.02; tRAngle = -0.02;
+            const browBob = Math.sin(t * 5.2) * 0.04;
+            tLBrowY = -0.68 + browBob; tLBrowA =  0.14; tLBrowC = 0.14;
+            tRBrowY = -0.68 + browBob; tRBrowA = -0.14; tRBrowC = 0.14;
+            anim.headTilt.target = Math.sin(t * 4.8) * 0.045;
+            anim.bounceY.target = Math.abs(Math.sin(t * 4.8)) * -4.5;
+          }
+
+          anim.squashX.target = 1;
+          anim.squashY.target = 1;
+
+        } else if (mood === "waiting_user") {
+          // High-alert amber lock-on: sharp raised brow + crisp bounce
+          if (now >= nextWaitHopAt) {
+            anim.bounceY.vel -= 185;
+            anim.squashX.vel -= 1.4;
+            anim.squashY.vel += 1.6;
+            const side = Math.random() < 0.5 ? -1 : 1;
+            anim.headTilt.target = side * 0.085;
+            anim.gazeX.target = side * 12;
+            anim.gazeY.target = -5;
+            nextWaitHopAt = now + 1850 + Math.random() * 600;
+          }
+          tLW = 1.04; tLH = 0.98;
+          tRW = 1.10; tRH = 1.08;
+          tLBrowY = -0.84; tLBrowA = -0.16; tLBrowC = 0.36;
+          tRBrowY = -0.94; tRBrowA =  0.14; tRBrowC = 0.48;
+          anim.bounceY.target = Math.sin(t * 4.2) * 2.5;
+          anim.squashX.target = 1;
+          anim.squashY.target = 1;
+
+        } else if (mood === "completed_unread") {
+          // Clean bold filled emerald crescent-visor smile (no clunky brows stacked on top!) + lively confident bounce
+          tHappy = 1;
+          tBrowAlpha = 0;
+          anim.gazeX.target = Math.sin(t * 2.4) * 8;
+          anim.gazeY.target = -2;
+          anim.headTilt.target = Math.sin(t * 2.8) * 0.065;
+          anim.bounceY.target = Math.sin(t * 4.4) * 3.5;
+          anim.squashX.target = 1.02;
+          anim.squashY.target = 0.98;
+
+          if (now >= nextHappyHopAt) {
+            anim.bounceY.vel -= 155;
+            anim.squashX.vel += 1.4;
+            anim.squashY.vel -= 1.4;
+            spawnParticle("spark", cw * 0.5 + (Math.random() - 0.5) * cw * 0.48, ch * 0.34, {
+              vx: (Math.random() - 0.5) * 34,
+              vy: -26 - Math.random() * 20,
+            });
+            nextHappyHopAt = now + 2100 + Math.random() * 1000;
+          }
+
+        } else if (mood === "failed") {
+          // Badass mecha crimson alert visor: bold slanted red visor eyes + low-slung heavy furrowed brows + glitch slice!
+          tAlertMode = 1;
+          tLW = 1.12; tRW = 1.12;
+          tLH = 0.56; tRH = 0.56;
+          tLAngle =  0.14; tRAngle = -0.14;
+          tLBrowY = -0.58; tLBrowA =  0.22; tLBrowC = 0.02;
+          tRBrowY = -0.58; tRBrowA = -0.22; tRBrowC = 0.02;
+          anim.gazeX.target = Math.sin(t * 1.8) * 5;
+          anim.gazeY.target = 2;
+          anim.headTilt.target = Math.sin(t * 2.2) * 0.035;
+          anim.bounceY.target = Math.sin(t * 3.6) * 2.0 + 2;
+          anim.squashX.target = 1.02;
+          anim.squashY.target = 0.98;
+
+          if (now >= nextFailShiverAt) {
+            shiverUntil = now + 220;
+            anim.bounceY.vel -= 75;
+            nextFailShiverAt = now + 1800 + Math.random() * 1100;
+          }
+        }
+
+        // Step springs & smooth scalar properties
+        const k = 1 - Math.exp(-dt * 12.0);
+        const ck = 1 - Math.exp(-dt * 7.5);
+        const col = colOverride || COLORS[mood] || COLORS.idle;
+
+        anim.r = lerp(anim.r, col.r, ck);
+        anim.g = lerp(anim.g, col.g, ck);
+        anim.b = lerp(anim.b, col.b, ck);
+
+        anim.lw = lerp(anim.lw, tLW, k);
+        anim.lh = lerp(anim.lh, tLH, k);
+        anim.lAngle = lerp(anim.lAngle, tLAngle, k);
+
+        anim.rw = lerp(anim.rw, tRW, k);
+        anim.rh = lerp(anim.rh, tRH, k);
+        anim.rAngle = lerp(anim.rAngle, tRAngle, k);
+
+        anim.lBrowY = lerp(anim.lBrowY, tLBrowY, k);
+        anim.lBrowA = lerp(anim.lBrowA, tLBrowA, k);
+        anim.lBrowC = lerp(anim.lBrowC, tLBrowC, k);
+        anim.rBrowY = lerp(anim.rBrowY, tRBrowY, k);
+        anim.rBrowA = lerp(anim.rBrowA, tRBrowA, k);
+        anim.rBrowC = lerp(anim.rBrowC, tRBrowC, k);
+        anim.browAlpha = lerp(anim.browAlpha, tBrowAlpha, k);
+
+        anim.happy = lerp(anim.happy, tHappy, k);
+        anim.alertMode = lerp(anim.alertMode, tAlertMode, k);
+
+        const gX = stepSpring(anim.gazeX, dt);
+        const gY = stepSpring(anim.gazeY, dt);
+        const hTilt = stepSpring(anim.headTilt, dt);
+        const bY = stepSpring(anim.bounceY, dt);
+        const sX = Math.max(0.75, Math.min(1.28, stepSpring(anim.squashX, dt)));
+        const sY = Math.max(0.72, Math.min(1.28, stepSpring(anim.squashY, dt)));
+
+        // Clear pure AMOLED black
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, cw, ch);
+
+        const cr = Math.round(anim.r);
+        const cg = Math.round(anim.g);
+        const cb = Math.round(anim.b);
+        const colorCss = `rgb(${cr}, ${cg}, ${cb})`;
+        const browCss = `rgb(${Math.min(255, cr + 34)}, ${Math.min(255, cg + 34)}, ${Math.min(255, cb + 34)})`;
+        const glowCss = `rgba(${cr}, ${cg}, ${cb}, 0.62)`;
+
+        // Eye geometry scaled proportionally to safe canvas
+        const minDim = Math.min(cw, ch);
+        const scale = cfg.eyeScale;
+        const baseW = minDim * 0.27 * scale;
+        const baseH = minDim * 0.35 * scale;
+        const gap = minDim * 0.165 * scale;
+
+        const isGlitching = now < shiverUntil;
+        const shiverX = isGlitching ? (Math.random() - 0.5) * 7 : 0;
+        const glitchSlice = isGlitching && mood === "failed" ? (Math.random() - 0.5) * 14 : 0;
+        const centerY = ch * (hasBadges ? 0.45 : 0.50) + bY;
+        const centerX = cw * 0.5 + shiverX;
+
+        // Subtle ambient aura behind visor
+        const auraR = minDim * (0.50 + Math.sin(t * 2.2) * 0.04);
+        const aura = ctx.createRadialGradient(centerX + gX * 0.4, centerY + gY * 0.4, minDim * 0.04, centerX, centerY, auraR);
+        aura.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.14)`);
+        aura.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = aura;
+        ctx.fillRect(0, 0, cw, ch);
+
+        // Whole-face head tilt + 3D perspective turn
+        ctx.save();
+        ctx.translate(centerX + gX, centerY + gY);
+        ctx.rotate(hTilt);
+
+        const turnRatio = Math.max(-1, Math.min(1, gX / 36));
+        const lPerspW = 1 + turnRatio * 0.075;
+        const rPerspW = 1 - turnRatio * 0.075;
+        const lPerspH = 1 + turnRatio * 0.035;
+        const rPerspH = 1 - turnRatio * 0.035;
+
+        const halfDist = baseW * 0.5 + gap * 0.5;
+        const lx = -halfDist * (1 - turnRatio * 0.05);
+        const rx = halfDist * (1 + turnRatio * 0.05);
+
+        // Draw bold sculpted luminous cyber eyebrows (nearly 2x thicker, matching eye weight!)
+        const browThick = Math.max(10, baseW * 0.21);
+        const blinkBrowDrop = blinkLid * baseH * 0.09;
+        drawEyebrow(
+          lx, baseH * anim.lBrowY * sY + blinkBrowDrop,
+          baseW * lPerspW * sX, browThick,
+          anim.lBrowA, anim.lBrowC, browCss, glowCss, true, anim.browAlpha
+        );
+        drawEyebrow(
+          rx, baseH * anim.rBrowY * sY + blinkBrowDrop,
+          baseW * rPerspW * sX, browThick,
+          anim.rBrowA, anim.rBrowC, browCss, glowCss, false, anim.browAlpha
+        );
+
+        // Draw pure luminous cyber eyes
+        const isRunning = mood === "running" || forceSweep;
+        drawExpressiveEye({
+          cx: lx, cy: 0,
+          w: baseW * anim.lw * lPerspW * sX,
+          h: baseH * anim.lh * lPerspH * sY,
+          blink: blinkLid, eyeAngle: anim.lAngle,
+          happy: anim.happy, alertMode: anim.alertMode,
+          colorCss, glowCss, gazeX: gX, gazeY: gY, isLeft: true, t, isRunning, glitchSlice,
+        });
+
+        drawExpressiveEye({
+          cx: rx, cy: 0,
+          w: baseW * anim.rw * rPerspW * sX,
+          h: baseH * anim.rh * rPerspH * sY,
+          blink: blinkLid, eyeAngle: anim.rAngle,
+          happy: anim.happy, alertMode: anim.alertMode,
+          colorCss, glowCss, gazeX: gX, gazeY: gY, isLeft: false, t, isRunning, glitchSlice: -glitchSlice,
+        });
+
+        // Floating bouncy "?" (waiting_user) or crisp "!" (failed)
+        if (mood === "waiting_user" || mood === "failed") {
+          const sym = mood === "waiting_user" ? (reactKind === "urge_eager" ? "?!" : "?") : "!";
+          const qScale = 1 + Math.sin(t * 6.5) * 0.12;
+          const qAlpha = 0.72 + Math.sin(t * 5.2) * 0.28;
+          const qx = rx + baseW * 0.72;
+          const qy = -baseH * 0.34 + Math.sin(t * 5.2) * 5;
+          ctx.save();
+          ctx.translate(qx, qy);
+          ctx.rotate(Math.sin(t * 4.5) * 0.12);
+          ctx.scale(qScale, qScale);
+          ctx.font = `700 ${Math.round(minDim * 0.16 * scale)}px -apple-system, sans-serif`;
+          ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${qAlpha.toFixed(2)})`;
+          ctx.shadowColor = glowCss;
+          ctx.shadowBlur = 16;
+          ctx.fillText(sym, 0, 0);
+          ctx.restore();
+        }
+
+        ctx.restore();
+
+        // Render cyber tap ripples
+        for (let i = ripples.length - 1; i >= 0; i--) {
+          const rp = ripples[i];
+          rp.r += (rp.maxR - rp.r) * (1 - Math.exp(-dt * 9.5));
+          rp.life -= dt * 2.1;
+          if (rp.life <= 0) {
+            ripples.splice(i, 1);
+            continue;
+          }
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, rp.life * 0.55);
+          ctx.strokeStyle = rp.color || colorCss;
+          ctx.shadowColor = rp.color || glowCss;
+          ctx.shadowBlur = 12;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Render particles (sparks, custom cyber glyphs, dots, sleepy Zs)
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.vy += p.gravity * dt;
+          p.x += (p.vx + Math.sin(t * 4 + p.wobble) * 8) * dt;
+          p.y += p.vy * dt;
+          p.life -= p.decay * dt;
+          if (p.life <= 0) {
+            particles.splice(i, 1);
+            continue;
+          }
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+          ctx.fillStyle = p.color || colorCss;
+          ctx.shadowColor = p.color || glowCss;
+          ctx.shadowBlur = 12;
+          if (p.type === "text" && p.text) {
+            ctx.font = `700 ${Math.round(p.size * 1.45)}px -apple-system, sans-serif`;
+            ctx.fillText(p.text, p.x, p.y);
+          } else if (p.type === "z") {
+            ctx.font = `600 ${Math.round(p.size * 1.45)}px -apple-system, sans-serif`;
+            ctx.fillText("z", p.x, p.y);
+          } else if (p.type === "spark") {
+            ctx.font = `600 ${Math.round(p.size * 1.35)}px -apple-system, sans-serif`;
+            ctx.fillText("✦", p.x, p.y);
+          } else {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+
+        requestAnimationFrame(tick);
+      }
+
+      // ================= DESKTOP DOCK EVENTS =================
+      document.querySelectorAll("[data-sim]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          simMode = btn.dataset.sim;
+          document.querySelectorAll("[data-sim]").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          renderBadges();
+          updateBanner();
+        });
+      });
+
+      document.getElementById("deskSafeLeft")?.addEventListener("input", (e) => {
+        cfg.safeLeft = Number(e.target.value);
+        saveCfg();
+        applyConfig();
+      });
+      document.getElementById("deskEyeScale")?.addEventListener("input", (e) => {
+        cfg.eyeScale = Number(e.target.value);
+        saveCfg();
+        applyConfig();
+      });
+      document.getElementById("deskBright")?.addEventListener("input", (e) => {
+        cfg.brightness = Number(e.target.value);
+        saveCfg();
+        applyConfig();
+      });
+      document.getElementById("deskClockToggle")?.addEventListener("click", () => {
+        cfg.showClock = !cfg.showClock;
+        saveCfg();
+        applyConfig();
+      });
+      function resetCfgToDefaults() {
+        cfg = { ...DEFAULT_CFG };
+        saveCfg();
+        applyConfig();
+      }
+
+      document.getElementById("deskCutoutToggle")?.addEventListener("click", () => {
+        cfg.showCutout = !cfg.showCutout;
+        saveCfg();
+        applyConfig();
+      });
+      document.getElementById("deskResetBtn")?.addEventListener("click", resetCfgToDefaults);
+
+      // ================= PHONE SETTINGS MODAL EVENTS =================
+      const modal = document.getElementById("settingsModal");
+      function openSettingsModal() { modal.classList.add("open"); }
+      function closeSettingsModal() { modal.classList.remove("open"); }
+
+      document.getElementById("closeModalBtn").addEventListener("click", closeSettingsModal);
+      document.getElementById("mobResetBtn").addEventListener("click", resetCfgToDefaults);
+      modal.addEventListener("click", (e) => { if (e.target === modal) closeSettingsModal(); });
+
+      // Double-tap top-right corner to open calibration on phone
+      let lastCornerTap = 0;
+      document.getElementById("settingsCorner").addEventListener("click", () => {
+        const now = Date.now();
+        if (now - lastCornerTap < 420) openSettingsModal();
+        lastCornerTap = now;
+      });
+
+      document.getElementById("mobSafeLeft").addEventListener("input", (e) => {
+        cfg.safeLeft = Number(e.target.value);
+        saveCfg();
+        applyConfig();
+      });
+      document.getElementById("mobEyeScale").addEventListener("input", (e) => {
+        cfg.eyeScale = Number(e.target.value);
+        saveCfg();
+        applyConfig();
+      });
+      document.getElementById("mobBright").addEventListener("input", (e) => {
+        cfg.brightness = Number(e.target.value);
+        saveCfg();
+        applyConfig();
+      });
+      document.getElementById("mobClockToggle").addEventListener("click", () => {
+        cfg.showClock = !cfg.showClock;
+        saveCfg();
+        applyConfig();
+      });
+      document.getElementById("mobFullscreenBtn").addEventListener("click", () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen?.().catch(() => {});
+        } else {
+          document.exitFullscreen?.().catch(() => {});
+        }
+        requestWakeLock();
+        closeSettingsModal();
+      });
+
+      // ================= 1-CLICK SETUP CONSOLE LOGIC (DESKTOP PREVIEW) =================
+      function showConsoleToast(msg, isError = false) {
+        const el = document.getElementById("consoleToast");
+        if (!el) return;
+        el.style.color = isError ? "#ff8d9b" : "#9ff8cb";
+        el.textContent = msg;
+      }
+
+      let installedAgentCount = 0;
+      let connectedPhoneCount = 0;
+
+      function updateGuideSteps() {
+        const prog = document.getElementById("guideProgressPill");
+        if (!prog) return;
+        const step1Done = installedAgentCount > 0;
+        const step3Done = connectedPhoneCount > 0;
+        if (step1Done && step3Done) {
+          prog.classList.add("online");
+          prog.textContent = `已接 ${installedAgentCount} 个 AI · 已连 ${connectedPhoneCount} 台设备`;
+        } else if (step1Done) {
+          prog.classList.remove("online");
+          prog.textContent = `已接 ${installedAgentCount} 个 AI · 等待手机连入`;
+        } else if (step3Done) {
+          prog.classList.remove("online");
+          prog.textContent = `已连 ${connectedPhoneCount} 台设备 · 请接入电脑 AI`;
+        } else {
+          prog.classList.remove("online");
+          prog.textContent = "按 ① → ④ 顺序操作";
+        }
+      }
+
+      function updatePhoneConnIndicator(phones) {
+        connectedPhoneCount = phones || 0;
+        const pill = document.getElementById("phoneConnPill");
+        if (pill) {
+          if (connectedPhoneCount > 0) {
+            pill.classList.add("online");
+            pill.textContent = `已连接 ${connectedPhoneCount} 台背屏设备`;
+          } else {
+            pill.classList.remove("online");
+            pill.textContent = "等待手机连入";
+          }
+        }
+        updateGuideSteps();
+      }
+
+      let qrState = {
+        tab: "apk",
+        lanUrl: `${location.origin}/`,
+        apkUrl: `${location.origin}/download/MiRearPet.apk`,
+        apkAvailable: false,
+        apkSizeKb: 0,
+        shizukuUrl: `${location.origin}/download/Shizuku.apk`,
+        shizukuAvailable: false,
+        shizukuSizeMb: 0,
+      };
+
+      function renderActiveQr() {
+        const img = document.getElementById("activeQrImg");
+        const label = document.getElementById("activeQrLabel");
+        const sub = document.getElementById("activeQrSub");
+        const link = document.getElementById("apkDownloadLink");
+
+        document.querySelectorAll("[data-qr-tab]").forEach((b) => {
+          b.classList.toggle("active", b.dataset.qrTab === qrState.tab);
+        });
+
+        if (qrState.tab === "apk") {
+          if (img) img.src = `/api/qr.svg?data=${encodeURIComponent(qrState.apkUrl)}`;
+          if (label) label.textContent = qrState.apkAvailable
+            ? `扫码直装 背屏AI桌宠 (${qrState.apkSizeKb} KB)`
+            : "APK 尚未构建";
+          if (sub) sub.innerHTML = qrState.apkAvailable
+            ? `目标：<code>${qrState.apkUrl}</code><br />装好后自动连本机，App 内也可一键安装内置 Shizuku`
+            : "请切换右侧「纯黑网页版」扫码使用";
+          if (link) {
+            link.href = "/download/MiRearPet.apk";
+            link.textContent = "直接下载桌宠 APK";
+            link.style.display = qrState.apkAvailable ? "inline-block" : "none";
+          }
+        } else if (qrState.tab === "shizuku") {
+          if (img) img.src = `/api/qr.svg?data=${encodeURIComponent(qrState.shizukuUrl)}`;
+          if (label) label.textContent = qrState.shizukuAvailable
+            ? `扫码直装官方 Shizuku v13.6.0 (${qrState.shizukuSizeMb} MB)`
+            : "未内置 Shizuku.apk";
+          if (sub) sub.innerHTML = qrState.shizukuAvailable
+            ? `目标：<code>${qrState.shizukuUrl}</code><br />已打包在本地，同 Wi-Fi 秒下免翻墙（仅小米背屏需要）`
+            : "请前往 GitHub RikkaApps/Shizuku Releases 下载";
+          if (link) {
+            link.href = "/download/Shizuku.apk";
+            link.textContent = "直接下载 Shizuku APK";
+            link.style.display = qrState.shizukuAvailable ? "inline-block" : "none";
+          }
+        } else {
+          if (img) img.src = `/api/qr.svg?data=${encodeURIComponent(qrState.lanUrl)}`;
+          if (label) label.textContent = "扫码直连纯黑背屏网页";
+          if (sub) sub.innerHTML = `目标：<code>${qrState.lanUrl}</code><br />适配任意旧手机 / iPhone / iPad 横屏即用`;
+          if (link) link.style.display = "none";
+        }
+      }
+
+      async function loadConsoleInfo() {
+        try {
+          const r = await fetch("/api/info");
+          const info = await r.json();
+          qrState.lanUrl = info.lan_url || `${location.origin}/`;
+          qrState.apkUrl = info.apk_url || `${location.origin}/download/MiRearPet.apk`;
+          qrState.apkAvailable = Boolean(info.apk_available);
+          qrState.apkSizeKb = info.apk_size_kb || 0;
+          qrState.shizukuUrl = info.shizuku_apk_url || `${location.origin}/download/Shizuku.apk`;
+          qrState.shizukuAvailable = Boolean(info.shizuku_apk_available);
+          qrState.shizukuSizeMb = info.shizuku_apk_size_mb || 0;
+          if (!qrState.apkAvailable) qrState.tab = "web";
+
+          const lanEl = document.getElementById("lanUrlText");
+          if (lanEl) lanEl.textContent = qrState.lanUrl;
+
+          renderActiveQr();
+          updatePhoneConnIndicator(info.connected_phones || 0);
+        } catch (_) {}
+      }
+
+      async function loadAgentsList() {
+        const listEl = document.getElementById("agentList");
+        if (!listEl) return;
+        try {
+          const r = await fetch("/api/agents");
+          const data = await r.json();
+          const agents = Array.isArray(data.agents) ? data.agents : [];
+          installedAgentCount = agents.filter((a) => a.installed).length;
+          updateGuideSteps();
+          listEl.innerHTML = "";
+          for (const a of agents) {
+            const row = document.createElement("div");
+            row.className = "agent-row";
+            const tag = a.detected ? '<span class="mini-tag found">已检测到</span>' : '<span class="mini-tag">未检测</span>';
+            const expTag = a.experimental ? '<span class="mini-tag exp">实验版</span>' : '';
+            const warnTag = a.needs_trust ? '<span class="mini-tag warn">待信任</span>' : '';
+            const warnBox = a.warning ? `<div class="agent-warn">⚠️ ${a.warning}</div>` : '';
+            let actionHtml = "";
+            if (a.auto) {
+              if (a.installed) {
+                actionHtml = `<button class="btn mint" data-agent-action="remove" data-agent-id="${a.id}">已接入 · 卸载</button>`;
+              } else if (a.detected) {
+                actionHtml = `<button class="btn active" data-agent-action="install" data-agent-id="${a.id}">一键接入</button>`;
+              } else {
+                actionHtml = `<button class="btn" disabled style="opacity:0.38; cursor:not-allowed;">未安装</button>`;
+              }
+            } else {
+              actionHtml = `<span class="mini-tag">插件导入</span>`;
+            }
+            if (!a.detected && !a.installed) row.style.opacity = "0.72";
+            row.innerHTML = `
+              <div class="agent-meta">
+                <div class="agent-name">${a.name} ${expTag} ${tag} ${warnTag}</div>
+                <div class="agent-note">${a.note}</div>
+                ${warnBox}
+              </div>
+              <div style="flex-shrink:0;">${actionHtml}</div>
+            `;
+            listEl.appendChild(row);
+          }
+
+          listEl.querySelectorAll("[data-agent-action]").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+              const act = btn.dataset.agentAction;
+              const agentId = btn.dataset.agentId;
+              btn.disabled = true;
+              btn.textContent = "处理中...";
+              try {
+                const resp = await fetch(`/api/agents/${act}`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ agent: agentId }),
+                });
+                const res = await resp.json();
+                if (res.ok) {
+                  showConsoleToast(
+                    res.next_step ||
+                      (act === "install"
+                        ? `已成功接入 ${agentId}（原配置已自动备份，重启软件后生效）`
+                        : `已安全卸载 ${agentId} 的背屏钩子`)
+                  );
+                } else {
+                  showConsoleToast(`操作失败: ${res.error || "未知错误"}`, true);
+                }
+              } catch (err) {
+                showConsoleToast(`请求失败: ${err}`, true);
+              }
+              loadAgentsList();
+            });
+          });
+        } catch (_) {
+          listEl.innerHTML = '<div style="font-size:11px; color:#ff8d9b;">无法获取 Agent 状态</div>';
+        }
+      }
+
+      if (isPreview) {
+        document.querySelectorAll("[data-qr-tab]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            qrState.tab = btn.dataset.qrTab;
+            renderActiveQr();
+          });
+        });
+        loadConsoleInfo();
+        loadAgentsList();
+
+        document.querySelectorAll("[data-live-test]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const state = btn.dataset.liveTest;
+            // Ensure preview simulator switches back to live mode so user sees real broadcast!
+            if (simMode !== "live") {
+              simMode = "live";
+              document.querySelectorAll("[data-sim]").forEach((b) => b.classList.toggle("active", b.dataset.sim === "live"));
+            }
+            const providerSel = document.getElementById("testProviderSelect");
+            const provider = providerSel ? providerSel.value : "codex";
+            const label = PROVIDER_META[provider]?.label || provider;
+            try {
+              await fetch("/api/test", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ provider, state }),
+              });
+              showConsoleToast(
+                state === "idle"
+                  ? "已清除全部联调测试状态，恢复空闲"
+                  : `已向手机背屏推送 [${label}] 测试状态：${state}`
+              );
+            } catch (_) {
+              showConsoleToast("推送失败，请确认本地服务正在运行", true);
+            }
+          });
+        });
+
+        const bindCopy = (btnId, codeId, label) => {
+          document.getElementById(btnId)?.addEventListener("click", async () => {
+            const txt = document.getElementById(codeId)?.textContent || "";
+            try {
+              await navigator.clipboard.writeText(txt);
+              showConsoleToast(`已复制${label}`);
+            } catch (_) {
+              showConsoleToast(`请手动复制: ${txt}`);
+            }
+          });
+        };
+        bindCopy("copyLanBtn", "lanUrlText", "手机连接地址");
+        bindCopy("copyWebhookBtn", "webhookCmdText", "Webhook 示例命令");
+      }
+
+      applyConfig();
+      requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+</html>

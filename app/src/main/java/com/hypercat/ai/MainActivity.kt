@@ -168,12 +168,8 @@ import com.hypercat.ai.rear.AvatarStateStore
 import com.hypercat.ai.rear.RearAgentInteractionDispatcher
 import com.hypercat.ai.rear.RearProjectionController
 import com.hypercat.ai.rear.RearCard
-import com.hypercat.ai.avatar.Live2DModel
 import com.hypercat.ai.avatar.AvatarDeviceStateStore
 import com.hypercat.ai.avatar.AvatarStatusBadges
-import com.hypercat.ai.avatar.Live2DModelStore
-import com.hypercat.ai.avatar.Live2DView
-import com.hypercat.ai.avatar.Live2DControllerHub
 import com.hypercat.ai.avatar.RealtimeAvatarPhase
 import com.hypercat.ai.avatar.RealtimeAvatarStateStore
 import kotlin.random.Random
@@ -739,8 +735,6 @@ private suspend fun playSpeechAudio(context: Context, bytes: ByteArray, usage: I
             player.setVolume(1.0f, 1.0f)
             var visualizer: Visualizer? = null
             fun release() {
-                Live2DControllerHub.setMouth(0f)
-                Live2DControllerHub.setSpeaking(false)
                 runCatching { visualizer?.enabled = false }
                 runCatching { visualizer?.release() }
                 visualizer = null
@@ -748,7 +742,6 @@ private suspend fun playSpeechAudio(context: Context, bytes: ByteArray, usage: I
                 runCatching { player.release() }
             }
             player.setOnPreparedListener { media ->
-                Live2DControllerHub.setSpeaking(true)
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                     runCatching {
                         Visualizer(media.audioSessionId).apply {
@@ -763,7 +756,6 @@ private suspend fun playSpeechAudio(context: Context, bytes: ByteArray, usage: I
                                         energy += normalized * normalized
                                     }
                                     val rms = kotlin.math.sqrt(energy / waveform.size)
-                                    Live2DControllerHub.setMouth((rms * 2.8).coerceIn(0.0, 1.0).toFloat())
                                 }
                                 override fun onFftDataCapture(v: Visualizer, fft: ByteArray, samplingRate: Int) = Unit
                             }, Visualizer.getMaxCaptureRate(), true, false)
@@ -1975,8 +1967,6 @@ private fun ChatPage(
     val visibleSkillPrompts = remember(skillPromptShuffle) { skillPromptOptions.shuffled().take(3) }
     val latestCameraFrame = remember { AtomicReference<ByteArray?>(null) }
     var cameraVisionStatus by remember { mutableStateOf("") }
-    val live2dModel by Live2DModelStore.state.collectAsState()
-    LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var userMovedChat by remember(currentSessionTitle) { mutableStateOf(false) }
     LaunchedEffect(chatListState) {
@@ -3470,7 +3460,7 @@ private fun ChatPage(
                             Column(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 9.dp)) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(76.dp), contentAlignment = Alignment.Center) {
-                                        AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, live2dModel, halfBody = false) { _, _ -> }
+                                        AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, halfBody = false) { action, _ -> onAvatarInteraction(action) }
                                         Box(Modifier.matchParentSize().clickable(interactionSource = null, indication = null) { drawerSection = "avatar_settings" })
                                     }
                                     Spacer(Modifier.width(12.dp))
@@ -3945,12 +3935,10 @@ private fun AvatarRenderer(
     modifier: Modifier = Modifier,
     mood: String = "normal",
     speaking: Boolean = false,
-    model: Live2DModel? = Live2DModelStore.state.value,
     halfBody: Boolean = false,
     showLyrics: Boolean = false,
     onGesture: (String, String) -> Unit = { _, _ -> }
 ) {
-    val deviceState by AvatarDeviceStateStore.state.collectAsState()
     val realtimePhase by RealtimeAvatarStateStore.state.collectAsState()
     val realtimeMood = when (realtimePhase) {
         RealtimeAvatarPhase.CONNECTING -> "thinking"
@@ -3960,62 +3948,15 @@ private fun AvatarRenderer(
         else -> mood
     }
     val realtimeSpeaking = speaking || realtimePhase == RealtimeAvatarPhase.RESPONDING
-    if (model != null) {
-        Live2DView(
-            model = model, modifier = modifier, mood = realtimeMood, speaking = realtimeSpeaking, musicPlaying = deviceState.music, halfBody = halfBody,
-            showLyrics = showLyrics,
-            onGesture = onGesture,
-            onPortrait = { dataUrl ->
-                runCatching {
-                    val encoded = dataUrl.substringAfter(',', "")
-                    val bytes = Base64.getDecoder().decode(encoded)
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                }.getOrNull()?.takeIf { !it.isRecycled && it.width > 1 && it.height > 1 }?.let {
-                    Live2DPortraitCache.portraits[model.id] = it
-                }
-            }
-        )
-    } else {
-        // Never draw the legacy simplified avatar when Live2D is unavailable.
-        // Keep the scene visually stable while the model host is being restored.
-        Box(
-            modifier = modifier.background(Color(0xFF101522)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("虚拟形象加载中…", color = Color(0xFFB9D8EA))
-        }
+    MiRearPetView(modifier = modifier, mood = realtimeMood, speaking = realtimeSpeaking) { action ->
+        onGesture(action, "")
     }
 }
 
-/** Process-wide bitmap cache: chat rows reuse one captured portrait instead of
- * keeping a separate 60 FPS WebView alive for every assistant message. */
-private object Live2DPortraitCache {
-    val portraits = mutableStateMapOf<String, Bitmap>()
-}
-
-/** Small, non-animated portrait matching the currently selected virtual character. */
 @Composable
 private fun AvatarPortrait(character: String, modifier: Modifier = Modifier) {
-    val model = Live2DModelStore.characters.firstOrNull { it.id == character }
-        ?: Live2DModelStore.characters.first()
-    val captured = Live2DPortraitCache.portraits[character]
-    Box(modifier.clip(CircleShape).background(Color(0xFFEDEAF4))) {
-        if (captured != null && !captured.isRecycled) {
-            Image(
-                bitmap = captured.asImageBitmap(),
-                contentDescription = model.displayName,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            // Do not reintroduce the legacy hand-drawn placeholder in chat rows.
-            Box(
-                Modifier.fillMaxSize().background(Color(0xFF252238)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(model.displayName.take(1), color = Color.White)
-            }
-        }
+    Box(modifier.clip(CircleShape).background(Color(0xFF080B12)), contentAlignment = Alignment.Center) {
+        Text("AI", color = Color(0xFF75EFFF), fontSize = 12.sp, fontWeight = FontWeight.Black)
     }
 }
 
@@ -4088,162 +4029,48 @@ private fun AvatarSettingsPage(
     onAvatarNameChange: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val latestBubbleSpeaking by rememberUpdatedState(isSpeaking)
-    val latestBubbleAutoRead by rememberUpdatedState(autoReadReplies)
-    val live2dModel by Live2DModelStore.state.collectAsState()
-    LaunchedEffect(Unit) { Live2DModelStore.load(context) }
-    val characters = Live2DModelStore.characters.map { Triple(it.id, it.displayName, it.personality) }
-    var selectedIndex by remember(avatarId) { mutableIntStateOf(characters.indexOfFirst { it.first == avatarId }.coerceAtLeast(0)) }
     var nameDraft by remember(avatarName) { mutableStateOf(avatarName) }
-    var dragTotal by remember { mutableFloatStateOf(0f) }
-    val selected = characters[selectedIndex]
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(22.dp))
         Text("虚拟形象", color = MainText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(18.dp))
+        Text("已切换为原作者 Mi Rear AI Pet 桌宠", color = Muted, fontSize = 12.sp,
+            modifier = Modifier.padding(top = 6.dp, bottom = 16.dp))
         Surface(color = Panel, shape = RoundedCornerShape(24.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
-            Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(20.dp))
-                        .background(avatarColor(mainAvatarBackgroundColor))
-                        .then(if (live2dModel == null) Modifier.pointerInput(selectedIndex) {
-                            detectHorizontalDragGestures(
-                                onDragStart = { dragTotal = 0f },
-                                onHorizontalDrag = { change, amount -> change.consume(); dragTotal += amount },
-                                onDragEnd = {
-                                    if (dragTotal < -36f) selectedIndex = (selectedIndex + 1).mod(characters.size)
-                                    else if (dragTotal > 36f) selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size)
-                                }
-                            )
-                        }.pointerInput(selectedIndex) {
-                            detectTapGestures(
-                                onTap = { onAvatarInteraction("avatar_touch") },
-                                onLongPress = { onAvatarInteraction("avatar_long_press") }
-                            )
-                        } else Modifier),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val selectedModel = Live2DModelStore.characters.firstOrNull { it.id == selected.first }
-                        ?: Live2DModelStore.characters.first()
-                    AvatarRenderer(selected.first, Modifier.fillMaxSize(), avatarMood, model = selectedModel, showLyrics = true) { action, _ -> onAvatarInteraction(action) }
-                    var visibleBubble by remember { mutableStateOf("") }
-                    // Ignore the reply already present when this page is first opened.
-                    // Replies generated by a new touch interaction have a new ID and remain visible.
-                    val initialReplyId = remember { avatarInteractionReplyId }
-                    LaunchedEffect(avatarInteractionReplyId, avatarInteractionReply) {
-                        visibleBubble = ""
-                        if (avatarInteractionReplyId != initialReplyId &&
-                            avatarInteractionReply.isNotBlank() && avatarInteractionReplyId > 0L) {
-                            visibleBubble = avatarInteractionReply
-                            val expectedId = avatarInteractionReplyId
-                            delay((avatarInteractionReply.length * 320L).coerceIn(6000L, 16000L))
-                            while (latestBubbleAutoRead && latestBubbleSpeaking && avatarInteractionReplyId == expectedId) delay(120)
-                            delay(450)
-                            if (avatarInteractionReplyId == expectedId) visibleBubble = ""
-                        }
-                    }
-                    if (visibleBubble.isNotBlank()) {
-                        Surface(
-                            color = if (appDarkState) Color(0xF0221F2B) else Color(0xFDF8F4FF),
-                            shape = RoundedCornerShape(16.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x667B68B8)),
-                            shadowElevation = 8.dp,
-                            modifier = Modifier.align(Alignment.TopCenter).padding(10.dp).widthIn(max = 270.dp)
-                        ) {
-                            Text(visibleBubble.take(240), color = MainText, fontSize = 12.sp,
-                                lineHeight = 17.sp, maxLines = 5, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
-                        }
-                    }
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Box(Modifier.fillMaxWidth().height(240.dp).clip(RoundedCornerShape(18.dp)).background(avatarColor(mainAvatarBackgroundColor))) {
+                    AvatarRenderer("mi-rear-pet", Modifier.fillMaxSize(), avatarMood, isSpeaking) { action, _ -> onAvatarInteraction(action) }
                 }
-                AvatarColorEditor(
-                    title = "主屏虚拟形象背景颜色",
-                    color = mainAvatarBackgroundColor,
-                    onColorChange = onMainAvatarBackgroundColorChange
-                )
-                Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { selectedIndex = (selectedIndex - 1 + characters.size).mod(characters.size) }) { Text("‹ 上一个") }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(selected.second, color = MainText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text("${selectedIndex + 1} / ${characters.size}", color = Muted, fontSize = 11.sp)
-                    }
-                    TextButton(onClick = { selectedIndex = (selectedIndex + 1).mod(characters.size) }) { Text("下一个 ›") }
-                }
-                Text("性格介绍", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-                Text(selected.third, color = Muted, fontSize = 12.sp, lineHeight = 19.sp,
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 14.dp))
-                Text(
-                    when (avatarMood) {
-                        "happy" -> "正在回应你的互动"
-                        "thinking" -> "正在思考你的请求"
-                        "sleepy" -> "正在休息，随时可以叫醒"
-                        "sad" -> "连接似乎遇到问题，稍后再试试"
-                        else -> "点击角色可互动，长按可主动开启对话"
-                    },
-                    color = Muted, fontSize = 11.sp,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)
-                )
+                AvatarColorEditor("主屏桌宠背景颜色", mainAvatarBackgroundColor, onMainAvatarBackgroundColorChange)
                 OutlinedTextField(value = nameDraft, onValueChange = { nameDraft = it.take(16) },
-                    label = { Text("自定义名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    label = { Text("桌宠名称") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
                 Button(onClick = {
-                    // Preview selection is a draft only. Persist only after an explicit save tap.
-                    Live2DModelStore.select(context, selected.first)
-                    onAvatarIdChange(selected.first)
-                    onAvatarNameChange(nameDraft.trim().ifBlank { selected.second })
-                    if (rearAvatarEnabled) {
-                        Live2DModelStore.selectRear(context, selected.first)
-                        AvatarStateStore.update(context, nameDraft.trim().ifBlank { selected.second }, selected.first, avatarMood, avatarInteractionReply)
-                        val prefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
-                        val cardId = prefs.getString("rear_deployed_card_id", null)
-                        if (cardId.isNullOrBlank()) {
-                            Toast.makeText(context, "主屏形象已保存。请先重新开启背屏投放并选择一次目标卡片，之后将自动替换该卡片。", Toast.LENGTH_LONG).show()
-                        } else {
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-                                runCatching {
-                                    val card = withContext(Dispatchers.IO) {
-                                        RearProjectionController.scan(context).firstOrNull { it.cardId == cardId }
-                                            ?: error("找不到上次投放的背屏卡片，请重新开启背屏投放")
-                                    }
-                                    RearProjectionController.deploy(context, card)
-                                }.onSuccess { message ->
-                                    Toast.makeText(context, "背屏卡片已更新，请到手机系统设置重新应用。", Toast.LENGTH_LONG).show()
-                                }.onFailure { error ->
-                                    Toast.makeText(context, "背屏卡片自动更新失败：" + (error.message ?: "未知错误"), Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }
-                    }
-                }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                    Text("保存虚拟形象")
-                }
+                    onAvatarIdChange("mi-rear-pet")
+                    onAvatarNameChange(nameDraft.trim().ifBlank { "Mi Rear AI Pet" })
+                    Toast.makeText(context, "桌宠设置已保存", Toast.LENGTH_SHORT).show()
+                }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("保存桌宠设置") }
             }
         }
-        Text("背屏投放", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 22.dp, bottom = 8.dp))
+        Spacer(Modifier.height(16.dp))
         Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("背屏桌宠", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("虚拟形象投放到背屏", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text(if (rearAvatarEnabled) "已开启" else "关闭状态 · 不影响主屏虚拟形象", color = Muted, fontSize = 11.sp)
+                        Text("投放到小米妙享背屏", color = MainText, fontSize = 14.sp)
+                        Text("沿用 HyperCat AI 的背屏投放与 Shizuku 配置", color = Muted, fontSize = 11.sp)
                     }
                     Switch(checked = rearAvatarEnabled, onCheckedChange = onRearAvatarEnabledChange)
                 }
-                AvatarColorEditor(
-                    title = "背屏虚拟形象背景颜色",
-                    color = rearBackgroundColor,
-                    onColorChange = onRearBackgroundColorChange
-                )
-                Button(onClick = onConfirmRearBackgroundColor, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
-                    Text("确认并同步背屏背景")
-                }
-                Text("仅支持具备背屏的 Xiaomi Pro 系列设备。需要先启动 Shizuku 并授权。首次部署后，还需在系统背屏卡片管理中重新应用卡片。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
-                Text(rearProjectionStatus, color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
-                OutlinedButton(onClick = onRearAvatarRestore, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("恢复原始背屏卡片") }
+                Text(rearProjectionStatus, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                AvatarColorEditor("背屏背景颜色", rearBackgroundColor, onRearBackgroundColorChange)
+                OutlinedButton(onClick = onConfirmRearBackgroundColor, modifier = Modifier.fillMaxWidth()) { Text("应用背屏背景") }
+                OutlinedButton(onClick = onRearAvatarRestore, modifier = Modifier.fillMaxWidth()) { Text("恢复背屏桌宠") }
             }
         }
         Spacer(Modifier.height(24.dp))
     }
 }
+
 @Composable
 private fun SettingsPage(
     modifier: Modifier, avatarName: String, avatarMood: String, rearAvatarEnabled: Boolean, rearProjectionStatus: String, onRearAvatarEnabledChange: (Boolean) -> Unit, onRearAvatarRestore: () -> Unit, onAvatarInteraction: (String) -> Unit, onAvatarNameChange: (String) -> Unit,
