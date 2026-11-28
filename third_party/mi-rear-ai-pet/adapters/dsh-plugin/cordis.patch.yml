@@ -1,0 +1,4 @@
+- insert:
+    - id: mi-rear-pet-status
+      name: '@local/mi-rear-pet-status'
+      config: {}
