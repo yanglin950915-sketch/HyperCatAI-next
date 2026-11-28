@@ -1233,13 +1233,15 @@ private fun HyperCatApp() {
                     avatarInteractionReply = avatarInteractionReply,
                     avatarInteractionReplyId = avatarInteractionReplyId,
                     agentAutoReadPending = agentAutoReadPending,
-                    onAgentAutoReadConsumed = { agentAutoReadPending = false },
+                    agentAutoReadTargetIndex = agentAutoReadTargetIndex,
+                    onAgentAutoReadConsumed = { agentAutoReadPending = false; agentAutoReadTargetIndex = -1 },
                     onCallStart = {
                         callReplyJob?.cancel()
                         callReplyGeneration++
                         callMessages.clear()
                         callThinking = false
                         agentAutoReadPending = false
+                        agentAutoReadTargetIndex = -1
                     },
                     onCallEnd = {
                         callReplyJob?.cancel()
@@ -1788,7 +1790,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: MutableList<ChatLine>, callThinking: Boolean, avatarInteractionReply: String, avatarInteractionReplyId: Long, agentAutoReadPending: Boolean, onAgentAutoReadConsumed: () -> Unit, onCallStart: () -> Unit, onCallEnd: () -> Unit, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: MutableList<ChatLine>, callThinking: Boolean, avatarInteractionReply: String, avatarInteractionReplyId: Long, agentAutoReadPending: Boolean, agentAutoReadTargetIndex: Int, onAgentAutoReadConsumed: () -> Unit, onCallStart: () -> Unit, onCallEnd: () -> Unit, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>, Boolean, String?, Long) -> Unit, onCallInitiative: (String) -> Unit,
     onRealtimeUserTranscript: (String) -> Unit, onRealtimeAssistantReply: (String) -> Unit,
     openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
@@ -2808,7 +2810,7 @@ private fun ChatPage(
                 }
             }
             items(messages.mapIndexed { index, message -> index to message }) { (messageIndex, line) ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.isSystemEvent) Arrangement.Center else if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
                     if (selectedMessageIndices.isNotEmpty() && !line.isSystemEvent) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
                     Surface(modifier = (if (line.isSystemEvent) Modifier else if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (!line.isSystemEvent && selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { if (!line.isSystemEvent) selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.isSystemEvent) Panel2 else if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices && !line.isSystemEvent) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices && !line.isSystemEvent) Cyan else GlassBorder), shape = if (line.isSystemEvent) RoundedCornerShape(50) else RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
