@@ -1071,6 +1071,7 @@ private fun HyperCatApp() {
     }
     val messages = remember { mutableStateListOf<ChatLine>() }
     var agentAutoReadPending by remember { mutableStateOf(false) }
+    var agentAutoReadTargetIndex by remember { mutableIntStateOf(-1) }
     // A reply may finish while the user is outside the Agent screen. Never replay it on re-entry.
     LaunchedEffect(page) {
         if (page != Page.CHAT) {
@@ -1078,7 +1079,6 @@ private fun HyperCatApp() {
             agentAutoReadTargetIndex = -1
         }
     }
-    var agentAutoReadTargetIndex by remember { mutableIntStateOf(-1) }
     // Voice-call turns are intentionally isolated from the normal Agent conversation until hangup.
     val callMessages = remember { mutableStateListOf<ChatLine>() }
     var callThinking by remember { mutableStateOf(false) }
