@@ -1568,6 +1568,7 @@ private fun ChatPage(
     var previousSpeakerphoneOn by remember { mutableStateOf(false) }
     var recognitionStartJob by remember { mutableStateOf<Job?>(null) }
     var isListening by remember { mutableStateOf(false) }
+    var recognitionSessionActive by remember { mutableStateOf(false) }
     var ttsReady by remember { mutableStateOf(false) }
     var isSpeaking by remember { mutableStateOf(false) }
     var cloudSpeechJob by remember { mutableStateOf<Job?>(null) }
@@ -1643,12 +1644,24 @@ private fun ChatPage(
     DisposableEffect(speechRecognizer) {
         val activeRecognizer = speechRecognizer
         activeRecognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) { isListening = true; speechStatus = "麦克风已启动，正在聆听…" }
-            override fun onBeginningOfSpeech() { isListening = true; speechStatus = "已检测到你的声音，正在识别…" }
+            override fun onReadyForSpeech(params: Bundle?) { recognitionSessionActive = true; isListening = true; speechStatus = "麦克风已启动，正在聆听…" }
+            override fun onBeginningOfSpeech() {
+                recognitionSessionActive = true
+                isListening = true
+                if (latestCallActive && latestMicEnabled && isSpeaking) {
+                    // Stop AI playback as soon as speech is detected, not after final ASR results.
+                    runCatching { speechEngine.stop() }
+                    cloudSpeechJob?.cancel()
+                    isSpeaking = false
+                    agentPlaybackUntilMs = 0L
+                    speechStatus = "检测到你正在插话，已停止 AI 播报…"
+                } else speechStatus = if (latestCallActive) "已检测到你的声音，正在识别…" else "正在识别语音…"
+            }
             override fun onRmsChanged(rmsdB: Float) { micRmsDb = rmsdB.coerceIn(-2f, 10f) }
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { isListening = false; if (latestCallActive) speechStatus = "检测到语音结束，正在识别…" }
             override fun onError(error: Int) {
+                recognitionSessionActive = false
                 isListening = false
                 val reason = when (error) {
                     SpeechRecognizer.ERROR_AUDIO -> "麦克风音频采集失败，请检查系统麦克风隐私开关或其他应用占用"
@@ -1661,8 +1674,8 @@ private fun ChatPage(
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有检测到语音，请再次说话"
                     else -> "语音识别异常（$error）"
                 }
+                speechStatus = reason
                 if (latestCallActive) {
-                    speechStatus = reason
                     if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                         speechStatus = "系统未授予录音权限，正在请求麦克风权限…"
                         pendingMicPermissionRequest = true
@@ -1704,6 +1717,7 @@ private fun ChatPage(
                 }
             }
             override fun onResults(results: Bundle?) {
+                recognitionSessionActive = false
                 isListening = false
                 val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
                 if (spoken.isNotBlank()) {
@@ -1716,13 +1730,15 @@ private fun ChatPage(
                         latestOnDraft(if (latestDraft.isBlank()) spoken else "${latestDraft} ${spoken}")
                     }
                 } else if (latestCallActive) speechStatus = "没有识别到清晰语音，请再说一次"
+                else speechStatus = "没有识别到语音，请按住麦克风重新说一次"
                 if (latestCallActive && latestMicEnabled) pendingRecognitionStart = true
             }
             override fun onPartialResults(partialResults: Bundle?) {
                 val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                if (partial.isNotBlank() && latestCallActive) {
-                    val playbackActive = isSpeaking || SystemClock.elapsedRealtime() <= agentPlaybackUntilMs
-                    speechStatus = if (playbackActive && looksLikeAgentEcho(partial, lastCallSpokenText)) "正在过滤 Agent 播报回声…" else "正在识别你的声音：$partial"
+                if (partial.isNotBlank()) {
+                    val playbackActive = latestCallActive && (isSpeaking || SystemClock.elapsedRealtime() <= agentPlaybackUntilMs)
+                    speechStatus = if (playbackActive && looksLikeAgentEcho(partial, lastCallSpokenText)) "正在过滤 Agent 播报回声…"
+                        else if (latestCallActive) "正在识别你的声音：$partial" else "识别中：$partial"
                 }
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -1772,6 +1788,8 @@ private fun ChatPage(
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
         }
         isListening = false
+        recognitionSessionActive = true
+        speechStatus = if (callActive) "正在启动语音识别，请开始说话…" else "正在启动语音识别…"
         if (callActive) {
             recognitionStartJob?.cancel()
             // The previous session has already delivered onResults/onError before this restart.
@@ -1781,11 +1799,11 @@ private fun ChatPage(
                 delay(300L)
                 if (!callActive || !micEnabled) return@launch
                 runCatching { speechRecognizer.startListening(intent) }
-                    .onFailure { speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}" }
+                    .onFailure { recognitionSessionActive = false; speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}" }
             }
         } else {
             runCatching { speechRecognizer.startListening(intent) }
-                .onFailure { speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}" }
+                .onFailure { recognitionSessionActive = false; speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}" }
         }
     }
     val callMicPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -1807,7 +1825,15 @@ private fun ChatPage(
             if (callActive && micEnabled) startInAppRecognition()
         }
     }
-    fun stopInAppRecognition() { if (isListening) runCatching { speechRecognizer.stopListening() } }
+    fun stopInAppRecognition() {
+        // The recognizer may still be preparing when the user releases the button.
+        // Track the requested session separately from onReadyForSpeech.
+        if (recognitionSessionActive) {
+            speechStatus = "正在完成本次语音识别…"
+            runCatching { speechRecognizer.stopListening() }
+                .onFailure { recognitionSessionActive = false; isListening = false; speechStatus = "停止语音识别失败：${it.message ?: "系统语音服务异常"}" }
+        }
+    }
     var cameraError by remember { mutableStateOf<String?>(null) }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) { cameraError = null; videoEnabled = true; speechStatus = "摄像头预览已启动" }
@@ -1846,16 +1872,24 @@ private fun ChatPage(
                     if (ttsMode == "cloud") {
                         val profile = selectedTtsProfile
                         if (profile != null) {
-                            isSpeaking = true; speechStatus = "正在请求云端语音…"
-                            try { speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate, AudioAttributes.USAGE_VOICE_COMMUNICATION); speechStatus = "云端语音播报完成" }
-                            catch (cancelled: CancellationException) {
-                                speechStatus = "已停止朗读"
-                                throw cancelled
-                            } catch (error: Exception) {
-                                speechStatus = "云端 TTS 失败，点击查看完整诊断"
-                                ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
+                            cloudSpeechJob?.cancel()
+                            cloudSpeechJob = speechScope.launch {
+                                isSpeaking = true
+                                speechStatus = "正在请求云端语音…"
+                                try {
+                                    speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate, AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                                    speechStatus = "云端语音播报完成"
+                                } catch (cancelled: CancellationException) {
+                                    speechStatus = "已停止朗读"
+                                    throw cancelled
+                                } catch (error: Exception) {
+                                    speechStatus = "云端 TTS 失败，点击查看完整诊断"
+                                    ttsDiagnostic = safeTtsDiagnostic(error, profile, ttsModel)
+                                } finally {
+                                    isSpeaking = false
+                                    agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 900L
+                                }
                             }
-                            finally { isSpeaking = false; agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 2200L }
                         }
                     } else {
                         isSpeaking = true
@@ -2224,7 +2258,10 @@ private fun ChatPage(
                     }
                 }
             }
-            if (isListening) Text("通话/语音输入：麦克风正在采集声音", color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
+            if (isListening) Text("麦克风正在采集声音", color = Cyan, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
+            else if (!callActive && (speechStatus.contains("识别") || speechStatus.contains("麦克风") || speechStatus.contains("语音"))) {
+                Text(speechStatus, color = if (speechStatus.contains("失败") || speechStatus.contains("没有") || speechStatus.contains("异常")) Color(0xFFE07878) else Muted, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp))
+            }
         }
     }
         AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
