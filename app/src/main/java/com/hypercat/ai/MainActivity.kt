@@ -2072,20 +2072,32 @@ private fun ChatPage(
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
     var showComposerActions by remember { mutableStateOf(false) }
     var recentPhotoUris by remember { mutableStateOf(emptyList<Uri>()) }
-    val galleryPermission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
-    val galleryPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            recentPhotoUris = loadRecentImageUris(context)
-        } else {
-            recentPhotoUris = emptyList()
+    val galleryPermissions = remember {
+        when {
+            Build.VERSION.SDK_INT >= 34 -> arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            )
+            Build.VERSION.SDK_INT >= 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+            else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
+    }
+    val galleryPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+        val canReadImages = results.values.any { it } ||
+            galleryPermissions.any { permission ->
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            }
+        recentPhotoUris = if (canReadImages) loadRecentImageUris(context) else emptyList()
     }
     LaunchedEffect(showComposerActions) {
         if (showComposerActions) {
-            if (ContextCompat.checkSelfPermission(context, galleryPermission) == PackageManager.PERMISSION_GRANTED) {
+            val canReadImages = galleryPermissions.any { permission ->
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            }
+            if (canReadImages) {
                 recentPhotoUris = withContext(Dispatchers.IO) { loadRecentImageUris(context) }
             } else {
-                galleryPermissionLauncher.launch(galleryPermission)
+                galleryPermissionLauncher.launch(galleryPermissions)
             }
         }
     }
