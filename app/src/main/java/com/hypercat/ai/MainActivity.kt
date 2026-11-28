@@ -2543,7 +2543,7 @@ private fun ChatPage(
     var cameraError by remember { mutableStateOf<String?>(null) }
     var cameraVisionStatus by remember { mutableStateOf("") }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) { cameraError = null; videoEnabled = true; speechStatus = "摄像头预览已启动" }
+        if (granted) { cameraError = null; videoEnabled = true; cameraVisionStatus = if (realtimeCallSession?.supportsImageInput() == true) "摄像头已就绪，开始说话后发送画面" else "当前通话模型不支持图像输入，画面仅本地预览"; speechStatus = "摄像头预览已启动" }
         else { videoEnabled = false; Toast.makeText(context, "未获得摄像头权限，语音通话仍可继续", Toast.LENGTH_SHORT).show() }
     }
     fun startUnifiedCall() {
@@ -2566,7 +2566,7 @@ private fun ChatPage(
     fun toggleVideo() {
         if (videoEnabled) { videoEnabled = false; cameraError = null; cameraVisionStatus = "" }
         else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        else { cameraError = null; videoEnabled = true }
+        else { cameraError = null; videoEnabled = true; cameraVisionStatus = if (realtimeCallSession?.supportsImageInput() == true) "摄像头已就绪，开始说话后发送画面" else "当前通话模型不支持图像输入，画面仅本地预览" }
     }
     LaunchedEffect(callActive, callMessages.size, callThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak, realtimeCallSession) {
         if (callActive && realtimeCallSession == null && !callThinking) {
@@ -3178,7 +3178,7 @@ private fun ChatPage(
                 Spacer(Modifier.height(14.dp))
                 Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF151C29))) {
                     if (videoEnabled) {
-                        LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it }, onFrame = { jpeg ->
+                        LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it }, shouldCaptureFrame = { realtimeCallSession?.isUserSpeaking() == true && realtimeCallSession?.supportsImageInput() == true }, onFrame = { jpeg ->
                             val sent = realtimeCallSession?.sendImageFrame(jpeg) == true
                             Handler(Looper.getMainLooper()).post {
                                 cameraVisionStatus = if (sent) "画面帧已发送到 AI 实时连接 · 约每秒 1 帧" else "当前通话模型不支持图像输入，画面仅本地预览"
@@ -3246,7 +3246,7 @@ private fun ChatPage(
                         audioManager.mode = previousAudioMode
                     }
                 }
-                Text(if (videoEnabled) "摄像头已开启：画面会压缩后按约 1 帧/秒发送给支持视觉输入的 Realtime 模型；关闭摄像头即停止采集。" else "语音通话已启动。点击摄像头按钮可开启视频，点击麦克风按钮可静音。",
+                Text(if (videoEnabled) "摄像头已开启：仅在你说话时，才会将压缩画面按约 1 帧/秒发送给支持视觉输入的 Realtime 模型。" else "语音通话已启动。点击摄像头按钮可开启视频，点击麦克风按钮可静音。",
                     color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
                 if (videoEnabled && cameraVisionStatus.isNotBlank()) Text(cameraVisionStatus, color = if (cameraVisionStatus.startsWith("AI 视觉")) Color(0xFF70D9A5) else Color(0xFFFFC078), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
                 if (speechStatus.isNotBlank()) Text(speechStatus, color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
@@ -3257,11 +3257,12 @@ private fun ChatPage(
 }
 
 @Composable
-private fun LiveCameraPreview(useFrontCamera: Boolean, onError: (String) -> Unit, onFrame: (ByteArray) -> Boolean) {
+private fun LiveCameraPreview(useFrontCamera: Boolean, onError: (String) -> Unit, shouldCaptureFrame: () -> Boolean, onFrame: (ByteArray) -> Boolean) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestOnError by rememberUpdatedState(onError)
     val latestOnFrame by rememberUpdatedState(onFrame)
+    val latestShouldCaptureFrame by rememberUpdatedState(shouldCaptureFrame)
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val previewView = remember(context) { PreviewView(context).apply {
         scaleType = PreviewView.ScaleType.FILL_CENTER
@@ -3288,7 +3289,7 @@ private fun LiveCameraPreview(useFrontCamera: Boolean, onError: (String) -> Unit
                     try {
                         val now = SystemClock.elapsedRealtime()
                         val previous = lastFrameAt.get()
-                        if (now - previous >= 1_200L && lastFrameAt.compareAndSet(previous, now)) {
+                        if (latestShouldCaptureFrame() && now - previous >= 1_000L && lastFrameAt.compareAndSet(previous, now)) {
                             val jpeg = image.toVisionJpeg()
                             if (jpeg != null) latestOnFrame(jpeg)
                         }
