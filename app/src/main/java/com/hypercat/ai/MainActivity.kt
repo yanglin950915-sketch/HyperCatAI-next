@@ -1221,6 +1221,11 @@ private fun HyperCatApp() {
                         callMessages.clear()
                         callThinking = false
                     },
+                    onCallEnd = {
+                        callReplyJob?.cancel()
+                        callReplyGeneration++
+                        callThinking = false
+                    },
                     isThinking = isThinking,
                     recentPrompts = recentPrompts,
                     onDeleteRecentPrompt = { prompt -> recentPrompts = recentPrompts.filterNot { it == prompt }; chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).remove("chat_session_$prompt").apply() },
@@ -1749,7 +1754,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: List<ChatLine>, callThinking: Boolean, onCallStart: () -> Unit, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: List<ChatLine>, callThinking: Boolean, onCallStart: () -> Unit, onCallEnd: () -> Unit, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>, Boolean, String?, Long) -> Unit, onCallInitiative: (String) -> Unit,
     onRealtimeUserTranscript: (String) -> Unit, onRealtimeAssistantReply: (String) -> Unit,
     openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
@@ -3034,6 +3039,7 @@ private fun ChatPage(
     if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
     if (showCallInfo) Dialog(
         onDismissRequest = {
+            onCallEnd()
             callActive = false; callGeneration += 1L; micEnabled = false; videoEnabled = false; isListening = false
             recognitionStartJob?.cancel(); recognitionStartJob = null
             recognitionSessionActive = false; recognitionStartCommandSent = false
@@ -3053,7 +3059,8 @@ private fun ChatPage(
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 18.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("‹", color = Color.White, fontSize = 28.sp, modifier = Modifier.clickable {
-                        callActive = false; callGeneration += 1L; micEnabled = false; videoEnabled = false; isListening = false
+                        onCallEnd()
+            callActive = false; callGeneration += 1L; micEnabled = false; videoEnabled = false; isListening = false
                         recognitionStartJob?.cancel(); recognitionStartJob = null
                         recognitionSessionActive = false; recognitionStartCommandSent = false
                         callPcmCaptureController?.close(); callPcmCaptureController = null
@@ -3083,13 +3090,13 @@ private fun ChatPage(
                     } else {
                         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             Text("HyperCat AI", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                            Text(if (isSpeaking) "AI 正在回答…" else if (isListening) "正在聆听…" else if (isThinking) "正在思考…" else "语音通话已连接", color = Color(0xFFADB8C8), fontSize = 13.sp)
+                            Text(if (isSpeaking) "AI 正在回答…" else if (isListening) "正在聆听…" else if (callThinking) "正在思考…" else "语音通话已连接", color = Color(0xFFADB8C8), fontSize = 13.sp)
                         }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                val latestCallReply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
-                val latestCallInput = messages.lastOrNull { it.fromUser }?.text.orEmpty()
+                val latestCallReply = callMessages.lastOrNull { !it.fromUser }?.text.orEmpty()
+                val latestCallInput = callMessages.lastOrNull { it.fromUser }?.text.orEmpty()
                 Surface(Modifier.fillMaxWidth().heightIn(max = 128.dp), color = Color(0xFF151C29), shape = RoundedCornerShape(18.dp)) {
                     Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (latestCallInput.isNotBlank()) Text("你：$latestCallInput", color = Color(0xFFADB8C8), fontSize = 11.sp)
@@ -3121,7 +3128,8 @@ private fun ChatPage(
                     CallControl(if (videoEnabled) "关闭视频" else "开启视频", if (videoEnabled) "📹" else "📷") { toggleVideo() }
                     if (videoEnabled) CallControl("翻转摄像头", "🔄") { useFrontCamera = !useFrontCamera }
                     CallControl("挂断", "☎", danger = true) {
-                        callActive = false; callGeneration += 1L; micEnabled = false; videoEnabled = false; isListening = false
+                        onCallEnd()
+            callActive = false; callGeneration += 1L; micEnabled = false; videoEnabled = false; isListening = false
                         recognitionStartJob?.cancel()
                         recognitionSessionActive = false
                         callPcmCaptureController?.close(); callPcmCaptureController = null
