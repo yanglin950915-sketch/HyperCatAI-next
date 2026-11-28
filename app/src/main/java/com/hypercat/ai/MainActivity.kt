@@ -279,6 +279,77 @@ class MainActivity : ComponentActivity() {
 }
 
 
+private fun saveCapturedPcmAsWav(context: Context, pcm16: ByteArray, sampleRate: Int = 16_000): File {
+    val directory = File(context.cacheDir, "voice_messages").apply { mkdirs() }
+    val file = File(directory, "voice_${System.currentTimeMillis()}.wav")
+    FileOutputStream(file).use { out ->
+        val dataSize = pcm16.size
+        fun writeInt(v: Int) { out.write(byteArrayOf(v.toByte(), (v shr 8).toByte(), (v shr 16).toByte(), (v shr 24).toByte())) }
+        fun writeShort(v: Int) { out.write(byteArrayOf(v.toByte(), (v shr 8).toByte())) }
+        out.write("RIFF".toByteArray()); writeInt(36 + dataSize); out.write("WAVE".toByteArray())
+        out.write("fmt ".toByteArray()); writeInt(16); writeShort(1); writeShort(1)
+        writeInt(sampleRate); writeInt(sampleRate * 2); writeShort(2); writeShort(16)
+        out.write("data".toByteArray()); writeInt(dataSize); out.write(pcm16)
+    }
+    return file
+}
+
+@Composable
+private fun VoiceMessageBubble(path: String, durationMs: Long, fromUser: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var player by remember(path) { mutableStateOf<MediaPlayer?>(null) }
+    var playing by remember(path) { mutableStateOf(false) }
+    DisposableEffect(path) {
+        onDispose {
+            runCatching { player?.stop() }
+            runCatching { player?.release() }
+            player = null
+            playing = false
+        }
+    }
+    val seconds = ((durationMs + 999L) / 1000L).coerceAtLeast(1L)
+    Row(
+        Modifier.padding(top = 5.dp).clip(RoundedCornerShape(14.dp))
+            .background(if (fromUser) Color.White.copy(alpha = .12f) else Cyan.copy(alpha = .10f))
+            .clickable {
+                if (playing) {
+                    runCatching { player?.pause() }
+                    playing = false
+                } else {
+                    runCatching { player?.release() }
+                    player = null
+                    runCatching {
+                        val next = MediaPlayer()
+                        next.setDataSource(path)
+                        next.setOnCompletionListener { completed ->
+                            playing = false
+                            runCatching { completed.release() }
+                            if (player === completed) player = null
+                        }
+                        next.prepare()
+                        next.start()
+                        player = next
+                        playing = true
+                    }.onFailure {
+                        playing = false
+                        Toast.makeText(context, "语音播放失败：${it.message ?: "文件不可用"}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(if (playing) Icons.Outlined.Stop else Icons.Outlined.VolumeUp, contentDescription = if (playing) "暂停语音" else "播放语音",
+            tint = if (fromUser) Color.White else Cyan, modifier = Modifier.size(19.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(if (playing) "正在播放" else "语音消息", color = if (fromUser) Color.White else MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.width(10.dp))
+        Text("${seconds}″", color = if (fromUser) Color.White.copy(alpha = .8f) else Muted, fontSize = 11.sp)
+        Spacer(Modifier.width(5.dp))
+        Text("▶ 〰〰〰", color = if (fromUser) Color.White.copy(alpha = .85f) else Cyan, fontSize = 11.sp)
+    }
+}
+
 /** Transcribe a captured WAV with Xiaomi MiMo ASR, using the selected TTS profile's own endpoint and API key. */
 private fun transcribeCapturedPcm(ttsEndpoint: String, ttsApiKey: String, pcm16: ByteArray, sampleRate: Int = 16_000): String {
     require(pcm16.size >= sampleRate / 2) { "录音时长不足 0.5 秒，未发送给 AI" }
@@ -719,12 +790,13 @@ private fun exportRearWidgetPackage(context: Context) {
     }
 }
 
-private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "")
+private data class ChatLine(val text: String, val fromUser: Boolean, val attachments: List<String> = emptyList(), val photos: List<Bitmap> = emptyList(), val imageUris: List<Uri> = emptyList(), val reasoning: String = "", val voiceAudioPath: String? = null, val voiceDurationMs: Long = 0L)
 
 private fun serializeChatHistory(messages: List<ChatLine>): String = org.json.JSONArray().apply {
     messages.forEach { line ->
         put(JSONObject().put("text", line.text).put("fromUser", line.fromUser).put("reasoning", line.reasoning)
-            .put("attachments", org.json.JSONArray(line.attachments)))
+            .put("attachments", org.json.JSONArray(line.attachments))
+            .put("voiceAudioPath", line.voiceAudioPath.orEmpty()).put("voiceDurationMs", line.voiceDurationMs))
     }
 }.toString()
 
@@ -739,7 +811,9 @@ private fun loadChatHistory(context: Context, title: String): List<ChatLine> {
             val files = item.optJSONArray("attachments") ?: org.json.JSONArray()
             ChatLine(item.optString("text"), item.optBoolean("fromUser"),
                 attachments = (0 until files.length()).map { files.optString(it) },
-                reasoning = item.optString("reasoning"))
+                reasoning = item.optString("reasoning"),
+                voiceAudioPath = item.optString("voiceAudioPath").takeIf { it.isNotBlank() },
+                voiceDurationMs = item.optLong("voiceDurationMs"))
         }
     }.getOrDefault(emptyList())
 }
@@ -1151,10 +1225,10 @@ private fun HyperCatApp() {
                     onDeleteNote = { note -> savedNotes = savedNotes.filterNot { it == note }; chatPrefs.edit().putString("saved_notes", savedNotes.joinToString("\n--NOTE--\n")).apply() },
                     draft = draft,
                     onDraft = { draft = it },
-                    onSend = { value, attachments, photos, isVoiceTurn ->
+                    onSend = { value, attachments, photos, isVoiceTurn, voiceAudioPath, voiceDurationMs ->
                         if (value.isNotBlank() || attachments.isNotEmpty() || photos.isNotEmpty()) {
                             if (currentSessionTitle.isBlank() && value.isNotBlank()) currentSessionTitle = value.trim().take(42)
-                            val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") })
+                            val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") }, voiceAudioPath = voiceAudioPath, voiceDurationMs = voiceDurationMs)
                             messages.add(userLine)
                             if (value.isNotBlank()) {
                                 if (currentSessionTitle == value.trim().take(42)) recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
@@ -1646,7 +1720,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @Composable
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
-    onSend: (String, List<Uri>, List<Bitmap>, Boolean) -> Unit, onCallInitiative: (String) -> Unit,
+    onSend: (String, List<Uri>, List<Bitmap>, Boolean, String?, Long) -> Unit, onCallInitiative: (String) -> Unit,
     onRealtimeUserTranscript: (String) -> Unit, onRealtimeAssistantReply: (String) -> Unit,
     openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
     avatarMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
@@ -2218,7 +2292,9 @@ private fun ChatPage(
                     val transcript = withContext(Dispatchers.IO) { transcribeCapturedPcm(asrEndpoint, asrApiKey, pcm) }
                     Log.i("HyperCatVoice", "AI_TRANSCRIPTION_SUCCESS chars=${transcript.length}")
                     speechStatus = "AI 识别成功"
-                    latestOnDraft(if (latestDraft.isBlank()) transcript else "${latestDraft} ${transcript}")
+                    val voiceFile = withContext(Dispatchers.IO) { saveCapturedPcmAsWav(context, pcm) }
+                    val durationMs = (pcm.size * 1000L / (16_000L * 2L)).coerceAtLeast(1L)
+                    latestOnSend(transcript, emptyList(), emptyList(), false, voiceFile.absolutePath, durationMs)
                 } catch (error: Exception) {
                     Log.e("HyperCatVoice", "AI_TRANSCRIPTION_FAILED pcmBytes=${pcm.size}", error)
                     speechStatus = "录音已成功采集（${pcm.size} 字节），但 AI 识别失败：${error.message ?: "服务异常"}"
@@ -2606,6 +2682,7 @@ private fun ChatPage(
                                 }
                             }
                             line.photos.forEach { photo -> Image(bitmap = photo.asImageBitmap(), contentDescription = "照片", modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp).clip(RoundedCornerShape(12.dp))) }
+                            line.voiceAudioPath?.let { path -> VoiceMessageBubble(path, line.voiceDurationMs, line.fromUser) }
                             line.attachments.forEach { name -> Text("📎 $name", color = if (line.fromUser) Color.White.copy(alpha=.8f) else Cyan, fontSize = 11.sp) }
                         }
                     }
@@ -2673,7 +2750,7 @@ private fun ChatPage(
                 }
                 Spacer(Modifier.weight(1f))
                 Surface(Modifier.requiredSize(42.dp).clickable(enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) {
-                    onSend(draft, selectedFiles, selectedPhotos, false); selectedFiles = emptyList(); selectedPhotos = emptyList()
+                    onSend(draft, selectedFiles, selectedPhotos, false, null, 0L); selectedFiles = emptyList(); selectedPhotos = emptyList()
                 }, color = if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Outlined.Send, contentDescription = "发送", tint = if (draft.isNotBlank() || selectedFiles.isNotEmpty()) Color(0xFF06202A) else Muted, modifier = Modifier.size(20.dp))
