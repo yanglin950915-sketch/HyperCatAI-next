@@ -26,7 +26,7 @@ internal fun MiRearPetView(
         object {
             @JavascriptInterface
             fun onPetInteraction(action: String) {
-                mainHandler.post { onInteraction(action) }
+                mainHandler.post { onInteraction(when (action) { "tap" -> "avatar_touch"; "long_press" -> "avatar_long_press"; "swipe" -> "avatar_drag"; else -> action }) }
             }
         }
     }

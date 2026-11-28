@@ -3460,7 +3460,7 @@ private fun ChatPage(
                             Column(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 9.dp)) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(76.dp), contentAlignment = Alignment.Center) {
-                                        AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, halfBody = false) { _, _ -> }
+                                        AvatarRenderer(avatarId, Modifier.fillMaxSize(), avatarMood, isSpeaking, halfBody = false) { action, _ -> onAvatarInteraction(action) }
                                         Box(Modifier.matchParentSize().clickable(interactionSource = null, indication = null) { drawerSection = "avatar_settings" })
                                     }
                                     Spacer(Modifier.width(12.dp))
