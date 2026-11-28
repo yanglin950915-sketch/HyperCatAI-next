@@ -31,6 +31,7 @@ class OpenAiRealtimeAudioAdapter(
         .pingInterval(20, TimeUnit.SECONDS)
         .build()
     private val closed = AtomicBoolean(false)
+    private val readyDelivered = AtomicBoolean(false)
     @Volatile private var socket: WebSocket? = null
     @Volatile private var events: RealtimeModelAdapter.Events? = null
 
@@ -70,8 +71,6 @@ class OpenAiRealtimeAudioAdapter(
                             .put("silence_duration_ms", 500))).toString())
                 if (!configured) {
                     fail("Realtime 会话配置发送失败")
-                } else if (!closed.get()) {
-                    this@OpenAiRealtimeAudioAdapter.events?.onReady()
                 }
             }
 
@@ -110,6 +109,7 @@ class OpenAiRealtimeAudioAdapter(
         val event = runCatching { JSONObject(raw) }.getOrNull() ?: return
         val sink = events ?: return
         when (event.optString("type")) {
+            "session.updated" -> { if (readyDelivered.compareAndSet(false, true) && !closed.get()) sink.onReady() }
             "input_audio_buffer.speech_started" -> sink.onInterrupted()
             "input_audio_buffer.committed" -> Unit
             "conversation.item.input_audio_transcription.delta" ->
