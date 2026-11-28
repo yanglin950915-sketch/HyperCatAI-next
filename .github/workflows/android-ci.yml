@@ -124,7 +124,7 @@ jobs:
           assert "expectedMarker" in package_builder and '"DisplayInfo"' in package_builder and 'motion.optString("Sound")' in package_builder, "rear package verifier must validate model marker and auxiliary files"
           assert "</div></div></div>\n<!-- SAFE_ZONE:" not in html, "rear error panel markup has an unmatched closing tag"
           assert "window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(initialWindowColor))" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8") and "setKeepOnScreenCondition { !splashThemeReady }" in main_activity and "splashScreen.setOnExitAnimationListener" in main_activity, "splash must stay visible until saved app theme is applied"
-          assert "Mood-specific facial expressions" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "main avatar mood expressions missing"
+          assert "realtimeMood" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8") and "mood = realtimeMood" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "main avatar mood state must reach the Live2D renderer"
           assert "__onRearLive2DReady" in html and "__onRearLive2DError" in html, "rear Live2D readiness bridge missing"
           assert "core-splashscreen:1.2.0" in Path("app/build.gradle.kts").read_text(encoding="utf-8"), "SplashScreen compat dependency missing"
           assert "installSplashScreen()" in Path("app/src/main/java/com/hypercat/ai/MainActivity.kt").read_text(encoding="utf-8"), "SplashScreen must be installed before Compose content"
