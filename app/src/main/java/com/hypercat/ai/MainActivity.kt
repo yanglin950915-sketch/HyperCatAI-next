@@ -3349,7 +3349,7 @@ private fun LiveCameraPreview(useFrontCamera: Boolean, onError: (String) -> Unit
                     try {
                         val now = SystemClock.elapsedRealtime()
                         val previous = lastFrameAt.get()
-                        if (latestShouldCaptureFrame() && now - previous >= 1_000L && lastFrameAt.compareAndSet(previous, now)) {
+                        if (latestShouldCaptureFrame() && now - previous >= 500L && lastFrameAt.compareAndSet(previous, now)) {
                             val jpeg = image.toVisionJpeg()
                             if (jpeg != null) latestOnFrame(jpeg)
                         }
