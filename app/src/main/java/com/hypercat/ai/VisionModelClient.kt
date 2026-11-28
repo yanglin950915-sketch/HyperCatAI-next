@@ -52,7 +52,6 @@ internal object VisionModelClient {
             connection.readTimeout = 30_000
             connection.doOutput = true
             connection.useCaches = false
-            connection.setRequestProperty("Connection", "close")
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             connection.setRequestProperty("Accept", "application/json")
             connection.setRequestProperty("Authorization", "Bearer $normalizedApiKey")
