@@ -1791,7 +1791,7 @@ private fun ChatPage(
                             runCatching {
                                 val replacement = createCallSpeechRecognizer(context)
                                 speechRecognizer = replacement
-                                speechStatus = "语音识别服务已恢复，请重新按住麦克风说话"
+                                speechStatus = "语音识别器已重新初始化，请重新按住麦克风测试"
                             }.onFailure {
                                 speechStatus = "语音识别服务重建失败：${it.message ?: "请检查系统语音识别服务"}"
                             }
@@ -2726,7 +2726,10 @@ private fun VoiceInputButton(isListening: Boolean, onPressStart: () -> Unit, onP
             drawCircle(color = Cyan.copy(alpha = 0.42f), radius = size.minDimension * 0.42f * pulse,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
         }
-        Surface(Modifier.size(40.dp).pointerInput(isListening) {
+        Surface(Modifier.size(40.dp).pointerInput(Unit) {
+            // Do not key this gesture to isListening: onReadyForSpeech changes that
+            // state while the finger is still down. Restarting pointerInput cancels
+            // tryAwaitRelease and immediately calls onPressEnd, aborting SpeechRecognizer.
             detectTapGestures(onPress = {
                 onPressStart()
                 tryAwaitRelease()
