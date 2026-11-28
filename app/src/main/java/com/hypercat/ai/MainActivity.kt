@@ -2299,8 +2299,10 @@ private fun ChatPage(
                 val description = VisionModelClient.describeFrame(visionEndpoint, visionKey, visionModel, frame, text)
                 withContext(Dispatchers.Main) {
                     if (callActive) {
-                        cameraVisionStatus = "画面识别完成 · 正在生成语音回答"
-                        latestOnCallInitiative("用户刚才问：$text。视觉模型 $visionModel 对当前摄像头画面的识别结果：$description。请依据识别结果直接回答，保持自然简洁；不要声称你直接接收了原始图像。")
+                        cameraVisionStatus = "画面识别完成 · 正在播报"
+                        // VisionModelClient already answers the user's question from the image.
+                        // Deliver it directly instead of making a second, serial LLM request.
+                        latestOnRealtimeAssistantReply(description)
                     }
                 }
             } catch (error: Throwable) {
