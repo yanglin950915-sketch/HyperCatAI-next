@@ -739,7 +739,7 @@ private fun appendAgentReply(context: Context, messages: MutableList<ChatLine>, 
     messages.add(ChatLine(text, false, reasoning = reasoning))
     AgentReplyNotifications.showIfBackground(context, text)
 }
-private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String)
+private data class ModelProfile(val name: String, val provider: String, val endpoint: String, val model: String, val apiKey: String, val realtimeProtocol: String = "none", val realtimeEndpoint: String = "")
 private data class TtsProfile(val name: String, val endpoint: String, val apiKey: String)
 private data class SkillProfile(val name: String, val description: String, val instructions: String)
 private data class ThirdPartyPlugin(val name: String, val description: String, val endpoint: String, val method: String, val apiKey: String, val enabled: Boolean = false)
@@ -985,7 +985,7 @@ private fun HyperCatApp() {
         ttsModel = prefs.getString("tts_model", "tts-1") ?: "tts-1"
         ttsVoice = prefs.getString("tts_voice", "alloy") ?: "alloy"
         saved = endpoint.isNotBlank() && model.isNotBlank()
-        runCatching { val array = org.json.JSONArray(prefs.getString("model_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); modelProfiles.add(ModelProfile(item.optString("name"), item.optString("provider"), item.optString("endpoint"), item.optString("model"), item.optString("apiKey"))) } }
+        runCatching { val array = org.json.JSONArray(prefs.getString("model_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); modelProfiles.add(ModelProfile(item.optString("name"), item.optString("provider"), item.optString("endpoint"), item.optString("model"), item.optString("apiKey"), item.optString("realtimeProtocol", "none"), item.optString("realtimeEndpoint", ""))) } }
         runCatching { val array = org.json.JSONArray(prefs.getString("tts_profiles", "[]") ?: "[]"); for (i in 0 until array.length()) { val item = array.getJSONObject(i); ttsProfiles.add(TtsProfile(item.optString("name"), item.optString("endpoint"), item.optString("apiKey"))) } }
         if (ttsProfiles.isEmpty()) modelProfiles.firstOrNull { it.name == ttsProfileName }?.let { old -> val p=TtsProfile(old.name,old.endpoint,old.apiKey); ttsProfiles.add(p); ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; prefs.edit().putString("tts_profiles",org.json.JSONArray().put(JSONObject().put("name",p.name).put("endpoint",p.endpoint).put("apiKey",p.apiKey)).toString()).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() }
         savedNotes = prefs.getString("saved_notes", "")?.split("\n--NOTE--\n")?.filter { it.isNotBlank() } ?: emptyList()
@@ -1329,7 +1329,7 @@ private fun HyperCatApp() {
                             provider = provider, onProvider = { provider = it },
                             modelProfiles = modelProfiles.toList(),
                             ttsProfiles = ttsProfiles.toList(),
-                            onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
+                            onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey).put("realtimeProtocol",x.realtimeProtocol).put("realtimeEndpoint",x.realtimeEndpoint)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
                             onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).apply() },
                             onDeleteProfile = { p -> modelProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
                             onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey)) }; ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; chatPrefs.edit().putString("tts_profiles",a.toString()).putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).apply() },
@@ -3182,6 +3182,8 @@ private fun SettingsPage(
     var taskTitle by remember { mutableStateOf("") }
     var taskDelayMinutes by remember { mutableStateOf("30") }
     var profileName by remember { mutableStateOf("") }
+    var profileRealtimeEndpoint by remember { mutableStateOf("") }
+    var profileRealtimeProtocol by remember { mutableStateOf("none") }
     var modelSettingsTab by remember { mutableStateOf("推理模型") }
     var pluginEnabled by remember { mutableStateOf(false) }
     var pluginName by remember { mutableStateOf("") }
@@ -3351,14 +3353,25 @@ private fun SettingsPage(
                                     if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
                                     else modelProfiles.forEach { p ->
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f).clickable { onSelectProfile(p) }.padding(vertical = 9.dp, horizontal = 4.dp)) { Text(p.name, color = MainText, fontSize = 13.sp); Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp) }
+                                            Column(Modifier.weight(1f).clickable { onSelectProfile(p); profileRealtimeProtocol = p.realtimeProtocol; profileRealtimeEndpoint = p.realtimeEndpoint }.padding(vertical = 9.dp, horizontal = 4.dp)) { Text(p.name, color = MainText, fontSize = 13.sp); Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp); Text(if (p.realtimeProtocol == "openai_realtime" && p.realtimeEndpoint.isNotBlank()) "Realtime 已配置" else "使用兼容语音模式", color = Muted, fontSize = 9.sp) }
                                             Text("设为当前", color = Cyan, fontSize = 11.sp)
                                             IconButton(onClick = { onDeleteProfile(p) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除推理模型", tint = Color(0xFFE07878)) }
                                         }
                                     }
                                     OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(24) }, label = { Text("档案名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                    Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank()) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey)); profileName = "" } },
-                                        enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存为模型档案") }
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("实时语音协议（可选）", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("仅当服务商明确兼容 OpenAI Realtime WebSocket 事件协议时启用；普通 /chat/completions 地址不能填写在这里。", color = Muted, fontSize = 10.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        FilterChip(selected = profileRealtimeProtocol == "none", onClick = { profileRealtimeProtocol = "none"; profileRealtimeEndpoint = "" }, label = { Text("兼容模式") })
+                                        FilterChip(selected = profileRealtimeProtocol == "openai_realtime", onClick = { profileRealtimeProtocol = "openai_realtime" }, label = { Text("OpenAI Realtime") })
+                                    }
+                                    if (profileRealtimeProtocol == "openai_realtime") {
+                                        ConfigField("Realtime WebSocket 地址", profileRealtimeEndpoint, { profileRealtimeEndpoint = it }, "wss://服务商提供的实时语音地址")
+                                        Text("需要独立的 Realtime 模型服务和 API Key。启用前请确认服务端支持 session.update、input_audio_buffer.append 和 response 音频事件。", color = Muted, fontSize = 10.sp)
+                                    }
+                                    Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank()) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey, profileRealtimeProtocol, profileRealtimeEndpoint.trim())); profileName = "" } },
+                                        enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank() && (profileRealtimeProtocol != "openai_realtime" || profileRealtimeEndpoint.startsWith("wss://")), modifier = Modifier.fillMaxWidth()) { Text("保存为模型档案") }
                                     Spacer(Modifier.height(8.dp))
                 }
                 Text("密钥目前保存在应用私有配置中；模型推理请求与密钥加密存储仍需后续接入。", color = Muted, fontSize = 10.sp)
