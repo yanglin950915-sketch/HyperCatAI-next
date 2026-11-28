@@ -55,7 +55,7 @@ class OpenAiRealtimeAudioAdapter(
     private val closed = AtomicBoolean(false)
     private val speaking = AtomicBoolean(false)
     private val engine = RealtimeAudioEngine(this, sampleRate = 24_000)
-    private val audioSessions = AudioSessionCoordinator(appContext)
+    private val audioSessions = AudioSessionCoordinator.get(appContext)
     @Volatile private var audioLease: AudioSessionCoordinator.Lease? = null
     private val playbackQueue = Channel<ByteArray>(Channel.UNLIMITED)
     @Volatile private var socket: WebSocket? = null
