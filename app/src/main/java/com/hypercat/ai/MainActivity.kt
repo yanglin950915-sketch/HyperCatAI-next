@@ -3293,20 +3293,28 @@ private fun ChatPage(
                 }
             }
             if (showComposerActions) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                    listOf("拍照", "照片", "附件", "打电话").forEachIndexed { index, label ->
-                        val icon = when (index) { 0 -> Icons.Outlined.PhotoCamera; 1 -> Icons.Outlined.Photo; 2 -> Icons.Outlined.AttachFile; else -> Icons.Outlined.Call }
-                        Surface(
-                            modifier = Modifier.width(70.dp).height(72.dp).clickable {
-                                showComposerActions = false
-                                when (index) { 0 -> { dismissKeyboard(); cameraCapture.launch(null) }; 1 -> { dismissKeyboard(); photoPicker.launch("image/*") }; 2 -> { dismissKeyboard(); filePicker.launch(arrayOf("*/*")) }; else -> { dismissKeyboard(); startUnifiedCall() } }
-                            },
-                            color = Panel2, shape = RoundedCornerShape(16.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-                        ) {
-                            Column(Modifier.fillMaxSize().padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                Icon(icon, contentDescription = label, tint = Cyan, modifier = Modifier.size(22.dp))
-                                Text(label, color = MainText, fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Panel.copy(alpha = .96f),
+                    shape = RoundedCornerShape(20.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Cyan.copy(alpha = .42f))
+                ) {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        listOf("拍照", "照片", "附件", "打电话").forEachIndexed { index, label ->
+                            val icon = when (index) { 0 -> Icons.Outlined.PhotoCamera; 1 -> Icons.Outlined.Photo; 2 -> Icons.Outlined.AttachFile; else -> Icons.Outlined.Call }
+                            Surface(
+                                modifier = Modifier.width(76.dp).height(78.dp).clickable {
+                                    showComposerActions = false
+                                    when (index) { 0 -> { dismissKeyboard(); cameraCapture.launch(null) }; 1 -> { dismissKeyboard(); photoPicker.launch("image/*") }; 2 -> { dismissKeyboard(); filePicker.launch(arrayOf("*/*")) }; else -> { dismissKeyboard(); startUnifiedCall() } }
+                                },
+                                color = Panel2, shape = RoundedCornerShape(18.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                            ) {
+                                Column(Modifier.fillMaxSize().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                    Icon(icon, contentDescription = label, tint = Cyan, modifier = Modifier.size(24.dp))
+                                    Text(label, color = MainText, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                                }
                             }
                         }
                     }
@@ -3456,29 +3464,62 @@ private fun ChatPage(
         },
         dismissButton = { TextButton(onClick = { ttsDiagnostic = null }) { Text("关闭") } }
     )
-    if (showFullScreenEditor) Dialog(onDismissRequest = { showFullScreenEditor = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding(), color = Bg) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("编辑消息", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { showFullScreenEditor = false }) { Text("完成", color = Cyan) }
-                }
-                OutlinedTextField(
-                    value = draft, onValueChange = onDraft,
-                    modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 6.dp, bottom = 8.dp),
-                    placeholder = { Text("输入消息…", color = Muted) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = MainText, unfocusedTextColor = MainText,
-                        focusedBorderColor = Cyan, unfocusedBorderColor = GlassBorder,
-                        cursorColor = Cyan, focusedLabelColor = Cyan
+    if (showFullScreenEditor) Dialog(
+        onDismissRequest = { showFullScreenEditor = false },
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
+        Box(
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = .28f)).imePadding(),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(.93f).heightIn(min = 300.dp, max = 540.dp),
+                color = Panel,
+                shape = RoundedCornerShape(28.dp),
+                shadowElevation = 18.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Spacer(Modifier.weight(1f))
+                        IconButton(onClick = { showFullScreenEditor = false }, modifier = Modifier.size(38.dp)) {
+                            Icon(Icons.Outlined.OpenInFull, contentDescription = "收起输入框", tint = Cyan, modifier = Modifier.size(21.dp))
+                        }
+                    }
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = onDraft,
+                        modifier = Modifier.fillMaxWidth().weight(1f, fill = true).padding(horizontal = 4.dp, vertical = 6.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 16.sp, lineHeight = 24.sp),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(Cyan),
+                        decorationBox = { inner ->
+                            Box(Modifier.fillMaxSize()) {
+                                if (draft.isEmpty()) Text("输入消息…", color = Muted, fontSize = 16.sp)
+                                inner()
+                            }
+                        }
                     )
-                )
-                Button(
-                    onClick = { showFullScreenEditor = false; if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) { onSend(draft, selectedFiles, selectedPhotos, false, null, 0L); selectedFiles = emptyList(); selectedPhotos = emptyList() } },
-                    enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty(),
-                    modifier = Modifier.fillMaxWidth().height(50.dp).padding(bottom = 4.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = if (appDarkState) Color.Black else Color.White, disabledContainerColor = Panel2, disabledContentColor = Muted)
-                ) { Text("发送", fontWeight = FontWeight.SemiBold) }
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
+                        Button(
+                            onClick = {
+                                showFullScreenEditor = false
+                                if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) {
+                                    onSend(draft, selectedFiles, selectedPhotos, false, null, 0L)
+                                    selectedFiles = emptyList()
+                                    selectedPhotos = emptyList()
+                                }
+                            },
+                            enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty(),
+                            modifier = Modifier.height(44.dp),
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = if (appDarkState) Color.Black else Color.White, disabledContainerColor = Panel2, disabledContentColor = Muted)
+                        ) {
+                            Icon(Icons.Outlined.Send, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Text("发送", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
             }
         }
     }
