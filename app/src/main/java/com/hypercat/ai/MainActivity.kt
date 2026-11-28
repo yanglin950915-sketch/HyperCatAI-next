@@ -2309,7 +2309,7 @@ private fun ChatPage(
                         if (realtime != null) {
                             realtime.sendTextPrompt("用户刚才询问摄像头画面。视觉模型根据当前画面得到以下结果：$description。请基于该结果直接、自然地用语音回答用户；不要提及后台视觉模型或内部处理过程。")
                         } else {
-                            latestOnRealtimeAssistantReply(description)
+                            onRealtimeAssistantReply(description)
                         }
                     }
                 }
