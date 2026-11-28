@@ -3033,6 +3033,10 @@ private fun ChatPage(
             drawerScope.launch { drawerState.close() }
         }
     }
+    BackHandler(enabled = showFullScreenEditor || showComposerActions) {
+        if (showFullScreenEditor) showFullScreenEditor = false
+        else if (showComposerActions) showComposerActions = false
+    }
     LaunchedEffect(drawerState) { androidx.compose.runtime.snapshotFlow { drawerState.isOpen }.collect { onDrawerVisibility(it) } }
     LaunchedEffect(showSettingsOnEnter) {
         if (showSettingsOnEnter) {
@@ -3075,28 +3079,15 @@ private fun ChatPage(
                 }
             }
             Spacer(Modifier.width(7.dp))
-            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { showClear = true }) {
-                Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Delete, contentDescription = "清理当前对话", tint = MainText, modifier = Modifier.size(20.dp)) }
+            Surface(shape = RoundedCornerShape(13.dp), color = Panel2, modifier = Modifier.size(38.dp).clickable { startUnifiedCall() }) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Call, contentDescription = "开始 AI 通话", tint = MainText, modifier = Modifier.size(19.dp)) }
             }
-        }
-        Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("✦ Skill", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.width(7.dp))
-            visibleSkillPrompts.forEach { (label, prompt) ->
-                Surface(
-                    modifier = Modifier.padding(end = 6.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
-                    color = Panel, shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-                ) {
-                    Text(label, color = MainText, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
-                }
+            Spacer(Modifier.width(6.dp))
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(38.dp).clickable { showClear = true }) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Delete, contentDescription = "清理当前对话", tint = MainText, modifier = Modifier.size(19.dp)) }
             }
-            TextButton(onClick = { skillPromptShuffle++ }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
-                Text("换一组", color = Cyan, fontSize = 10.sp)
-            }
-        }
-        Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { onAutoReadReplies(!autoReadReplies) }, modifier = Modifier.size(36.dp)) {
+            Spacer(Modifier.width(2.dp))
+            IconButton(onClick = { onAutoReadReplies(!autoReadReplies) }, modifier = Modifier.size(38.dp)) {
                 Icon(if (autoReadReplies) Icons.Outlined.VolumeUp else Icons.Outlined.VolumeOff, contentDescription = if (autoReadReplies) "关闭自动朗读" else "开启自动朗读", tint = if (autoReadReplies) Cyan else Muted)
             }
         }
@@ -3285,16 +3276,38 @@ private fun ChatPage(
             }
         }
         Column(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("✦ Skill", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(7.dp))
+                visibleSkillPrompts.forEach { (label, prompt) ->
+                    Surface(
+                        modifier = Modifier.padding(end = 6.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
+                        color = Panel, shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                    ) {
+                        Text(label, color = MainText, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
+                    }
+                }
+                TextButton(onClick = { skillPromptShuffle++ }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                    Text("换一组", color = Cyan, fontSize = 10.sp)
+                }
+            }
             if (showComposerActions) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
                     listOf("拍照", "照片", "附件", "打电话").forEachIndexed { index, label ->
                         val icon = when (index) { 0 -> Icons.Outlined.PhotoCamera; 1 -> Icons.Outlined.Photo; 2 -> Icons.Outlined.AttachFile; else -> Icons.Outlined.Call }
-                        Column(Modifier.width(64.dp).clip(RoundedCornerShape(12.dp)).clickable {
-                            showComposerActions = false
-                            when (index) { 0 -> { dismissKeyboard(); cameraCapture.launch(null) }; 1 -> { dismissKeyboard(); photoPicker.launch("image/*") }; 2 -> { dismissKeyboard(); filePicker.launch(arrayOf("*/*")) }; else -> { dismissKeyboard(); startUnifiedCall() } }
-                        }.padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Surface(color = Panel2, shape = CircleShape, modifier = Modifier.size(38.dp)) { Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = label, tint = Cyan) } }
-                            Text(label, color = MainText, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                        Surface(
+                            modifier = Modifier.width(70.dp).height(72.dp).clickable {
+                                showComposerActions = false
+                                when (index) { 0 -> { dismissKeyboard(); cameraCapture.launch(null) }; 1 -> { dismissKeyboard(); photoPicker.launch("image/*") }; 2 -> { dismissKeyboard(); filePicker.launch(arrayOf("*/*")) }; else -> { dismissKeyboard(); startUnifiedCall() } }
+                            },
+                            color = Panel2, shape = RoundedCornerShape(16.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                        ) {
+                            Column(Modifier.fillMaxSize().padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                Icon(icon, contentDescription = label, tint = Cyan, modifier = Modifier.size(22.dp))
+                                Text(label, color = MainText, fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp))
+                            }
                         }
                     }
                 }
@@ -3335,11 +3348,18 @@ private fun ChatPage(
                     }
                     VoiceInputButton(isListening = isListening, onPressStart = { startInAppRecognition() }, onPressEnd = { stopInAppRecognition() })
                     Spacer(Modifier.width(3.dp))
+                    val canSubmit = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()
+                    val sendOrStopActive = isThinking || canSubmit
                     Surface(Modifier.requiredSize(40.dp).clickable {
                         if (isThinking) onCancelThinking()
-                        else if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) { onSend(draft, selectedFiles, selectedPhotos, false, null, 0L); selectedFiles = emptyList(); selectedPhotos = emptyList() }
-                    }, color = if (isThinking || draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
-                        Box(contentAlignment = Alignment.Center) { Icon(if (isThinking) Icons.Outlined.Stop else Icons.Outlined.Send, contentDescription = if (isThinking) "停止回答" else "发送", tint = if (isThinking || draft.isNotBlank() || selectedFiles.isNotEmpty()) Color(0xFF06202A) else Muted, modifier = Modifier.size(19.dp)) }
+                        else if (canSubmit) { onSend(draft, selectedFiles, selectedPhotos, false, null, 0L); selectedFiles = emptyList(); selectedPhotos = emptyList() }
+                    }, color = if (sendOrStopActive) Cyan else Panel2, shape = CircleShape) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(if (isThinking) Icons.Outlined.Stop else Icons.Outlined.Send,
+                                contentDescription = if (isThinking) "停止回答" else "发送",
+                                tint = if (sendOrStopActive) (if (appDarkState) Color.Black else Color.White) else Muted,
+                                modifier = Modifier.size(19.dp))
+                        }
                     }
                 }
             }
@@ -3409,8 +3429,9 @@ private fun ChatPage(
                             }
                         }
                         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("记忆管理 · ${savedNotes.size} 条", color = MainText, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { noteDraft = ""; showRemember = true }) { Text("打开") }
+                            Text("记忆管理 · ${savedNotes.size} 条", color = MainText, fontSize = 12.sp)
+                            Spacer(Modifier.width(10.dp))
+                            TextButton(onClick = { noteDraft = ""; showRemember = true }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) { Text("打开") }
                         }
                     }
                 }
@@ -3436,11 +3457,28 @@ private fun ChatPage(
         dismissButton = { TextButton(onClick = { ttsDiagnostic = null }) { Text("关闭") } }
     )
     if (showFullScreenEditor) Dialog(onDismissRequest = { showFullScreenEditor = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(), color = Bg) {
-            Column(Modifier.fillMaxSize().padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("编辑消息", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)); TextButton(onClick = { showFullScreenEditor = false }) { Text("完成") } }
-                OutlinedTextField(value = draft, onValueChange = onDraft, modifier = Modifier.weight(1f).fillMaxWidth(), placeholder = { Text("输入消息…") })
-                Button(onClick = { showFullScreenEditor = false; if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) { onSend(draft, selectedFiles, selectedPhotos, false, null, 0L); selectedFiles = emptyList(); selectedPhotos = emptyList() } }, enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty(), modifier = Modifier.align(Alignment.End).padding(top = 12.dp)) { Text("发送") }
+        Surface(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding(), color = Bg) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("编辑消息", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { showFullScreenEditor = false }) { Text("完成", color = Cyan) }
+                }
+                OutlinedTextField(
+                    value = draft, onValueChange = onDraft,
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 6.dp, bottom = 8.dp),
+                    placeholder = { Text("输入消息…", color = Muted) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = MainText, unfocusedTextColor = MainText,
+                        focusedBorderColor = Cyan, unfocusedBorderColor = GlassBorder,
+                        cursorColor = Cyan, focusedLabelColor = Cyan
+                    )
+                )
+                Button(
+                    onClick = { showFullScreenEditor = false; if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) { onSend(draft, selectedFiles, selectedPhotos, false, null, 0L); selectedFiles = emptyList(); selectedPhotos = emptyList() } },
+                    enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth().height(50.dp).padding(bottom = 4.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = if (appDarkState) Color.Black else Color.White, disabledContainerColor = Panel2, disabledContentColor = Muted)
+                ) { Text("发送", fontWeight = FontWeight.SemiBold) }
             }
         }
     }
