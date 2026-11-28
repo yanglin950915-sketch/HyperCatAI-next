@@ -4,7 +4,6 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.os.Build
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -29,7 +28,6 @@ class AudioSessionCoordinator private constructor(context: Context) {
     private var activeLease: Lease? = null
     private var previousMode = AudioManager.MODE_NORMAL
     private var previousSpeaker = false
-    private var focusRequest: AudioFocusRequest? = null
 
     fun acquire(
         owner: Owner,
@@ -43,32 +41,24 @@ class AudioSessionCoordinator private constructor(context: Context) {
             val listener = AudioManager.OnAudioFocusChangeListener { change ->
                 onAudioFocusChange?.invoke(change)
             }
-            var request: AudioFocusRequest? = null
+            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                .setOnAudioFocusChangeListener(listener)
+                .setAcceptsDelayedFocusGain(false)
+                .build()
             try {
-                val result = if (Build.VERSION.SDK_INT >= 26) {
-                    request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                        .setAudioAttributes(AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-                        .setOnAudioFocusChangeListener(listener)
-                        .setAcceptsDelayedFocusGain(false)
-                        .build()
-                    focusRequest = request
-                    audioManager.requestAudioFocus(request!!)
-                } else {
-                    @Suppress("DEPRECATION")
-                    audioManager.requestAudioFocus(listener, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                }
+                val result = audioManager.requestAudioFocus(request)
                 check(result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) { "无法获取语音通话音频焦点" }
                 audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
                 audioManager.isSpeakerphoneOn = speakerphone
-                return Lease(owner, listener).also {
+                return Lease(request).also {
                     activeOwner = owner
                     activeLease = it
                 }
             } catch (error: Throwable) {
-                abandonFocus(listener, request)
-                focusRequest = null
+                abandonFocus(request)
                 runCatching { audioManager.isSpeakerphoneOn = previousSpeaker }
                 runCatching { audioManager.mode = previousMode }
                 activeOwner = null
@@ -79,21 +69,12 @@ class AudioSessionCoordinator private constructor(context: Context) {
     }
 
 
-    private fun abandonFocus(
-        listener: AudioManager.OnAudioFocusChangeListener,
-        request: AudioFocusRequest?,
-    ) {
-        if (Build.VERSION.SDK_INT >= 26) {
-            (request ?: focusRequest)?.let { runCatching { audioManager.abandonAudioFocusRequest(it) } }
-        } else {
-            @Suppress("DEPRECATION")
-            runCatching { audioManager.abandonAudioFocus(listener) }
-        }
+    private fun abandonFocus(request: AudioFocusRequest) {
+        runCatching { audioManager.abandonAudioFocusRequest(request) }
     }
 
     inner class Lease internal constructor(
-        private val owner: Owner,
-        private val listener: AudioManager.OnAudioFocusChangeListener,
+        private val request: AudioFocusRequest,
     ) : Closeable {
         private val released = AtomicBoolean(false)
 
@@ -103,8 +84,7 @@ class AudioSessionCoordinator private constructor(context: Context) {
                 // Compare the lease identity, not just Owner: an old lease must
                 // never release a newer session that happens to use the same owner.
                 if (activeLease !== this) return
-                abandonFocus(listener, focusRequest)
-                focusRequest = null
+                abandonFocus(request)
                 runCatching { audioManager.isSpeakerphoneOn = previousSpeaker }
                 runCatching { audioManager.mode = previousMode }
                 activeLease = null
