@@ -2,6 +2,9 @@ package com.hypercat.ai
 
 import com.hypercat.ai.audio.OpenAiCompatibleStreamClient
 import com.hypercat.ai.audio.AudioSessionCoordinator
+import com.hypercat.ai.audio.RealtimeAudioEngine
+import com.hypercat.ai.audio.RealtimeAgentSession
+import com.hypercat.ai.audio.OpenAiRealtimeAudioAdapter
 
 import android.content.Context
 import android.app.DownloadManager
@@ -1605,6 +1608,8 @@ private fun ChatPage(
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
     var callActive by remember { mutableStateOf(false) }
+    var realtimeCallSession by remember { mutableStateOf<RealtimeAgentSession?>(null) }
+    var realtimeAssistantDraft by remember { mutableStateOf("") }
     val audioSessionCoordinator = remember(context) { AudioSessionCoordinator.get(context) }
     var speechAudioLease by remember { mutableStateOf<AudioSessionCoordinator.Lease?>(null) }
     var micEnabled by remember { mutableStateOf(true) }
@@ -1812,6 +1817,7 @@ private fun ChatPage(
         }
     }
     fun startInAppRecognition() {
+        if (callActive && realtimeCallSession != null) return
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             speechStatus = "尚未获得麦克风录音权限，正在请求授权…"
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO); return
@@ -1865,6 +1871,101 @@ private fun ChatPage(
                 .onFailure { recognitionSessionActive = false; speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}" }
         }
     }
+    fun startRealtimeCallIfConfigured(): Boolean {
+        val prefs = chatPrefs
+        if (prefs.getString("active_realtime_protocol", "none") != "openai_realtime") return false
+        val realtimeEndpoint = prefs.getString("active_realtime_endpoint", "")?.trim().orEmpty()
+        if (!realtimeEndpoint.startsWith("wss://", ignoreCase = true)) {
+            Toast.makeText(context, "Realtime 档案缺少有效的 wss:// WebSocket 地址", Toast.LENGTH_LONG).show()
+            speechStatus = "Realtime 地址无效，请在模型档案中检查 WebSocket 地址"
+            return true
+        }
+        if (model.isBlank() || apiKey.isBlank()) {
+            Toast.makeText(context, "Realtime 通话需要模型名称和 API Key", Toast.LENGTH_LONG).show()
+            speechStatus = "Realtime 配置不完整：请检查当前模型档案的模型名称与 API Key"
+            return true
+        }
+        callActive = true; micEnabled = true; videoEnabled = false
+        showCallInfo = true; lastCallSpokenText = ""; realtimeAssistantDraft = ""
+        isListening = false; isSpeaking = false
+        speechStatus = "正在连接 Realtime 语音服务…"
+        var greetingSent = false
+        var sessionRef: RealtimeAgentSession? = null
+        val engine = RealtimeAudioEngine(object : RealtimeAudioEngine.Listener {
+            override fun onAudioFrame(pcm16: ByteArray, length: Int) = Unit
+            override fun onError(message: String, cause: Throwable?) {
+                Handler(Looper.getMainLooper()).post {
+                    if (realtimeCallSession != null) speechStatus = "实时音频引擎异常：$message"
+                }
+            }
+        }, sampleRate = 24_000)
+        val adapter = OpenAiRealtimeAudioAdapter(realtimeEndpoint, apiKey, model)
+        val session = RealtimeAgentSession(context, engine, adapter, object : RealtimeAgentSession.Listener {
+            override fun onStateChanged(state: RealtimeAgentSession.State) {
+                Handler(Looper.getMainLooper()).post {
+                    when (state) {
+                        RealtimeAgentSession.State.CONNECTING -> speechStatus = "正在连接 Realtime…"
+                        RealtimeAgentSession.State.LISTENING -> {
+                            isListening = micEnabled
+                            isSpeaking = false
+                            speechStatus = if (micEnabled) "Realtime 已连接，正在聆听…" else "Realtime 已连接，麦克风已静音"
+                            if (!greetingSent) {
+                                greetingSent = true
+                                sessionRef?.sendTextPrompt("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+                            }
+                        }
+                        RealtimeAgentSession.State.RESPONDING -> { isListening = false; isSpeaking = true; speechStatus = "AI 正在实时语音回答…" }
+                        RealtimeAgentSession.State.INTERRUPTED -> { isSpeaking = false; isListening = micEnabled; speechStatus = "检测到插话，已中断 AI 播报" }
+                        RealtimeAgentSession.State.FAILED -> { isListening = false; isSpeaking = false }
+                        RealtimeAgentSession.State.CLOSING, RealtimeAgentSession.State.CLOSED -> { isListening = false; isSpeaking = false }
+                        RealtimeAgentSession.State.IDLE -> Unit
+                    }
+                }
+            }
+            override fun onUserTranscript(text: String) {
+                Handler(Looper.getMainLooper()).post {
+                    if (callActive && text.isNotBlank()) {
+                        messages.add(ChatLine(text, true))
+                        avatarMood = "thinking"
+                        avatarReply = text
+                    }
+                }
+            }
+            override fun onTextDelta(text: String) {
+                Handler(Looper.getMainLooper()).post {
+                    if (callActive) realtimeAssistantDraft += text
+                }
+            }
+            override fun onAssistantTurnFinished() {
+                Handler(Looper.getMainLooper()).post {
+                    val reply = realtimeAssistantDraft.trim()
+                    realtimeAssistantDraft = ""
+                    if (callActive && reply.isNotBlank()) {
+                        messages.add(ChatLine(reply, false))
+                        avatarReply = reply
+                        avatarMood = "happy"
+                    }
+                    isSpeaking = false
+                    isListening = micEnabled
+                    speechStatus = if (micEnabled) "Realtime 已回答，继续聆听…" else "回答完成，麦克风已静音"
+                }
+            }
+            override fun onFailure(message: String, cause: Throwable?) {
+                Handler(Looper.getMainLooper()).post {
+                    isListening = false; isSpeaking = false
+                    speechStatus = "Realtime 通话失败：$message"
+                    Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
+                }
+            }
+        })
+        sessionRef = session
+        realtimeCallSession = session
+        runCatching { session.start() }.onFailure {
+            speechStatus = "Realtime 启动失败：${it.message ?: "未知错误"}"
+            session.close()
+        }
+        return true
+    }
     val callMicPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -1872,9 +1973,11 @@ private fun ChatPage(
             previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             audioManager.isSpeakerphoneOn = true
-            callActive = true; micEnabled = true; videoEnabled = false
-            showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
-            latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+            if (!startRealtimeCallIfConfigured()) {
+                callActive = true; micEnabled = true; videoEnabled = false
+                showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
+                latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+            }
         } else Toast.makeText(context, "AI 通话需要麦克风录音权限，请在系统设置中允许", Toast.LENGTH_LONG).show()
     }
     LaunchedEffect(pendingRecognitionStart) {
@@ -1908,9 +2011,11 @@ private fun ChatPage(
             previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             audioManager.isSpeakerphoneOn = true
-            callActive = true; micEnabled = true; videoEnabled = false
-            showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
-            latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+            if (!startRealtimeCallIfConfigured()) {
+                callActive = true; micEnabled = true; videoEnabled = false
+                showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
+                latestOnCallInitiative("你现在正在与用户进行语音通话。请自然、简短地主动打个招呼，像真实伙伴一样开启交流，并邀请用户告诉你想聊什么。不要提及你收到了指令。")
+            }
         }
     }
     fun toggleVideo() {
@@ -1918,8 +2023,8 @@ private fun ChatPage(
         else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         else { cameraError = null; videoEnabled = true }
     }
-    LaunchedEffect(callActive, messages.size, isThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak) {
-        if (callActive && !isThinking) {
+    LaunchedEffect(callActive, messages.size, isThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak, realtimeCallSession) {
+        if (callActive && realtimeCallSession == null && !isThinking) {
             val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
             if (reply.isNotBlank() && reply != lastCallSpokenText) {
                 lastCallSpokenText = reply
@@ -1960,8 +2065,8 @@ private fun ChatPage(
             }
         }
     }
-    LaunchedEffect(callActive, messages.size, isThinking, isSpeaking, isListening) {
-        if (callActive && !isThinking && !isSpeaking && !isListening) {
+    LaunchedEffect(callActive, messages.size, isThinking, isSpeaking, isListening, realtimeCallSession) {
+        if (callActive && realtimeCallSession == null && !isThinking && !isSpeaking && !isListening) {
             delay(Random.nextLong(22000L, 42000L))
             if (callActive && !isThinking && !isSpeaking && !isListening) {
                 val followUps = listOf(
@@ -2445,6 +2550,8 @@ private fun ChatPage(
         onDismissRequest = {
             callActive = false; micEnabled = false; videoEnabled = false; isListening = false
             speechAudioLease?.close(); speechAudioLease = null
+            realtimeCallSession?.close(); realtimeCallSession = null
+            realtimeAssistantDraft = ""
             runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
             agentPlaybackUntilMs = 0L
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -2500,8 +2607,14 @@ private fun ChatPage(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                     CallControl(if (micEnabled) "麦克风开启" else "已静音", if (micEnabled) "🎙" else "🔇") {
                         micEnabled = !micEnabled
-                        if (!micEnabled) { isListening = false; runCatching { speechRecognizer.cancel() }; speechStatus = "麦克风已关闭" }
-                        else if (callActive) { speechStatus = "正在重新启动语音识别…"; startInAppRecognition() }
+                        if (!micEnabled) {
+                            isListening = false
+                            if (realtimeCallSession != null) { realtimeCallSession?.setMicrophoneEnabled(false); speechStatus = "Realtime 麦克风已静音" }
+                            else { runCatching { speechRecognizer.cancel() }; speechStatus = "麦克风已关闭" }
+                        } else if (callActive) {
+                            if (realtimeCallSession != null) { realtimeCallSession?.setMicrophoneEnabled(true); isListening = true; speechStatus = "Realtime 麦克风已恢复" }
+                            else { speechStatus = "正在重新启动语音识别…"; startInAppRecognition() }
+                        }
                     }
                     CallControl(if (videoEnabled) "关闭视频" else "开启视频", if (videoEnabled) "📹" else "📷") { toggleVideo() }
                     if (videoEnabled) CallControl("翻转摄像头", "🔄") { useFrontCamera = !useFrontCamera }
