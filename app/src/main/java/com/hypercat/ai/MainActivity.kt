@@ -274,14 +274,19 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun createCallSpeechRecognizer(context: Context): SpeechRecognizer =
-    if (SpeechRecognizer.isRecognitionAvailable(context)) {
-        SpeechRecognizer.createSpeechRecognizer(context)
-    } else if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
-        SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-    } else {
-        SpeechRecognizer.createSpeechRecognizer(context)
+private fun createCallSpeechRecognizer(context: Context): SpeechRecognizer {
+    // Prefer Android's on-device recognizer when available. On some OEM builds the
+    // default network recognizer advertises availability but immediately returns
+    // ERROR_CLIENT; on-device recognition avoids that broken default service path.
+    if (Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
+        runCatching { SpeechRecognizer.createOnDeviceSpeechRecognizer(context) }
+            .getOrNull()?.let { return it }
     }
+    check(SpeechRecognizer.isRecognitionAvailable(context)) {
+        "设备未安装可用的语音识别服务"
+    }
+    return SpeechRecognizer.createSpeechRecognizer(context)
+}
 
 private fun createCallRecognitionIntent(context: Context) =
     Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -1733,7 +1738,7 @@ private fun ChatPage(
                 if (!latestCallActive) { speechAudioLease?.close(); speechAudioLease = null }
                 val reason = when (error) {
                     SpeechRecognizer.ERROR_AUDIO -> "麦克风音频采集失败，请检查系统麦克风隐私开关或其他应用占用"
-                    SpeechRecognizer.ERROR_CLIENT -> "语音识别服务被中断"
+                    SpeechRecognizer.ERROR_CLIENT -> "语音识别客户端中断（错误码 $error）"
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "麦克风权限不足"
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "语音识别网络不可用"
                     SpeechRecognizer.ERROR_NO_MATCH -> "没有听清，请靠近麦克风再说一次"
