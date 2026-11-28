@@ -1638,6 +1638,8 @@ private fun ChatPage(
     var recognitionStartJob by remember { mutableStateOf<Job?>(null) }
     var isListening by remember { mutableStateOf(false) }
     var recognitionSessionActive by remember { mutableStateOf(false) }
+    // True only after startListening has actually been dispatched to Android.
+    var recognitionStartCommandSent by remember { mutableStateOf(false) }
     var ttsReady by remember { mutableStateOf(false) }
     var isSpeaking by remember { mutableStateOf(false) }
     var cloudSpeechJob by remember { mutableStateOf<Job?>(null) }
@@ -1731,6 +1733,9 @@ private fun ChatPage(
             override fun onEndOfSpeech() { isListening = false; if (latestCallActive) speechStatus = "检测到语音结束，正在识别…" }
             override fun onError(error: Int) {
                 recognitionSessionActive = false
+                recognitionStartCommandSent = false
+                recognitionStartJob?.cancel()
+                recognitionStartJob = null
                 isListening = false
                 if (!latestCallActive) { speechAudioLease?.close(); speechAudioLease = null }
                 val reason = when (error) {
@@ -1779,6 +1784,8 @@ private fun ChatPage(
                                     }
                                     if (!latestCallActive || !latestMicEnabled) return@launch
                                     speechStatus = "正在重新连接语音识别服务…"
+                                    recognitionSessionActive = true
+                                    recognitionStartCommandSent = true
                                     target.startListening(createCallRecognitionIntent(context))
                                 }.onFailure { speechStatus = "语音识别重试失败：${it.message ?: "请检查系统语音服务"}" }
                             }
@@ -1803,6 +1810,9 @@ private fun ChatPage(
             }
             override fun onResults(results: Bundle?) {
                 recognitionSessionActive = false
+                recognitionStartCommandSent = false
+                recognitionStartJob?.cancel()
+                recognitionStartJob = null
                 isListening = false
                 if (!latestCallActive) { speechAudioLease?.close(); speechAudioLease = null }
                 val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
@@ -1848,6 +1858,7 @@ private fun ChatPage(
     }
     fun startInAppRecognition() {
         if (callActive && realtimeCallSession != null) return
+        if (recognitionSessionActive) return
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             speechStatus = "尚未获得麦克风录音权限，正在请求授权…"
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO); return
@@ -1879,21 +1890,34 @@ private fun ChatPage(
         }
         isListening = false
         recognitionSessionActive = true
+        recognitionStartCommandSent = false
         speechStatus = if (callActive) "正在启动语音识别，请开始说话…" else "正在启动语音识别…"
         if (callActive) {
             recognitionStartJob?.cancel()
-            // The previous session has already delivered onResults/onError before this restart.
-            // Avoid cancel() on an idle SpeechRecognizer: some OEM services report ERROR_CLIENT.
-            speechStatus = "正在启动语音识别，请开始说话…"
             recognitionStartJob = speechScope.launch {
                 delay(300L)
-                if (!callActive || !micEnabled) return@launch
-                runCatching { speechRecognizer.startListening(intent) }
-                    .onFailure { recognitionSessionActive = false; speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}" }
+                if (!callActive || !micEnabled || !recognitionSessionActive) {
+                    recognitionSessionActive = false
+                    return@launch
+                }
+                runCatching {
+                    recognitionStartCommandSent = true
+                    speechRecognizer.startListening(intent)
+                }.onFailure {
+                    recognitionSessionActive = false
+                    recognitionStartCommandSent = false
+                    speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}"
+                }
             }
         } else {
-            runCatching { speechRecognizer.startListening(intent) }
-                .onFailure { recognitionSessionActive = false; speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}" }
+            runCatching {
+                recognitionStartCommandSent = true
+                speechRecognizer.startListening(intent)
+            }.onFailure {
+                recognitionSessionActive = false
+                recognitionStartCommandSent = false
+                speechStatus = "无法启动语音识别：${it.message ?: "系统语音服务异常"}"
+            }
         }
     }
     fun startRealtimeCallIfConfigured(): Boolean {
@@ -2010,13 +2034,23 @@ private fun ChatPage(
         }
     }
     fun stopInAppRecognition() {
-        // The recognizer may still be preparing when the user releases the button.
-        // Track the requested session separately from onReadyForSpeech.
-        if (recognitionSessionActive) {
-            speechStatus = "正在完成本次语音识别…"
-            runCatching { speechRecognizer.stopListening() }
-                .onFailure { recognitionSessionActive = false; isListening = false; speechStatus = "停止语音识别失败：${it.message ?: "系统语音服务异常"}" }
+        if (!recognitionSessionActive) return
+        if (!recognitionStartCommandSent) {
+            recognitionStartJob?.cancel()
+            recognitionStartJob = null
+            recognitionSessionActive = false
+            isListening = false
+            speechStatus = "已结束本次语音输入"
+            return
         }
+        speechStatus = "正在完成本次语音识别…"
+        runCatching { speechRecognizer.stopListening() }
+            .onFailure {
+                recognitionSessionActive = false
+                recognitionStartCommandSent = false
+                isListening = false
+                speechStatus = "停止语音识别失败：${it.message ?: "系统语音服务异常"}"
+            }
     }
     var cameraError by remember { mutableStateOf<String?>(null) }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -2031,8 +2065,8 @@ private fun ChatPage(
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             previousAudioMode = audioManager.mode
             previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            audioManager.isSpeakerphoneOn = true
+            // Legacy SpeechRecognizer keeps the normal system audio route.
+            // Realtime manages its communication route inside RealtimeAudioEngine.
             if (!startRealtimeCallIfConfigured()) {
                 callActive = true; micEnabled = true; videoEnabled = false
                 showCallInfo = true; lastCallSpokenText = ""; startInAppRecognition()
