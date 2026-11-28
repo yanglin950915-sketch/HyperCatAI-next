@@ -3060,6 +3060,9 @@ private fun ChatPage(
             )
         }
     ) {
+    if (showComposerActions) {
+        Box(Modifier.fillMaxSize().clickable { showComposerActions = false })
+    }
     Column(modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding(), bottom = if (WindowInsets.isImeVisible) 0.dp else contentPadding.calculateBottomPadding()).imePadding().padding(horizontal = 14.dp)) {
         Spacer(Modifier.height(3.dp))
         Row(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -3295,47 +3298,55 @@ private fun ChatPage(
             if (showComposerActions) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = Panel.copy(alpha = .96f),
+                    color = Panel.copy(alpha = .97f),
                     shape = RoundedCornerShape(20.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Cyan.copy(alpha = .42f))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Cyan.copy(alpha = .48f))
                 ) {
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        listOf("拍照", "照片", "附件", "打电话").forEachIndexed { index, label ->
-                            val icon = when (index) { 0 -> Icons.Outlined.PhotoCamera; 1 -> Icons.Outlined.Photo; 2 -> Icons.Outlined.AttachFile; else -> Icons.Outlined.Call }
-                            Surface(
-                                modifier = Modifier.width(76.dp).height(78.dp).clickable {
-                                    showComposerActions = false
-                                    when (index) { 0 -> { dismissKeyboard(); cameraCapture.launch(null) }; 1 -> { dismissKeyboard(); photoPicker.launch("image/*") }; 2 -> { dismissKeyboard(); filePicker.launch(arrayOf("*/*")) }; else -> { dismissKeyboard(); startUnifiedCall() } }
-                                },
-                                color = Panel2, shape = RoundedCornerShape(18.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-                            ) {
-                                Column(Modifier.fillMaxSize().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                    Icon(icon, contentDescription = label, tint = Cyan, modifier = Modifier.size(24.dp))
-                                    Text(label, color = MainText, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            listOf("拍照", "照片", "附件", "打电话").forEachIndexed { index, label ->
+                                val icon = when (index) { 0 -> Icons.Outlined.PhotoCamera; 1 -> Icons.Outlined.Photo; 2 -> Icons.Outlined.AttachFile; else -> Icons.Outlined.Call }
+                                Surface(
+                                    modifier = Modifier.width(72.dp).height(74.dp).clickable {
+                                        showComposerActions = false
+                                        when (index) { 0 -> { dismissKeyboard(); cameraCapture.launch(null) }; 1 -> { dismissKeyboard(); photoPicker.launch("image/*") }; 2 -> { dismissKeyboard(); filePicker.launch(arrayOf("*/*")) }; else -> { dismissKeyboard(); startUnifiedCall() } }
+                                    },
+                                    color = Panel2, shape = RoundedCornerShape(16.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                                ) {
+                                    Column(Modifier.fillMaxSize().padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                        Icon(icon, contentDescription = label, tint = Cyan, modifier = Modifier.size(23.dp))
+                                        Text(label, color = MainText, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
+                                    }
                                 }
                             }
                         }
-                    }
-                }
-                if (recentPhotoUris.isNotEmpty()) {
-                    var upwardDrag by remember { mutableFloatStateOf(0f) }
-                    Row(
-                        Modifier.fillMaxWidth().pointerInput(recentPhotoUris) {
-                            detectVerticalDragGestures(
-                                onVerticalDrag = { _, amount -> upwardDrag += amount },
-                                onDragEnd = { if (upwardDrag < -35f) { dismissKeyboard(); photoPicker.launch("image/*") }; upwardDrag = 0f },
-                                onDragCancel = { upwardDrag = 0f }
-                            )
-                        },
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        recentPhotoUris.take(8).forEach { uri ->
-                            RecentPhotoThumbnail(uri = uri, onClick = { selectedFiles = (selectedFiles + uri).distinct() })
+                        if (recentPhotoUris.isNotEmpty()) {
+                            var upwardDrag by remember { mutableFloatStateOf(0f) }
+                            Row(
+                                Modifier.fillMaxWidth().pointerInput(recentPhotoUris) {
+                                    detectVerticalDragGestures(
+                                        onVerticalDrag = { _, amount -> upwardDrag += amount },
+                                        onDragEnd = { if (upwardDrag < -35f) { dismissKeyboard(); photoPicker.launch("image/*") }; upwardDrag = 0f },
+                                        onDragCancel = { upwardDrag = 0f }
+                                    )
+                                },
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                recentPhotoUris.take(8).forEach { uri ->
+                                    RecentPhotoThumbnail(uri = uri, onClick = { selectedFiles = (selectedFiles + uri).distinct() })
+                                }
+                                Text("上滑查看全部", color = Muted, fontSize = 10.sp, modifier = Modifier.clickable { dismissKeyboard(); photoPicker.launch("image/*") })
+                            }
                         }
-                        Text("上滑查看全部", color = Muted, fontSize = 10.sp, modifier = Modifier.clickable { dismissKeyboard(); photoPicker.launch("image/*") })
                     }
                 }
             }
@@ -3469,17 +3480,17 @@ private fun ChatPage(
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Box(
-            Modifier.fillMaxSize().background(Color.Black.copy(alpha = .28f)).imePadding(),
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = .28f)).clickable { showFullScreenEditor = false }.imePadding(),
             contentAlignment = Alignment.Center
         ) {
             Surface(
-                modifier = Modifier.fillMaxWidth(.93f).heightIn(min = 300.dp, max = 540.dp),
+                modifier = Modifier.fillMaxWidth(.96f).heightIn(min = 380.dp, max = 620.dp),
                 color = Panel,
                 shape = RoundedCornerShape(28.dp),
                 shadowElevation = 18.dp,
                 border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
             ) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Column(Modifier.fillMaxWidth().heightIn(min = 380.dp, max = 620.dp).padding(horizontal = 18.dp, vertical = 14.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Spacer(Modifier.weight(1f))
                         IconButton(onClick = { showFullScreenEditor = false }, modifier = Modifier.size(38.dp)) {
