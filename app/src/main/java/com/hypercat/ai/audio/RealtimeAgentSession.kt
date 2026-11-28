@@ -3,6 +3,8 @@ package com.hypercat.ai.audio
 import android.content.Context
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.TimeUnit
 
 /**
  * Owns the complete device-side realtime audio lifecycle.
@@ -28,6 +30,8 @@ class RealtimeAgentSession(
     private val closed = AtomicBoolean(false)
     @Volatile private var state = State.IDLE
     @Volatile private var audioLease: AudioSessionCoordinator.Lease? = null
+    private val playbackQueue = ArrayBlockingQueue<ByteArray>(48)
+    @Volatile private var playbackThread: Thread? = null
 
     fun currentState(): State = state
 
@@ -52,6 +56,7 @@ class RealtimeAgentSession(
                     try {
                         audio.setFrameConsumer { pcm, length -> adapter.sendAudioFrame(pcm, length) }
                         audio.start()
+                        startPlaybackWorker()
                         transition(State.LISTENING)
                     } catch (error: Throwable) {
                         fail("无法启动实时音频引擎", error)
@@ -69,11 +74,9 @@ class RealtimeAgentSession(
                 override fun onAudioDelta(pcm16: ByteArray, length: Int) {
                     if (closed.get()) return
                     transition(State.RESPONDING)
-                    try {
-                        audio.writePlayback(pcm16, length)
-                    } catch (error: Throwable) {
-                        fail("播放 AI 实时语音失败", error)
-                    }
+                    if (length <= 0 || length > pcm16.size || length % 2 != 0) return
+                    val chunk = pcm16.copyOf(length)
+                    if (!playbackQueue.offer(chunk)) fail("实时语音播放缓冲区已满，请检查网络延迟", null)
                 }
 
                 override fun onAssistantTurnFinished() {
@@ -85,6 +88,7 @@ class RealtimeAgentSession(
 
                 override fun onInterrupted() {
                     if (!closed.get()) {
+                        playbackQueue.clear()
                         audio.interruptPlayback()
                         transition(State.INTERRUPTED)
                         transition(State.LISTENING)
@@ -102,6 +106,7 @@ class RealtimeAgentSession(
 
     fun interruptAssistant() {
         if (closed.get()) return
+        playbackQueue.clear()
         audio.interruptPlayback()
         adapter.cancelResponse()
         transition(State.INTERRUPTED)
@@ -109,6 +114,27 @@ class RealtimeAgentSession(
 
     fun endUserTurn() {
         if (!closed.get()) adapter.endUserTurn()
+    }
+
+
+    private fun startPlaybackWorker() {
+        if (playbackThread?.isAlive == true) return
+        playbackThread = Thread({
+            while (!closed.get() && !Thread.currentThread().isInterrupted) {
+                try {
+                    val chunk = playbackQueue.poll(100, TimeUnit.MILLISECONDS) ?: continue
+                    audio.writePlayback(chunk, chunk.size)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                } catch (error: Throwable) {
+                    if (!closed.get()) fail("播放 AI 实时语音失败", error)
+                    break
+                }
+            }
+        }, "HyperCat-RealtimePlayback").apply {
+            priority = Thread.NORM_PRIORITY
+            start()
+        }
     }
 
     private fun fail(message: String, cause: Throwable?) {
@@ -128,6 +154,10 @@ class RealtimeAgentSession(
         if (!closed.compareAndSet(false, true)) return
         transition(State.CLOSING)
         audio.setFrameConsumer(null)
+        playbackQueue.clear()
+        playbackThread?.interrupt()
+        playbackThread?.let { if (it !== Thread.currentThread()) runCatching { it.join(500) } }
+        playbackThread = null
         runCatching { audio.close() }
         runCatching { adapter.close() }
         AudioSessionCoordinator.get(appContext).onFocusLost = null
