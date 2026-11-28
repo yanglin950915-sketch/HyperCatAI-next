@@ -139,6 +139,24 @@ class OpenAiRealtimeAudioAdapter(
         if (!responseSent) fail("Realtime 回复请求发送失败")
     }
 
+    /**
+     * Adds visual observations to conversation history without requesting an
+     * assistant turn. This keeps passive camera awareness from speaking over
+     * the user or generating a reply for every analyzed frame.
+     */
+    override fun sendContextUpdate(text: String) {
+        if (closed.get() || text.isBlank()) return
+        val itemSent = socket?.send(JSONObject()
+            .put("type", "conversation.item.create")
+            .put("item", JSONObject()
+                .put("type", "message")
+                .put("role", "user")
+                .put("content", org.json.JSONArray().put(JSONObject()
+                    .put("type", "input_text")
+                    .put("text", text.trim())))).toString()) ?: false
+        if (!itemSent) fail("Realtime 视觉上下文同步失败")
+    }
+
     override fun cancelResponse() {
         if (!closed.get()) socket?.send(JSONObject().put("type", "response.cancel").toString())
     }
