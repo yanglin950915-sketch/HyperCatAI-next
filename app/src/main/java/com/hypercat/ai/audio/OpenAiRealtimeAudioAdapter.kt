@@ -26,11 +26,9 @@ class OpenAiRealtimeAudioAdapter(
 ) : RealtimeModelAdapter {
 
     override val requiredSampleRate: Int = 24_000
-    // OpenAI Realtime vision-capable model families. Other provider/model IDs stay audio-only
-    // until their image-input compatibility is explicitly confirmed.
-    override val supportsImageInput: Boolean = model.lowercase().let {
-        it.contains("gpt-realtime") || it.contains("gpt-4o")
-    }
+    // Current OpenAI Realtime image input is supported by gpt-realtime model families.
+    // Do not send images to older or third-party model IDs unless compatibility is confirmed.
+    override val supportsImageInput: Boolean = model.lowercase().contains("gpt-realtime")
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
