@@ -153,6 +153,14 @@ class RealtimeAgentSession(
         if (!closed.get() && text.isNotBlank()) adapter.sendTextPrompt(text.trim())
     }
 
+    /**
+     * Adds non-interrupting context to the conversation. Unlike sendTextPrompt,
+     * this must not call response.create; the next user turn consumes the update.
+     */
+    fun sendContextUpdate(text: String) {
+        if (!closed.get() && text.isNotBlank()) adapter.sendContextUpdate(text.trim())
+    }
+
     /** Sends a throttled camera still into the active conversation when the model supports vision. */
     fun sendImageFrame(jpeg: ByteArray): Boolean {
         if (closed.get() || jpeg.isEmpty() || !adapter.supportsImageInput) return false
@@ -243,5 +251,6 @@ interface RealtimeModelAdapter : Closeable {
     fun sendImageFrame(jpeg: ByteArray): Boolean = false
     fun endUserTurn()
     fun sendTextPrompt(text: String) { }
+    fun sendContextUpdate(text: String) { }
     fun cancelResponse()
 }
