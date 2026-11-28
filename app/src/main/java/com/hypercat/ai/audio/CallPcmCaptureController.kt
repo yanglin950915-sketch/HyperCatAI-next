@@ -111,7 +111,7 @@ class CallPcmCaptureController(
     }
 
     private fun captureLoop(input: AudioRecord) {
-        val vad = PcmVoiceActivityDetector(threshold = 0.018, onsetFrames = 2, releaseFrames = 25)
+        val vad = PcmVoiceActivityDetector(threshold = 0.008, onsetFrames = 2, releaseFrames = 30)
         val preRoll = ArrayDeque<ByteArray>()
         val utterance = ByteArrayOutputStream()
         var collecting = false
@@ -129,6 +129,9 @@ class CallPcmCaptureController(
                 val copy = frame.copyOf(count)
                 val level = rms(copy, count)
                 if (++levelFrameCounter % 5 == 0) onLevel(level)
+                if (levelFrameCounter % 50 == 0) {
+                    android.util.Log.i("HyperCatVoice", "CALL_MIC_RMS rms=" + String.format(java.util.Locale.US, "%.5f", level) + " vadActive=" + vad.isSpeechActive)
+                }
                 when (vad.process(copy, count)) {
                     PcmVoiceActivityDetector.Event.SPEECH_STARTED -> {
                         runCatching { onSpeechStarted() }.onFailure { onError("语音起始回调失败：${it.message}", it) }
@@ -178,6 +181,7 @@ class CallPcmCaptureController(
 
     private fun dispatchUtterance(pcm: ByteArray) {
         if (pcm.size >= MIN_UTTERANCE_BYTES && !disposed.get() && enabled) {
+            android.util.Log.i("HyperCatVoice", "CALL_UTTERANCE_DISPATCH bytes=" + pcm.size)
             runCatching { onUtterance(pcm) }.onFailure { onError("提交录音片段失败：${it.message}", it) }
         }
     }
