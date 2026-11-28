@@ -2184,7 +2184,7 @@ private fun ChatPage(
     }
     fun stopInAppRecognition() {
         if (!callActive && voiceCaptureRecorder != null) {
-            val recorder = voiceCaptureRecorder
+            val recorder = voiceCaptureRecorder ?: return
             voiceCaptureRecorder = null
             isListening = false
             speechStatus = "录音已采集，正在上传 AI 识别…"
