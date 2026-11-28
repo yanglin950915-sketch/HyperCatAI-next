@@ -136,6 +136,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
@@ -1825,6 +1826,8 @@ private fun ChatPage(
 ) {
     val context: Context = LocalContext.current
     val realtimePrefs = remember(context) { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
+    val latestCameraFrame = remember { AtomicReference<ByteArray?>(null) }
+    var cameraVisionStatus by remember { mutableStateOf("") }
     val live2dModel by Live2DModelStore.state.collectAsState()
     LaunchedEffect(Unit) { Live2DModelStore.load(context) }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -2321,6 +2324,36 @@ private fun ChatPage(
                 Handler(Looper.getMainLooper()).post {
                     if (callActive && text.isNotBlank()) onRealtimeUserTranscript(text)
                 }
+                val asksAboutScene = Regex("(看到|看见|画面|镜头|摄像头|眼前|面前|这里|这个东西|这是什么|描述一下|识别一下|读一下|数一数|有什么|发生了什么|帮我看看|看一下)").containsMatchIn(text)
+                val frame = latestCameraFrame.get()
+                if (asksAboutScene && frame != null) {
+                    val provider = realtimePrefs.getString("vision_provider", "独立视觉模型") ?: "独立视觉模型"
+                    val endpoint = if (provider == "独立视觉模型") realtimePrefs.getString("vision_endpoint", "https://ark.cn-beijing.volces.com/api/v3").orEmpty() else realtimePrefs.getString("endpoint", "").orEmpty()
+                    val key = if (provider == "独立视觉模型") realtimePrefs.getString("vision_api_key", "").orEmpty() else realtimePrefs.getString("api_key", "").orEmpty()
+                    val model = if (provider == "独立视觉模型") realtimePrefs.getString("vision_model", "doubao-seed-2-1-pro").orEmpty() else realtimePrefs.getString("model", "").orEmpty()
+                    if (endpoint.isNotBlank() && model.isNotBlank() && key.isNotBlank()) {
+                        Thread({
+                            try {
+                                val visualDescription = VisionModelClient.describeFrame(endpoint, key, model, frame, text)
+                                Handler(Looper.getMainLooper()).post {
+                                    if (callActive) {
+                                        realtimeCallSession?.interruptAssistant()
+                                        realtimeCallSession?.sendTextPrompt("用户刚才的问题是：$text。请结合摄像头画面理解结果回答，不要声称你直接看到了图像；视觉模型分析：$visualDescription")
+                                        cameraVisionStatus = "视觉识别完成 · $model"
+                                    }
+                                }
+                            } catch (error: Throwable) {
+                                Handler(Looper.getMainLooper()).post {
+                                    cameraVisionStatus = "视觉识别失败，请检查网络与模型配置"
+                                }
+                            }
+                        }, "HyperCat-VisionRequest").start()
+                    } else {
+                        Handler(Looper.getMainLooper()).post {
+                            cameraVisionStatus = "视觉模型未配置完整：请检查服务地址、API Key 和模型名称"
+                        }
+                    }
+                }
             }
             override fun onTextDelta(text: String) {
                 Handler(Looper.getMainLooper()).post {
@@ -2543,7 +2576,6 @@ private fun ChatPage(
             }
     }
     var cameraError by remember { mutableStateOf<String?>(null) }
-    var cameraVisionStatus by remember { mutableStateOf("") }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) { cameraError = null; videoEnabled = true; cameraVisionStatus = if (realtimeCallSession?.supportsImageInput() == true) "摄像头已就绪，正在持续发送画面，提问时 AI 可读取最近画面" else "当前通话模型不支持图像输入，画面仅本地预览"; speechStatus = "摄像头预览已启动" }
         else { videoEnabled = false; Toast.makeText(context, "未获得摄像头权限，语音通话仍可继续", Toast.LENGTH_SHORT).show() }
@@ -3180,12 +3212,14 @@ private fun ChatPage(
                 Spacer(Modifier.height(14.dp))
                 Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF151C29))) {
                     if (videoEnabled) {
-                        LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it }, shouldCaptureFrame = { realtimeCallSession?.supportsImageInput() == true }, onFrame = { jpeg ->
+                        LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it }, shouldCaptureFrame = { videoEnabled }, onFrame = { jpeg ->
+                            latestCameraFrame.set(jpeg)
                             val sent = realtimeCallSession?.sendImageFrame(jpeg) == true
                             Handler(Looper.getMainLooper()).post {
-                                cameraVisionStatus = if (sent) "画面帧已提交到 AI 实时连接 · 约每秒 1 帧（等待服务端处理）" else "当前通话模型不支持图像输入，画面仅本地预览"
+                                if (sent) cameraVisionStatus = "实时画面已发送；也可询问镜头中的内容"
+                                else if (cameraVisionStatus.isBlank()) cameraVisionStatus = "画面已就绪 · 询问镜头内容时调用独立视觉模型"
                             }
-                            sent
+                            sent || videoEnabled
                         })
                         if (cameraError != null) Text(cameraError.orEmpty(), color = Color(0xFFFF9A9A), fontSize = 11.sp,
                             modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp).background(Color.Black.copy(alpha = .65f), RoundedCornerShape(8.dp)).padding(8.dp))
@@ -4007,10 +4041,10 @@ private fun SettingsPage(
     var asrEndpoint by remember { mutableStateOf(modelPrefs.getString("asr_endpoint", "") ?: "") }
     var asrApiKey by remember { mutableStateOf(modelPrefs.getString("asr_api_key", "") ?: "") }
     var asrModel by remember { mutableStateOf(modelPrefs.getString("asr_model", "mimo-v2.5-asr") ?: "mimo-v2.5-asr") }
-    var visionProvider by remember { mutableStateOf(modelPrefs.getString("vision_provider", "复用推理模型") ?: "复用推理模型") }
-    var visionEndpoint by remember { mutableStateOf(modelPrefs.getString("vision_endpoint", "") ?: "") }
+    var visionProvider by remember { mutableStateOf(modelPrefs.getString("vision_provider", "独立视觉模型") ?: "独立视觉模型") }
+    var visionEndpoint by remember { mutableStateOf(modelPrefs.getString("vision_endpoint", "https://ark.cn-beijing.volces.com/api/v3") ?: "https://ark.cn-beijing.volces.com/api/v3") }
     var visionApiKey by remember { mutableStateOf(modelPrefs.getString("vision_api_key", "") ?: "") }
-    var visionModel by remember { mutableStateOf(modelPrefs.getString("vision_model", "") ?: "") }
+    var visionModel by remember { mutableStateOf(modelPrefs.getString("vision_model", "doubao-seed-2-1-pro") ?: "doubao-seed-2-1-pro") }
     var pluginEnabled by remember { mutableStateOf(false) }
     var pluginName by remember { mutableStateOf("") }
     var pluginDescription by remember { mutableStateOf("") }
@@ -4102,7 +4136,7 @@ private fun SettingsPage(
         Spacer(Modifier.height(10.dp))
         Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     listOf("推理模型", "语音模型", "视觉模型", "实时语音", "模型档案").forEach { tab ->
                         FilterChip(
                             selected = modelSettingsTab == tab,
@@ -4134,8 +4168,7 @@ private fun SettingsPage(
                                     ConfigField("ASR 模型名称", asrModel, { asrModel = it; prefs.edit().putString("asr_model", it).apply() }, "例如 mimo-v2.5-asr")
                                     Spacer(Modifier.height(14.dp))
                                     Text("语音合成 TTS", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("负责把 AI 回复转换成声音，独立于推理模型与 ASR 配置。", color = Muted, fontSize = 10.sp)
-                                    Text("TTS 语音配置", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("把 AI 回复转换成语音；与 ASR 识别相互独立。", color = Muted, fontSize = 10.sp)
                                     Text("选择系统语音，或使用已保存模型档案连接兼容 OpenAI 的云端语音合成服务。", color = Muted, fontSize = 10.sp)
                                     Spacer(Modifier.height(7.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -4196,7 +4229,7 @@ private fun SettingsPage(
                                         Text("推理接口：$endpoint", color = Muted, fontSize = 10.sp, maxLines = 2)
                                     }
                                     Spacer(Modifier.height(8.dp))
-                                    Text("此处保存视觉服务的独立配置。视频关键帧识别仍需由视觉请求适配器调用该配置；系统不会仅凭模型名称认定其支持图片。", color = Color(0xFFFFC078), fontSize = 10.sp)
+                                    Text("视频预览不会持续上传云端；只有检测到你询问画面内容时，才将最近一帧发送给视觉模型，降低延迟与调用费用。", color = Muted, fontSize = 10.sp)
                                     Button(onClick = { prefs.edit().putString("vision_provider", visionProvider).putString("vision_endpoint", visionEndpoint.trim()).putString("vision_api_key", visionApiKey).putString("vision_model", visionModel.trim()).apply() }, modifier = Modifier.fillMaxWidth()) { Text("保存视觉模型配置") }
                 }
                 if (modelSettingsTab == "实时语音") {
