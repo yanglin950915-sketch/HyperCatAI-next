@@ -189,10 +189,7 @@ class OpenAiRealtimeAudioAdapter(
                     Base64.decode(event.optString("delta"), Base64.DEFAULT)
                 }.getOrNull() ?: return
                 speaking.set(true)
-                scope.launch(Dispatchers.IO) {
-                    runCatching { engine.writePlayback(audio) }
-                        .onFailure { if (!closed.get()) fail("音频播放失败：${it.message}") }
-                }
+                if (playbackQueue.trySend(audio).isFailure && !closed.get()) fail("音频播放队列已关闭")
                 listener.onState(State.RESPONDING)
             }
             "response.audio.done", "response.done" -> {
