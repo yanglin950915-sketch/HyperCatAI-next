@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main, feat/live2d-avatar-agent-integration, feature/rear-agent-unified-v0.9.21, feature/rear-agent-interaction-v0.9.22, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29, fix/live2d-model-zip-import, fix/live2d-smoothness-clarity-v0.9.46, feature/multiple-live2d-avatars-v0.9.47]
   push:
-    branches: [fix/v0.9.40-splash-rearscreen-anime, feat/rear-voice-v0.9.36, main, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29, fix/live2d-model-zip-import, fix/live2d-smoothness-clarity-v0.9.46, feature/multiple-live2d-avatars-v0.9.47]
+    branches: [fix/v0.9.40-splash-rearscreen-anime, feat/rear-voice-v0.9.36, main, feature/direct-rear-projection-v0.9.24, fix/rear-ai-wallpaper-picker-v0.9.29, fix/live2d-model-zip-import, fix/live2d-smoothness-clarity-v0.9.46, feature/multiple-live2d-avatars-v0.9.47, feature/audio-unification-realtime-096]
   workflow_dispatch:
 
 permissions:
@@ -32,6 +32,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/hypercat-signing"
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/hypercat-signing/hypercat-release.jks"
           test -s "$RUNNER_TEMP/hypercat-signing/hypercat-release.jks"
+      - name: Run JVM unit tests
+        env:
+          HYPERCAT_KEYSTORE_PATH: ${{ runner.temp }}/hypercat-signing/hypercat-release.jks
+          HYPERCAT_KEYSTORE_PASSWORD: ${{ secrets.HYPERCAT_KEYSTORE_PASSWORD }}
+          HYPERCAT_KEY_ALIAS: ${{ secrets.HYPERCAT_KEY_ALIAS }}
+          HYPERCAT_KEY_PASSWORD: ${{ secrets.HYPERCAT_KEY_PASSWORD }}
+        run: gradle --no-daemon :app:testDebugUnitTest
       - name: Build debug APK with stable signature
         env:
           HYPERCAT_KEYSTORE_PATH: ${{ runner.temp }}/hypercat-signing/hypercat-release.jks

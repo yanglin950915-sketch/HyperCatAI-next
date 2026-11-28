@@ -8,8 +8,6 @@ import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
-import android.media.AudioManager
-import android.media.audiofx.AudioEffect
 import android.os.Process
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
@@ -24,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class RealtimeAudioEngine(
     private val listener: Listener,
-    private val sampleRate: Int = DEFAULT_SAMPLE_RATE,
+    val sampleRate: Int = DEFAULT_SAMPLE_RATE,
 ) : Closeable {
 
     interface Listener {
@@ -85,23 +83,30 @@ class RealtimeAudioEngine(
             input.release()
             "This device does not support the requested playback format ($outputMin)"
         }
-        val output = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(maxOf(outputMin, frameBytes * 4))
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
+        val output = try {
+            AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setSampleRate(sampleRate)
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(maxOf(outputMin, frameBytes * 4))
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+        } catch (error: Throwable) {
+            // AudioTrack construction can throw before the main startup
+            // transaction begins; do not leak the already-created recorder.
+            runCatching { input.release() }
+            throw error
+        }
         check(output.state == AudioTrack.STATE_INITIALIZED) {
             input.release()
             output.release()
@@ -132,10 +137,10 @@ class RealtimeAudioEngine(
                 "Microphone did not enter recording state"
             }
             running.set(true)
-            captureThread = Thread({ captureLoop(input, frameBytes) }, "HyperCat-AudioCapture").apply {
-                priority = Process.THREAD_PRIORITY_AUDIO
-                start()
-            }
+            captureThread = Thread({
+                Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
+                captureLoop(input, frameBytes)
+            }, "HyperCat-AudioCapture").apply { start() }
         } catch (error: Throwable) {
             running.set(false)
             runCatching { input.release() }
@@ -176,7 +181,14 @@ class RealtimeAudioEngine(
     private fun captureLoop(input: AudioRecord, frameBytes: Int) {
         val frame = ByteArray(frameBytes)
         while (running.get()) {
-            val count = input.read(frame, 0, frame.size, AudioRecord.READ_BLOCKING)
+            val count = try {
+                input.read(frame, 0, frame.size, AudioRecord.READ_BLOCKING)
+            } catch (error: Throwable) {
+                if (running.compareAndSet(true, false)) {
+                    listener.onError("Microphone capture crashed", error)
+                }
+                break
+            }
             if (count > 0) {
                 try {
                     val consumer = frameConsumer
@@ -185,7 +197,11 @@ class RealtimeAudioEngine(
                     listener.onError("Audio frame consumer failed", error)
                 }
             } else if (count < 0) {
-                if (running.get()) listener.onError("Microphone read failed: $count")
+                // Mark the engine stopped before notifying the session. The
+                // failure callback may synchronously close this engine.
+                if (running.compareAndSet(true, false)) {
+                    listener.onError("Microphone read failed: $count")
+                }
                 break
             }
         }

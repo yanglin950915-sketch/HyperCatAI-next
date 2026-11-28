@@ -47,7 +47,8 @@ object AvatarStateStore {
         reply: String,
         enabled: Boolean? = null,
         userText: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_USER_TEXT, "").orEmpty(),
-        backgroundColor: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_BACKGROUND, "#080B12").orEmpty()
+        backgroundColor: String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_BACKGROUND, "#080B12").orEmpty(),
+        updatedAt: Long? = null
     ) {
         val legacy = context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -56,7 +57,9 @@ object AvatarStateStore {
             avatarId = avatarId.ifBlank { "sakura" }.take(32),
             mood = mood.ifBlank { "normal" }.take(24),
             reply = reply.take(240),
-            updatedAt = System.currentTimeMillis(),
+            // Only genuine interaction/reply events advance this timestamp. Presentation-only
+            // updates must preserve it so observers never replay an old reply as a new event.
+            updatedAt = updatedAt ?: System.currentTimeMillis(),
             enabled = enabled ?: prefs.getBoolean(KEY_ENABLED, legacy.getBoolean("rear_pet_enabled", false)),
             userText = userText.take(1000),
             backgroundColor = if (backgroundColor.matches(Regex("^#[0-9A-Fa-f]{6}$"))) backgroundColor else "#080B12"
@@ -79,12 +82,12 @@ object AvatarStateStore {
 
     fun setBackgroundColor(context: Context, color: String) {
         val current = read(context)
-        update(context, current.avatarName, current.avatarId, current.mood, current.reply, current.enabled, current.userText, color)
+        update(context, current.avatarName, current.avatarId, current.mood, current.reply, current.enabled, current.userText, color, current.updatedAt)
     }
 
     fun setEnabled(context: Context, enabled: Boolean) {
         val current = read(context)
-        update(context, current.avatarName, current.avatarId, current.mood, current.reply, enabled, current.userText, current.backgroundColor)
+        update(context, current.avatarName, current.avatarId, current.mood, current.reply, enabled, current.userText, current.backgroundColor, current.updatedAt)
     }
 
     fun read(context: Context): AvatarState {

@@ -1,8 +1,21 @@
+## 0.9.100
+
+- 修复语音消息/AI 电话的 SpeechRecognizer 生命周期竞态：延迟启动期间松手会取消待启动任务，不再向系统发送无对应 startListening 的 stopListening。
+- 识别开始、停止、结果和错误回调统一维护会话状态；识别服务未结束上一轮时不重复启动。
+- 修复直接发起传统 AI 电话时误切换 MODE_IN_COMMUNICATION/扬声器路由的问题；传统系统识别沿用系统默认音频路由，Realtime 仍由独立音频引擎管理。
+- 语音识别异常后重试前同步恢复会话标志，避免下一轮被本地状态误判为仍在聆听。
+
+## 0.9.99
+
+- 修复语音识别兼容性：改用系统默认 RecognitionService，不再强制切换到端侧识别服务。
+- 普通语音消息和非 Realtime AI 电话不再预先抢占音频焦点或强制切换通信音频模式，避免部分厂商识别服务返回 ERROR_CLIENT（5）。
+- Realtime 通话继续由独立音频会话管理器接管音频路由。
+
 # HyperCat AI
 
 **HyperCat AI 是面向 Android 手机的 AI Agent 智能助手。** Agent 主应用可在其他 Android 设备上使用，不要求手机具备背屏；只有背屏虚拟形象投放与互动功能，目标机型包括 Xiaomi 17 Pro / 17 Pro Max、Xiaomi 18 Pro / 18 Pro Max；具体背屏能力仍需结合机型与系统版本进行实机验证。背屏不是独立运行的虚拟形象应用，而是 Agent 的第二交互界面：主屏与背屏共享角色资料、情绪和交互状态。
 
-- **当前版本：** 0.9.44（versionCode 63）
+- **当前开发版本：** 0.9.98（versionCode 117；以对应构建产物为准）
 - **平台：** Android
 - **技术栈：** Kotlin、Jetpack Compose、Coroutines、Android 系统 API
 - **仓库：** [GitHub](https://github.com/yanglin950915-sketch/HyperCatAI-next)
@@ -33,6 +46,15 @@
 - 提供 AI 语音通话界面。
 - 支持摄像头预览与视觉模型分析；具体能力取决于设备权限和模型服务。
 - 语音识别、TTS 和视觉能力受 Android 系统服务及所配置服务兼容性影响。
+
+### 实时语音通话（实验性）
+
+- Realtime 通话采用独立的 PCM16 全双工音频引擎，统一管理麦克风采集、AudioTrack 播放、音频焦点与会话释放。
+- 当前内置适配器面向 OpenAI Realtime 兼容 WebSocket 协议；配置时必须提供服务商明确支持的 `wss://` WebSocket 地址、模型名称和 API Key。普通 Chat Completions / SSE 地址不能代替 Realtime WebSocket 地址。
+- 当前适配器使用 24 kHz 单声道 PCM16，并配置服务端 VAD；本地 RMS VAD 仅用于快速插话打断提示，服务端仍负责语音轮次判定。
+- Android 设备可用的 AEC、NS、AGC 效果会按系统能力尝试启用，是否真正生效取决于设备音频 HAL 与厂商实现。
+- 语音识别文本、模型文本增量和音频增量由 Realtime 会话分别处理；传统 Android SpeechRecognizer 仍是独立的系统语音识别路径，不应视为同一条 PCM 实时链路。
+- 当前构建已加入 VAD JVM 单元测试与 APK 签名校验。CI 通过不代表所有设备的回声消除、插话延迟和长时间通话已通过实机验证。
 
 ### Android 工具能力
 - 天气查询：支持 Open-Meteo、高德和​​彩云天气服务配置。
@@ -105,6 +127,22 @@
 
 ## 构建与发布
 项目通过 GitHub Actions 执行 Android CI、APK 构建和签名校验。请从 [Releases](https://github.com/yanglin950915-sketch/HyperCatAI-next/releases) 获取正式发布包，并查看对应版本说明。开发分支上的构建产物不等同于正式发布版本。
+
+## 0.9.98 开发分支更新
+- 修复按住说话期间聆听状态变化导致触摸手势被重启、提前结束录音的问题。
+- Android 12 及以上设备优先使用可用的本机语音识别服务，降低 OEM 默认识别服务异常导致的 ERROR_CLIENT 中断。
+- 识别器重建后不再直接宣称服务已恢复，改为提示重新测试，并显示客户端错误码。
+- 版本号更新为 0.9.98（versionCode 117）。
+
+## 0.9.97 开发分支更新
+- 修复 Android SpeechRecognizer 遇到客户端/服务端中断后，普通语音消息仍复用失效识别器的问题。
+- 普通语音消息在识别服务重建后提示用户重新按住麦克风；AI 电话保留自动恢复识别流程。
+- 版本号更新为 0.9.97（versionCode 116）。
+
+## 0.9.96 开发分支更新
+- 增加 OpenAI Realtime 兼容 WebSocket 音频适配器与 PCM16 全双工音频会话。
+- 统一实时语音会话的音频焦点、采集/播放资源释放和异常清理。
+- 增加本地 VAD 插话提示、PCM 输入校验与单元测试，并在 APK 打包前执行 JVM 单元测试和签名验证。
 
 ## 0.9.44 更新
 - 移除用户导入 Live2D 模型 ZIP 的流程，改为 APK 内置 Live2D 官方 Haru 完整角色模型。
