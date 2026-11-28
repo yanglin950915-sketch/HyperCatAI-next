@@ -10,6 +10,8 @@ import android.content.Context
 import android.app.DownloadManager
 import android.media.MediaPlayer
 import android.media.AudioManager
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.media.AudioAttributes
 import android.media.audiofx.Visualizer
 import android.widget.Toast
@@ -273,6 +275,59 @@ class MainActivity : ComponentActivity() {
             }
         })
     }
+}
+
+
+/** Upload a user-recorded WAV to an OpenAI-compatible transcription endpoint. */
+private fun transcribeCapturedPcm(profile: ModelProfile, pcm16: ByteArray, sampleRate: Int = 16_000): String {
+    require(pcm16.size >= sampleRate / 2) { "录音时长不足 0.5 秒，未发送给 AI" }
+    val wav = ByteArrayOutputStream().also { out ->
+        val dataSize = pcm16.size
+        fun writeInt(v: Int) { out.write(byteArrayOf(v.toByte(), (v shr 8).toByte(), (v shr 16).toByte(), (v shr 24).toByte())) }
+        fun writeShort(v: Int) { out.write(byteArrayOf(v.toByte(), (v shr 8).toByte())) }
+        out.write("RIFF".toByteArray()); writeInt(36 + dataSize); out.write("WAVE".toByteArray())
+        out.write("fmt ".toByteArray()); writeInt(16); writeShort(1); writeShort(1)
+        writeInt(sampleRate); writeInt(sampleRate * 2); writeShort(2); writeShort(16)
+        out.write("data".toByteArray()); writeInt(dataSize); out.write(pcm16)
+    }.toByteArray()
+    val base = profile.endpoint.trim().trimEnd('/')
+    require(base.startsWith("https://") || base.startsWith("http://")) { "模型档案 API 地址无效" }
+    val root = when {
+        base.endsWith("/chat/completions") -> base.removeSuffix("/chat/completions")
+        base.endsWith("/v1") -> base
+        else -> "$base/v1"
+    }
+    val url = if (root.endsWith("/v1")) "$root/audio/transcriptions" else "$root/v1/audio/transcriptions"
+    val boundary = "----HyperCatVoice${System.nanoTime()}"
+    val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"; connectTimeout = 20000; readTimeout = 90000; doOutput = true
+        setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        setRequestProperty("Accept", "application/json")
+        if (profile.apiKey.isNotBlank()) setRequestProperty("Authorization", "Bearer ${profile.apiKey}")
+    }
+    try {
+        connection.outputStream.use { raw ->
+            val out = raw
+            fun field(name: String, value: String) {
+                out.write("--$boundary\r\n".toByteArray())
+                out.write("Content-Disposition: form-data; name=\"$name\"\r\n\r\n".toByteArray())
+                out.write(value.toByteArray()); out.write("\r\n".toByteArray())
+            }
+            field("model", "whisper-1")
+            field("language", "zh")
+            out.write("--$boundary\r\n".toByteArray())
+            out.write("Content-Disposition: form-data; name=\"file\"; filename=\"voice.wav\"\r\n".toByteArray())
+            out.write("Content-Type: audio/wav\r\n\r\n".toByteArray())
+            out.write(wav); out.write("\r\n--$boundary--\r\n".toByteArray())
+        }
+        val code = connection.responseCode
+        val body = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (code !in 200..299) {
+            val detail = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
+            throw IllegalStateException("语音上传/识别失败（HTTP $code）${detail?.takeIf { it.isNotBlank() } ?: body.take(240)}")
+        }
+        return JSONObject(body).optString("text").trim().also { if (it.isBlank()) throw IllegalStateException("AI 已收到录音，但没有返回识别文字") }
+    } finally { connection.disconnect() }
 }
 
 private fun createCallSpeechRecognizer(context: Context): SpeechRecognizer {
@@ -1628,6 +1683,10 @@ private fun ChatPage(
     var realtimeAssistantDraft by remember { mutableStateOf("") }
     val audioSessionCoordinator = remember(context) { AudioSessionCoordinator.get(context) }
     var speechAudioLease by remember { mutableStateOf<AudioSessionCoordinator.Lease?>(null) }
+    var voiceCaptureRecorder by remember { mutableStateOf<AudioRecord?>(null) }
+    var voiceCaptureJob by remember { mutableStateOf<Job?>(null) }
+    var voiceCaptureLease by remember { mutableStateOf<AudioSessionCoordinator.Lease?>(null) }
+    var voiceCapturePcm by remember { mutableStateOf<ByteArray?>(null) }
     var micEnabled by remember { mutableStateOf(true) }
     var videoEnabled by remember { mutableStateOf(false) }
     var useFrontCamera by remember { mutableStateOf(true) }
@@ -1881,6 +1940,68 @@ private fun ChatPage(
         }
     }
     fun startInAppRecognition() {
+        // Normal push-to-talk owns the microphone directly. AI calls retain their
+        // dedicated Realtime / legacy recognition lifecycle below.
+        if (!callActive) {
+            if (voiceCaptureRecorder != null) return
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                speechStatus = "尚未获得麦克风录音权限"; micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO); return
+            }
+            val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            if (manager.isMicrophoneMute) { speechStatus = "系统麦克风隐私开关已关闭"; return }
+            try {
+                val lease = audioSessionCoordinator.acquire(AudioSessionCoordinator.Owner.VOICE_MESSAGE)
+                voiceCaptureLease = lease
+                val rate = 16_000
+                val minBuffer = AudioRecord.getMinBufferSize(rate, android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT)
+                check(minBuffer > 0) { "设备不支持 16kHz PCM 麦克风采集（$minBuffer）" }
+                val recorder = AudioRecord(MediaRecorder.AudioSource.MIC, rate,
+                    android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer * 2, 6400))
+                check(recorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord 初始化失败，无法打开麦克风" }
+                recorder.startRecording()
+                check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "麦克风未进入录音状态" }
+                voiceCaptureRecorder = recorder
+                voiceCapturePcm = null
+                isListening = true
+                speechStatus = "麦克风已启动，正在采集 PCM…"
+                Log.i("HyperCatVoice", "PCM_CAPTURE_STARTED rate=16000 state=${recorder.state} recording=${recorder.recordingState} minBuffer=$minBuffer")
+                voiceCaptureJob = speechScope.launch(Dispatchers.IO) {
+                    val output = ByteArrayOutputStream()
+                    val chunk = ByteArray(maxOf(minBuffer, 3200))
+                    var total = 0L
+                    var peak = 0
+                    var squares = 0.0
+                    var samples = 0
+                    try {
+                        while (isActive && recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                            val n = recorder.read(chunk, 0, chunk.size, AudioRecord.READ_BLOCKING)
+                            if (n > 0) {
+                                output.write(chunk, 0, n); total += n
+                                var i = 0
+                                while (i + 1 < n) {
+                                    val value = ((chunk[i + 1].toInt() shl 8) or (chunk[i].toInt() and 0xff)).toShort().toInt()
+                                    val abs = kotlin.math.abs(value); if (abs > peak) peak = abs
+                                    squares += value.toDouble() * value.toDouble(); samples++; i += 2
+                                }
+                            } else if (n < 0) throw IllegalStateException("AudioRecord.read 失败：$n")
+                        }
+                    } catch (e: Exception) { Log.e("HyperCatVoice", "PCM_CAPTURE_READ_FAILED", e) }
+                    val pcm = output.toByteArray()
+                    val rms = if (samples > 0) kotlin.math.sqrt(squares / samples) else 0.0
+                    withContext(Dispatchers.Main) {
+                        voiceCapturePcm = pcm
+                        Log.i("HyperCatVoice", "PCM_CAPTURE_FINISHED bytes=${pcm.size} peak=$peak rms=${"%.1f".format(Locale.US, rms)}")
+                    }
+                }
+            } catch (error: Exception) {
+                runCatching { voiceCaptureRecorder?.release() }
+                voiceCaptureRecorder = null; voiceCaptureLease?.close(); voiceCaptureLease = null
+                isListening = false
+                speechStatus = "麦克风启动失败：${error.message ?: "未知错误"}"
+                Log.e("HyperCatVoice", "PCM_CAPTURE_START_FAILED", error)
+            }
+            return
+        }
         if (callActive && realtimeCallSession != null) return
         if (recognitionSessionActive) return
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -2061,6 +2182,37 @@ private fun ChatPage(
         }
     }
     fun stopInAppRecognition() {
+        if (!callActive && voiceCaptureRecorder != null) {
+            val recorder = voiceCaptureRecorder
+            voiceCaptureRecorder = null
+            isListening = false
+            speechStatus = "录音已采集，正在上传 AI 识别…"
+            runCatching { if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) recorder.stop() }
+            runCatching { recorder.release() }
+            val captureJob = voiceCaptureJob
+            voiceCaptureJob = null
+            speechScope.launch {
+                captureJob?.join()
+                voiceCaptureLease?.close(); voiceCaptureLease = null
+                val pcm = voiceCapturePcm ?: ByteArray(0)
+                voiceCapturePcm = null
+                val profile = modelProfiles.firstOrNull { it.name == activeModel }
+                if (profile == null) { speechStatus = "录音已采集（${pcm.size} 字节），但找不到当前模型档案"; return@launch }
+                if (pcm.size < 16_000) { speechStatus = "麦克风已启动，但有效录音不足 0.5 秒；请按住麦克风说完整句子"; return@launch }
+                try {
+                    speechStatus = "PCM 已采集 ${pcm.size} 字节，正在发送给 AI…"
+                    val transcript = withContext(Dispatchers.IO) { transcribeCapturedPcm(profile, pcm) }
+                    Log.i("HyperCatVoice", "AI_TRANSCRIPTION_SUCCESS chars=${transcript.length}")
+                    speechStatus = "AI 识别成功"
+                    latestOnDraft(if (latestDraft.isBlank()) transcript else "${latestDraft} ${transcript}")
+                } catch (error: Exception) {
+                    Log.e("HyperCatVoice", "AI_TRANSCRIPTION_FAILED pcmBytes=${pcm.size}", error)
+                    speechStatus = "录音已成功采集（${pcm.size} 字节），但 AI 识别失败：${error.message ?: "服务异常"}"
+                }
+            }
+            return
+        }
+        if (!recognitionSessionActive) return
         if (!recognitionSessionActive) return
         if (!recognitionStartCommandSent) {
             recognitionStartJob?.cancel()
