@@ -36,21 +36,23 @@ internal object VisionModelClient {
         }
         val imageData = "data:image/jpeg;base64," + Base64.encodeToString(jpeg, Base64.NO_WRAP)
         val content = JSONArray()
-            .put(JSONObject().put("type", "text").put("text", "请根据摄像头最新画面回答用户的问题。若画面无法确认，请明确说明不确定。用户问题：$question"))
+            .put(JSONObject().put("type", "text").put("text", "请简洁回答用户关于这张图片的问题，优先给出直接结论；无法确认的内容请说明不确定。用户问题：$question"))
             .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", imageData)))
         val messages = JSONArray().put(JSONObject().put("role", "user").put("content", content))
         val payload = JSONObject()
             .put("model", model)
             .put("messages", messages)
             .put("stream", false)
-            .put("max_tokens", 700)
+            .put("max_tokens", 320)
 
         val connection = URL(apiUrl).openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "POST"
-            connection.connectTimeout = 12_000
-            connection.readTimeout = 45_000
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 30_000
             connection.doOutput = true
+            connection.useCaches = false
+            connection.setRequestProperty("Connection", "close")
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             connection.setRequestProperty("Accept", "application/json")
             connection.setRequestProperty("Authorization", "Bearer $normalizedApiKey")
