@@ -3181,6 +3181,7 @@ private fun SettingsPage(
     var securityDetailText by remember { mutableStateOf("") }
     var taskTitle by remember { mutableStateOf("") }
     var taskDelayMinutes by remember { mutableStateOf("30") }
+    val context = androidx.compose.ui.platform.LocalContext.current
     var profileName by remember { mutableStateOf("") }
     var profileRealtimeEndpoint by remember { mutableStateOf(context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).getString("active_realtime_endpoint", "") ?: "") }
     var profileRealtimeProtocol by remember { mutableStateOf(context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).getString("active_realtime_protocol", "none") ?: "none") }
@@ -3195,7 +3196,6 @@ private fun SettingsPage(
     val plugins = remember { mutableStateListOf<ThirdPartyPlugin>() }
     var mcpName by remember { mutableStateOf("") }
     var mcpEndpoint by remember { mutableStateOf("") }
-    val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     var weatherProvider by remember { mutableStateOf(prefs.getString("weather_provider", "openmeteo") ?: "openmeteo") }
     var amapWeatherKey by remember { mutableStateOf(prefs.getString("amap_weather_key", "") ?: "") }
