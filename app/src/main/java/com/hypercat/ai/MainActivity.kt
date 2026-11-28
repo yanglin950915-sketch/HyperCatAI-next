@@ -3320,23 +3320,14 @@ private fun ChatPage(
                                 position.x + coordinates.size.width,
                                 position.y + coordinates.size.height
                             )
-                        }
-                        .drawWithContent {
-                            drawContent()
-                            val edge = 1.dp.toPx()
-                            val edgeColor = Cyan.copy(alpha = .20f)
-                            drawLine(edgeColor, androidx.compose.ui.geometry.Offset(edge / 2f, 0f),
-                                androidx.compose.ui.geometry.Offset(size.width - edge / 2f, 0f), edge)
-                            drawLine(edgeColor, androidx.compose.ui.geometry.Offset(edge / 2f, 0f),
-                                androidx.compose.ui.geometry.Offset(edge / 2f, size.height), edge)
-                            drawLine(edgeColor, androidx.compose.ui.geometry.Offset(size.width - edge / 2f, 0f),
-                                androidx.compose.ui.geometry.Offset(size.width - edge / 2f, size.height), edge)
                         },
-                    color = Panel.copy(alpha = .97f),
-                    shape = RoundedCornerShape(20.dp)
+                    color = Panel,
+                    shape = RoundedCornerShape(28.dp),
+                    shadowElevation = 18.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
                 ) {
                     Column(
-                        Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 22.dp, bottom = 14.dp),
+                        Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 44.dp, bottom = 14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(
