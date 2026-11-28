@@ -128,6 +128,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -2540,6 +2541,7 @@ private fun ChatPage(
             }
     }
     var cameraError by remember { mutableStateOf<String?>(null) }
+    var cameraVisionStatus by remember { mutableStateOf("") }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) { cameraError = null; videoEnabled = true; speechStatus = "摄像头预览已启动" }
         else { videoEnabled = false; Toast.makeText(context, "未获得摄像头权限，语音通话仍可继续", Toast.LENGTH_SHORT).show() }
@@ -3176,7 +3178,11 @@ private fun ChatPage(
                 Spacer(Modifier.height(14.dp))
                 Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF151C29))) {
                     if (videoEnabled) {
-                        LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it })
+                        LiveCameraPreview(useFrontCamera = useFrontCamera, onError = { cameraError = it }, onFrame = { jpeg ->
+                            val sent = realtimeCallSession?.sendImageFrame(jpeg) == true
+                            cameraVisionStatus = if (sent) "AI 视觉已接收画面 · 约每秒 1 帧" else "当前通话模型不支持图像输入，画面仅本地预览"
+                            sent
+                        })
                         if (cameraError != null) Text(cameraError.orEmpty(), color = Color(0xFFFF9A9A), fontSize = 11.sp,
                             modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp).background(Color.Black.copy(alpha = .65f), RoundedCornerShape(8.dp)).padding(8.dp))
                         Surface(Modifier.align(Alignment.TopEnd).padding(12.dp), color = Color.Black.copy(alpha = .55f), shape = RoundedCornerShape(20.dp)) {
@@ -3238,8 +3244,9 @@ private fun ChatPage(
                         audioManager.mode = previousAudioMode
                     }
                 }
-                Text(if (videoEnabled) "摄像头画面为设备本地实时预览；AI 语音通话持续工作。连续视频流理解需接入支持实时音视频的模型服务。" else "语音通话已启动。点击摄像头按钮可开启视频，点击麦克风按钮可静音。",
+                Text(if (videoEnabled) "摄像头已开启：画面会压缩后按约 1 帧/秒发送给支持视觉输入的 Realtime 模型；关闭摄像头即停止采集。" else "语音通话已启动。点击摄像头按钮可开启视频，点击麦克风按钮可静音。",
                     color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
+                if (videoEnabled && cameraVisionStatus.isNotBlank()) Text(cameraVisionStatus, color = if (cameraVisionStatus.startsWith("AI 视觉")) Color(0xFF70D9A5) else Color(0xFFFFC078), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
                 if (speechStatus.isNotBlank()) Text(speechStatus, color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                 if (callActive && micEnabled) Text("麦克风输入电平：${micRmsDb.toInt()} dB · 识别持续运行", color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
             }
@@ -3248,10 +3255,11 @@ private fun ChatPage(
 }
 
 @Composable
-private fun LiveCameraPreview(useFrontCamera: Boolean, onError: (String) -> Unit) {
+private fun LiveCameraPreview(useFrontCamera: Boolean, onError: (String) -> Unit, onFrame: (ByteArray) -> Boolean) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestOnError by rememberUpdatedState(onError)
+    val latestOnFrame by rememberUpdatedState(onFrame)
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val previewView = remember(context) { PreviewView(context).apply {
         scaleType = PreviewView.ScaleType.FILL_CENTER
@@ -3260,29 +3268,106 @@ private fun LiveCameraPreview(useFrontCamera: Boolean, onError: (String) -> Unit
     DisposableEffect(previewView, lifecycleOwner, useFrontCamera) {
         var boundProvider: ProcessCameraProvider? = null
         var boundPreview: Preview? = null
+        var boundAnalysis: ImageAnalysis? = null
+        val analysisExecutor = Executors.newSingleThreadExecutor()
+        val lastFrameAt = java.util.concurrent.atomic.AtomicLong(0L)
         val providerFuture = ProcessCameraProvider.getInstance(context)
         providerFuture.addListener({
             try {
                 val provider = providerFuture.get()
                 boundProvider = provider
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+                val analysis = ImageAnalysis.Builder()
+                    .setTargetAspectRatio(androidx.camera.core.AspectRatio.RATIO_4_3)
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                    .build()
+                analysis.setAnalyzer(analysisExecutor) { image ->
+                    try {
+                        val now = SystemClock.elapsedRealtime()
+                        val previous = lastFrameAt.get()
+                        if (now - previous >= 1_200L && lastFrameAt.compareAndSet(previous, now)) {
+                            val jpeg = image.toVisionJpeg()
+                            if (jpeg != null) latestOnFrame(jpeg)
+                        }
+                    } catch (error: Throwable) {
+                        Log.w("HyperCatCamera", "Camera frame processing failed", error)
+                    } finally {
+                        image.close()
+                    }
+                }
                 boundPreview = preview
+                boundAnalysis = analysis
                 val selector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
                 if (!provider.hasCamera(selector)) error(if (useFrontCamera) "设备没有可用的前置摄像头" else "设备没有可用的后置摄像头")
-                provider.bindToLifecycle(lifecycleOwner, selector, preview)
+                provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
             } catch (error: Exception) {
-                mainHandler.post { latestOnError("摄像头启动失败：${error.message ?: error.javaClass.simpleName}。请检查权限或关闭占用摄像头的应用。") }
+                mainHandler.post { latestOnError("摄像头启动失败：" + (error.message ?: error.javaClass.simpleName) + "。请检查权限或关闭占用摄像头的应用。") }
             }
         }, ContextCompat.getMainExecutor(context))
         onDispose {
             runCatching {
                 val provider = boundProvider
                 val preview = boundPreview
-                if (provider != null && preview != null) provider.unbind(preview)
+                val analysis = boundAnalysis
+                if (provider != null) {
+                    if (preview != null && analysis != null) provider.unbind(preview, analysis)
+                    else if (preview != null) provider.unbind(preview)
+                }
             }
+            analysisExecutor.shutdown()
         }
     }
     AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+}
+
+private fun ImageProxy.toVisionJpeg(): ByteArray? {
+    if (planes.isEmpty()) return null
+    val plane = planes[0]
+    val buffer = plane.buffer.duplicate()
+    val frameWidth = width
+    val frameHeight = height
+    val rowStride = plane.rowStride
+    val pixelStride = plane.pixelStride
+    if (frameWidth <= 0 || frameHeight <= 0 || pixelStride < 4) return null
+    val pixels = IntArray(frameWidth * frameHeight)
+    val limit = buffer.limit()
+    for (y in 0 until frameHeight) {
+        val rowOffset = y * rowStride
+        for (x in 0 until frameWidth) {
+            val offset = rowOffset + x * pixelStride
+            if (offset + 3 >= limit) continue
+            val r = buffer.get(offset).toInt() and 0xFF
+            val g = buffer.get(offset + 1).toInt() and 0xFF
+            val b = buffer.get(offset + 2).toInt() and 0xFF
+            val a = buffer.get(offset + 3).toInt() and 0xFF
+            pixels[y * frameWidth + x] = (a shl 24) or (r shl 16) or (g shl 8) or b
+        }
+    }
+    var bitmap = Bitmap.createBitmap(frameWidth, frameHeight, Bitmap.Config.ARGB_8888)
+    bitmap.setPixels(pixels, 0, frameWidth, 0, 0, frameWidth, frameHeight)
+    val rotation = imageInfo.rotationDegrees
+    if (rotation != 0) {
+        val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+        val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        bitmap.recycle()
+        bitmap = rotated
+    }
+    val maxDimension = 640
+    if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
+        val scale = maxDimension.toFloat() / maxOf(bitmap.width, bitmap.height)
+        val scaled = Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt().coerceAtLeast(1),
+            (bitmap.height * scale).toInt().coerceAtLeast(1), true)
+        bitmap.recycle()
+        bitmap = scaled
+    }
+    return try {
+        ByteArrayOutputStream().use { output ->
+            if (bitmap.compress(Bitmap.CompressFormat.JPEG, 68, output)) output.toByteArray() else null
+        }
+    } finally {
+        bitmap.recycle()
+    }
 }
 
 @Composable
