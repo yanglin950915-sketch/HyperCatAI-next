@@ -2944,7 +2944,14 @@ private fun ChatPage(
             TextButton(onClick = { noteDraft = ""; showRemember = true }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("管理记忆", fontSize = 10.sp) }
             Spacer(Modifier.width(6.dp))
             Text("自动朗读", color = Muted, fontSize = 11.sp)
-            Switch(checked = autoReadReplies, onCheckedChange = onAutoReadReplies)
+            Switch(
+                checked = autoReadReplies,
+                onCheckedChange = onAutoReadReplies,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = 0.78f
+                    scaleY = 0.78f
+                }
+            )
         }
         if (!configured) {
             Spacer(Modifier.height(12.dp))
