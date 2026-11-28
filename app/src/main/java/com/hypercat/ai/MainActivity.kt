@@ -2605,6 +2605,8 @@ private fun ChatPage(
     if (showCallInfo) Dialog(
         onDismissRequest = {
             callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+            recognitionStartJob?.cancel(); recognitionStartJob = null
+            recognitionSessionActive = false; recognitionStartCommandSent = false
             speechAudioLease?.close(); speechAudioLease = null
             realtimeCallSession?.close(); realtimeCallSession = null
             realtimeAssistantDraft = ""
@@ -2621,6 +2623,8 @@ private fun ChatPage(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("‹", color = Color.White, fontSize = 28.sp, modifier = Modifier.clickable {
                         callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+                        recognitionStartJob?.cancel(); recognitionStartJob = null
+                        recognitionSessionActive = false; recognitionStartCommandSent = false
                         speechAudioLease?.close(); speechAudioLease = null
                         realtimeCallSession?.close(); realtimeCallSession = null
                         realtimeAssistantDraft = ""
