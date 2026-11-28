@@ -359,7 +359,7 @@ private fun JSONObject.optNonNullString(key: String): String {
 }
 
 /** MiMo ASR streams transcript events over SSE; the public endpoint still accepts a complete WAV per request. */
-private fun transcribeCapturedPcm(ttsEndpoint: String, ttsApiKey: String, pcm16: ByteArray, sampleRate: Int = 16_000, onPartial: (String) -> Unit = {}): String {
+private fun transcribeCapturedPcm(ttsEndpoint: String, ttsApiKey: String, pcm16: ByteArray, sampleRate: Int = 16_000, asrModel: String = "mimo-v2.5-asr", onPartial: (String) -> Unit = {}): String {
     require(pcm16.size >= sampleRate / 2) { "录音时长不足 0.5 秒，未发送给 AI" }
     require(ttsApiKey.isNotBlank()) { "当前语音识别配置没有 API Key，请检查语音服务档案" }
     val wav = ByteArrayOutputStream().also { out ->
@@ -383,7 +383,7 @@ private fun transcribeCapturedPcm(ttsEndpoint: String, ttsApiKey: String, pcm16:
     require(encoded.length <= 10 * 1024 * 1024) { "录音文件超过 ASR 服务的 10 MB 限制，请缩短录音时长" }
     val part = JSONObject().put("type", "input_audio").put("input_audio", JSONObject().put("data", "data:audio/wav;base64,$encoded"))
     val messages = org.json.JSONArray().put(JSONObject().put("role", "user").put("content", org.json.JSONArray().put(part)))
-    val payload = JSONObject().put("model", "mimo-v2.5-asr").put("messages", messages).put("asr_options", JSONObject().put("language", "zh")).put("stream", true)
+    val payload = JSONObject().put("model", asrModel.ifBlank { "mimo-v2.5-asr" }).put("messages", messages).put("asr_options", JSONObject().put("language", "zh")).put("stream", true)
     val connection = (URL(url).openConnection() as HttpURLConnection).apply {
         requestMethod = "POST"; connectTimeout = 20000; readTimeout = 90000; doOutput = true
         setRequestProperty("Content-Type", "application/json; charset=utf-8")
@@ -2376,12 +2376,13 @@ private fun ChatPage(
                     if (callGeneration != thisCallGeneration) return@launch
                     try {
                         val prefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
-                        val endpoint = prefs.getString("tts_endpoint", "").orEmpty()
-                        val apiKey = prefs.getString("tts_api_key", "").orEmpty()
+                        val endpoint = prefs.getString("asr_endpoint", "").orEmpty().ifBlank { prefs.getString("tts_endpoint", "").orEmpty() }
+                        val apiKey = prefs.getString("asr_api_key", "").orEmpty().ifBlank { prefs.getString("tts_api_key", "").orEmpty() }
+                        val asrModel = prefs.getString("asr_model", "mimo-v2.5-asr").orEmpty()
                         check(endpoint.isNotBlank() && apiKey.isNotBlank()) {
-                            "当前没有可用的 MiMo ASR 服务配置，请检查语音消息使用的 TTS 服务地址和 API Key"
+                            "当前没有可用的 ASR 语音识别配置，请在设置的语音模型中填写 ASR 服务地址和 API Key"
                         }
-                        val transcript = transcribeCapturedPcm(endpoint, apiKey, pcm, 16_000) { partial -> Handler(Looper.getMainLooper()).post { if (callActive && micEnabled) speechStatus = "正在识别：$partial" } }
+                        val transcript = transcribeCapturedPcm(endpoint, apiKey, pcm, 16_000, asrModel) { partial -> Handler(Looper.getMainLooper()).post { if (callActive && micEnabled) speechStatus = "正在识别：$partial" } }
                         Log.i("HyperCatVoice", "CALL_PCM_ASR_SUCCESS bytes=${pcm.size} chars=${transcript.length}")
                         withContext(Dispatchers.Main) {
                             if (callGeneration == thisCallGeneration && callActive && micEnabled && transcript.isNotBlank()) {
@@ -2492,15 +2493,16 @@ private fun ChatPage(
                 voiceCapturePcm = null
                 if (pcm.size < 16_000) { speechStatus = "麦克风已启动，但有效录音不足 0.5 秒；请按住麦克风说完整句子"; return@launch }
                 val voicePrefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
-                val asrEndpoint = voicePrefs.getString("tts_endpoint", "").orEmpty()
-                val asrApiKey = voicePrefs.getString("tts_api_key", "").orEmpty()
+                val asrEndpoint = voicePrefs.getString("asr_endpoint", "").orEmpty().ifBlank { voicePrefs.getString("tts_endpoint", "").orEmpty() }
+                val asrApiKey = voicePrefs.getString("asr_api_key", "").orEmpty().ifBlank { voicePrefs.getString("tts_api_key", "").orEmpty() }
+                val asrModel = voicePrefs.getString("asr_model", "mimo-v2.5-asr").orEmpty()
                 if (asrEndpoint.isBlank() || asrApiKey.isBlank()) {
-                    speechStatus = "录音已采集（${pcm.size} 字节），但当前没有可用的 MiMo TTS 服务配置或 API Key"
+                    speechStatus = "录音已采集（${pcm.size} 字节），但当前没有可用的 ASR 语音识别服务或 API Key"
                     return@launch
                 }
                 try {
                     speechStatus = "PCM 已采集 ${pcm.size} 字节，正在使用 MiMo ASR 识别…"
-                    val transcript = withContext(Dispatchers.IO) { transcribeCapturedPcm(asrEndpoint, asrApiKey, pcm) }
+                    val transcript = withContext(Dispatchers.IO) { transcribeCapturedPcm(asrEndpoint, asrApiKey, pcm, asrModel = asrModel) }
                     Log.i("HyperCatVoice", "AI_TRANSCRIPTION_SUCCESS chars=${transcript.length}")
                     speechStatus = "AI 识别成功"
                     val voiceFile = withContext(Dispatchers.IO) { saveCapturedPcmAsWav(context, pcm) }
@@ -4001,6 +4003,13 @@ private fun SettingsPage(
     var profileRealtimeEndpoint by remember { mutableStateOf(context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).getString("active_realtime_endpoint", "") ?: "") }
     var profileRealtimeProtocol by remember { mutableStateOf(context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).getString("active_realtime_protocol", "none") ?: "none") }
     var modelSettingsTab by remember { mutableStateOf("推理模型") }
+    var asrEndpoint by remember { mutableStateOf(prefs.getString("asr_endpoint", "") ?: "") }
+    var asrApiKey by remember { mutableStateOf(prefs.getString("asr_api_key", "") ?: "") }
+    var asrModel by remember { mutableStateOf(prefs.getString("asr_model", "mimo-v2.5-asr") ?: "mimo-v2.5-asr") }
+    var visionProvider by remember { mutableStateOf(prefs.getString("vision_provider", "复用推理模型") ?: "复用推理模型") }
+    var visionEndpoint by remember { mutableStateOf(prefs.getString("vision_endpoint", "") ?: "") }
+    var visionApiKey by remember { mutableStateOf(prefs.getString("vision_api_key", "") ?: "") }
+    var visionModel by remember { mutableStateOf(prefs.getString("vision_model", "") ?: "") }
     var pluginEnabled by remember { mutableStateOf(false) }
     var pluginName by remember { mutableStateOf("") }
     var pluginDescription by remember { mutableStateOf("") }
@@ -4093,11 +4102,10 @@ private fun SettingsPage(
         Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(14.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("推理模型", "语音 TTS", "模型档案").forEach { tab ->
+                    listOf("推理模型", "语音模型", "视觉模型", "实时语音", "模型档案").forEach { tab ->
                         FilterChip(
                             selected = modelSettingsTab == tab,
                             onClick = { modelSettingsTab = tab },
-                            modifier = Modifier.weight(1f),
                             label = { Text(tab, fontSize = 11.sp, maxLines = 1) }
                         )
                     }
@@ -4117,7 +4125,15 @@ private fun SettingsPage(
                                     ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
                                     Spacer(Modifier.height(14.dp))
                 }
-                if (modelSettingsTab == "语音 TTS") {
+                if (modelSettingsTab == "语音模型") {
+                                    Text("语音识别 ASR", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("负责将电话中的讲话和语音消息转换为文字。可独立于 TTS 配置。留空时兼容旧版设置，自动沿用原 TTS 服务地址与密钥。", color = Muted, fontSize = 10.sp)
+                                    ConfigField("ASR API Base URL", asrEndpoint, { asrEndpoint = it; prefs.edit().putString("asr_endpoint", it).apply() }, "例如 https://api.xiaomimimo.com/v1")
+                                    ConfigField("ASR API Key", asrApiKey, { asrApiKey = it; prefs.edit().putString("asr_api_key", it).apply() }, "语音识别服务密钥", secret = true)
+                                    ConfigField("ASR 模型名称", asrModel, { asrModel = it; prefs.edit().putString("asr_model", it).apply() }, "例如 mimo-v2.5-asr")
+                                    Spacer(Modifier.height(14.dp))
+                                    Text("语音合成 TTS", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("负责把 AI 回复转换成声音，独立于推理模型与 ASR 配置。", color = Muted, fontSize = 10.sp)
                                     Text("TTS 语音配置", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                     Text("选择系统语音，或使用已保存模型档案连接兼容 OpenAI 的云端语音合成服务。", color = Muted, fontSize = 10.sp)
                                     Spacer(Modifier.height(7.dp))
@@ -4162,6 +4178,32 @@ private fun SettingsPage(
                                         }
                                         Text("参数自动保存并用于回复朗读与 AI 通话播报。", color = Muted, fontSize = 10.sp)
                                     }
+                }
+                if (modelSettingsTab == "视觉模型") {
+                                    Text("视觉理解服务", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("负责图片问答、摄像头画面和视频关键帧理解。可以复用推理模型，也可以单独配置视觉模型服务。", color = Muted, fontSize = 10.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        FilterChip(selected = visionProvider == "复用推理模型", onClick = { visionProvider = "复用推理模型"; prefs.edit().putString("vision_provider", visionProvider).apply() }, label = { Text("复用推理模型") })
+                                        FilterChip(selected = visionProvider == "独立视觉模型", onClick = { visionProvider = "独立视觉模型"; prefs.edit().putString("vision_provider", visionProvider).apply() }, label = { Text("独立视觉模型") })
+                                    }
+                                    if (visionProvider == "独立视觉模型") {
+                                        ConfigField("视觉 API Base URL", visionEndpoint, { visionEndpoint = it; prefs.edit().putString("vision_endpoint", it).apply() }, "例如 https://api.openai.com/v1")
+                                        ConfigField("视觉 API Key", visionApiKey, { visionApiKey = it; prefs.edit().putString("vision_api_key", it).apply() }, "视觉服务密钥", secret = true)
+                                        ConfigField("视觉模型名称", visionModel, { visionModel = it; prefs.edit().putString("vision_model", it).apply() }, "例如 gemini-2.5-flash 或支持视觉的模型")
+                                    } else {
+                                        Text("当前复用：$model", color = Cyan, fontSize = 12.sp)
+                                        Text("推理接口：$endpoint", color = Muted, fontSize = 10.sp, maxLines = 2)
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("此处保存视觉服务的独立配置。视频关键帧识别仍需由视觉请求适配器调用该配置；系统不会仅凭模型名称认定其支持图片。", color = Color(0xFFFFC078), fontSize = 10.sp)
+                                    Button(onClick = { prefs.edit().putString("vision_provider", visionProvider).putString("vision_endpoint", visionEndpoint.trim()).putString("vision_api_key", visionApiKey).putString("vision_model", visionModel.trim()).apply() }, modifier = Modifier.fillMaxWidth()) { Text("保存视觉模型配置") }
+                }
+                if (modelSettingsTab == "实时语音") {
+                                    Text("原生实时语音服务（可选）", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("用于低延迟双向语音连接。它与普通 TTS 不同，也不等同于推理模型的 HTTP 接口。", color = Muted, fontSize = 10.sp)
+                                    Text("在「模型档案」中选择 OpenAI Realtime 协议并填写 WebSocket 地址。若服务商不支持该协议，使用 ASR + 推理模型 + TTS 组合模式即可。", color = Muted, fontSize = 11.sp)
+                                    Text("当前协议：${if (profileRealtimeProtocol == "openai_realtime") "OpenAI Realtime" else "组合语音模式"}", color = Cyan, fontSize = 12.sp)
+                                    Text("Realtime 地址：${profileRealtimeEndpoint.ifBlank { "未配置" }}", color = Muted, fontSize = 10.sp, maxLines = 2)
                 }
                 if (modelSettingsTab == "模型档案") {
                                     Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
