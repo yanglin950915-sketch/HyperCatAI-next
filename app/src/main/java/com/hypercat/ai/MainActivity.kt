@@ -1768,6 +1768,7 @@ private fun ChatPage(
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
     var callActive by remember { mutableStateOf(false) }
+    var callGeneration by remember { mutableLongStateOf(0L) }
     var realtimeCallSession by remember { mutableStateOf<RealtimeAgentSession?>(null) }
     var callPcmCaptureController by remember { mutableStateOf<CallPcmCaptureController?>(null) }
     var realtimeAssistantDraft by remember { mutableStateOf("") }
@@ -2276,10 +2277,13 @@ private fun ChatPage(
             Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
             return
         }
+        val thisCallGeneration = callGeneration + 1L
+        callGeneration = thisCallGeneration
         val controller = CallPcmCaptureController(
             context = context,
             onUtterance = { pcm ->
                 speechScope.launch(Dispatchers.IO) {
+                    if (callGeneration != thisCallGeneration) return@launch
                     try {
                         val prefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
                         val endpoint = prefs.getString("tts_endpoint", "").orEmpty()
@@ -2290,7 +2294,7 @@ private fun ChatPage(
                         val transcript = transcribeCapturedPcm(endpoint, apiKey, pcm, 16_000) { partial -> Handler(Looper.getMainLooper()).post { if (callActive && micEnabled) speechStatus = "正在流式识别：$partial" } }
                         Log.i("HyperCatVoice", "CALL_PCM_ASR_SUCCESS bytes=${pcm.size} chars=${transcript.length}")
                         withContext(Dispatchers.Main) {
-                            if (callActive && micEnabled && transcript.isNotBlank()) {
+                            if (callGeneration == thisCallGeneration && callActive && micEnabled && transcript.isNotBlank()) {
                                 speechStatus = "已识别，正在发送给 AI…"
                                 latestOnSend(transcript, emptyList(), emptyList(), true, null, 0L)
                             }
@@ -2525,7 +2529,7 @@ private fun ChatPage(
             }
         }
     }
-    var lastAutoReadText by remember { mutableStateOf("") }
+    var lastAutoReadKey by remember { mutableStateOf("") }
     var autoReadPendingReply by remember { mutableStateOf(false) }
     LaunchedEffect(autoReadReplies, callActive, messages.size, isThinking, drawerSection, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate) {
         // Do not replay a historical reply just because the avatar/settings page opens.
@@ -2547,9 +2551,13 @@ private fun ChatPage(
         }
         if (!autoReadPendingReply) return@LaunchedEffect
         autoReadPendingReply = false
-        val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
-        if (reply.isNotBlank() && reply != lastAutoReadText) {
-            lastAutoReadText = reply
+        val lastUserIndex = messages.indexOfLast { it.fromUser }
+        val lastAssistantIndex = messages.indexOfLast { !it.fromUser }
+        if (lastAssistantIndex <= lastUserIndex) return@LaunchedEffect
+        val reply = messages.getOrNull(lastAssistantIndex)?.text.orEmpty()
+        val messageKey = "$currentSessionTitle:$lastAssistantIndex:${reply.hashCode()}"
+        if (reply.isNotBlank() && messageKey != lastAutoReadKey) {
+            lastAutoReadKey = messageKey
             val spokenText = speechText(reply)
             if (spokenText.isNotBlank()) {
                 if (ttsMode == "cloud") {
@@ -2996,7 +3004,7 @@ private fun ChatPage(
     if (showModelPicker) AlertDialog(onDismissRequest={showModelPicker=false},title={Text("切换模型")},text={if(modelProfiles.isEmpty()) Text("请先在设置中添加模型档案",color=Muted) else Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState())) { modelProfiles.forEach { p -> Text("${p.name} · ${p.model}",color=MainText,modifier=Modifier.fillMaxWidth().clickable { onSelectModel(p);showModelPicker=false }.padding(vertical=10.dp)) } }},confirmButton={TextButton(onClick={showModelPicker=false;openSettings()}) { Text("管理模型") }})
     if (showCallInfo) Dialog(
         onDismissRequest = {
-            callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+            callActive = false; callGeneration += 1L; micEnabled = false; videoEnabled = false; isListening = false
             recognitionStartJob?.cancel(); recognitionStartJob = null
             recognitionSessionActive = false; recognitionStartCommandSent = false
             callPcmCaptureController?.close(); callPcmCaptureController = null
