@@ -2507,6 +2507,9 @@ private fun ChatPage(
                     if (videoEnabled) CallControl("翻转摄像头", "🔄") { useFrontCamera = !useFrontCamera }
                     CallControl("挂断", "☎", danger = true) {
                         callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+                        recognitionStartJob?.cancel()
+                        recognitionSessionActive = false
+                        speechAudioLease?.close(); speechAudioLease = null
                         runCatching { speechRecognizer.cancel() }; cloudSpeechJob?.cancel(); speechEngine.stop(); showCallInfo = false
                         agentPlaybackUntilMs = 0L
                         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
