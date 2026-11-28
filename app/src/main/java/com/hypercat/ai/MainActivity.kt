@@ -1584,7 +1584,7 @@ private fun HyperCatApp() {
                             onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey).put("realtimeProtocol",x.realtimeProtocol).put("realtimeEndpoint",x.realtimeEndpoint)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
                             onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).putString("active_realtime_protocol",p.realtimeProtocol).putString("active_realtime_endpoint",p.realtimeEndpoint).apply() },
                             onDeleteProfile = { p -> modelProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey).put("realtimeProtocol",x.realtimeProtocol).put("realtimeEndpoint",x.realtimeEndpoint)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
-                            onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey).put("model",x.model).put("voice",x.voice)) }; ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; ttsModel=p.model; ttsVoice=p.voice; chatPrefs.edit().putString("tts_profiles",a.toString()).putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).putString("tts_model",p.model).putString("tts_voice",p.voice).apply() },
+                            onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey).put("model",x.model).put("voice",x.voice)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply() },
                             onSelectTtsProfile = { p -> ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; ttsModel=p.model; ttsVoice=p.voice; chatPrefs.edit().putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).putString("tts_model",p.model).putString("tts_voice",p.voice).apply() },
                             onDeleteTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey).put("model",x.model).put("voice",x.voice)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply(); if (ttsProfileName==p.name) { ttsProfileName=""; ttsMode="system"; chatPrefs.edit().putString("tts_profile_name","").putString("tts_mode","system").apply() } },
                             endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
@@ -1663,8 +1663,8 @@ private fun HyperCatApp() {
                     onAddProfile = { p -> modelProfiles.removeAll { it.name == p.name }; modelProfiles.add(0,p); val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey).put("realtimeProtocol",x.realtimeProtocol).put("realtimeEndpoint",x.realtimeEndpoint)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
                     onSelectProfile = { p -> provider=p.provider; endpoint=p.endpoint; model=p.model; apiKey=p.apiKey; saved=true; chatPrefs.edit().putString("provider",provider).putString("endpoint",endpoint).putString("model",model).putString("api_key",apiKey).putString("active_realtime_protocol",p.realtimeProtocol).putString("active_realtime_endpoint",p.realtimeEndpoint).apply() },
                     onDeleteProfile = { p -> modelProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); modelProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("provider",x.provider).put("endpoint",x.endpoint).put("model",x.model).put("apiKey",x.apiKey).put("realtimeProtocol",x.realtimeProtocol).put("realtimeEndpoint",x.realtimeEndpoint)) }; chatPrefs.edit().putString("model_profiles",a.toString()).apply() },
-                    onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey).put("model",x.model).put("voice",x.voice)) }; ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; ttsModel=p.model; ttsVoice=p.voice; chatPrefs.edit().putString("tts_profiles",a.toString()).putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).putString("tts_model",p.model).putString("tts_voice",p.voice).apply() },
-                    onSelectTtsProfile = { p -> ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; ttsModel=p.model; ttsVoice=p.voice; chatPrefs.edit().putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).putString("tts_model",p.model).putString("tts_voice",p.voice).apply() },
+                    onAddTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; ttsProfiles.add(0,p); val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey).put("model",x.model).put("voice",x.voice)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply() },
+                            onSelectTtsProfile = { p -> ttsProfileName=p.name; ttsEndpoint=p.endpoint; ttsApiKey=p.apiKey; ttsModel=p.model; ttsVoice=p.voice; chatPrefs.edit().putString("tts_profile_name",p.name).putString("tts_endpoint",p.endpoint).putString("tts_api_key",p.apiKey).putString("tts_model",p.model).putString("tts_voice",p.voice).apply() },
                     onDeleteTtsProfile = { p -> ttsProfiles.removeAll { it.name == p.name }; val a=org.json.JSONArray(); ttsProfiles.forEach { x -> a.put(JSONObject().put("name",x.name).put("endpoint",x.endpoint).put("apiKey",x.apiKey).put("model",x.model).put("voice",x.voice)) }; chatPrefs.edit().putString("tts_profiles",a.toString()).apply(); if (ttsProfileName==p.name) { ttsProfileName=""; ttsMode="system"; chatPrefs.edit().putString("tts_profile_name","").putString("tts_mode","system").apply() } },
                     endpoint = endpoint, onEndpoint = { endpoint = it; saved = false },
                     model = model, onModel = { model = it; saved = false },
@@ -4060,6 +4060,32 @@ private fun SettingsPage(
     var profileRealtimeProtocol by remember { mutableStateOf(context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).getString("active_realtime_protocol", "none") ?: "none") }
     val modelPrefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     var modelSettingsTab by remember { mutableStateOf("推理模型") }
+    var pendingInferenceName by remember { mutableStateOf(modelProfiles.firstOrNull { it.model == model && it.endpoint == endpoint }?.name.orEmpty()) }
+    var pendingAsrName by remember { mutableStateOf(modelPrefs.getString("asr_profile_name", "") ?: "") }
+    var pendingTtsName by remember { mutableStateOf(ttsProfileName) }
+    var pendingVisionName by remember { mutableStateOf(modelPrefs.getString("vision_profile_name", "") ?: "") }
+    var modelEditorCategory by remember { mutableStateOf("") }
+    var modelEditorOriginalName by remember { mutableStateOf("") }
+    var modelEditorName by remember { mutableStateOf("") }
+    var modelEditorProvider by remember { mutableStateOf("OpenAI 兼容接口") }
+    var modelEditorEndpoint by remember { mutableStateOf("") }
+    var modelEditorApiKey by remember { mutableStateOf("") }
+    var modelEditorModel by remember { mutableStateOf("") }
+    var modelEditorVoice by remember { mutableStateOf("alloy") }
+    var modelEditorRealtimeProtocol by remember { mutableStateOf("none") }
+    var modelEditorRealtimeEndpoint by remember { mutableStateOf("") }
+    fun openModelEditor(category: String, name: String = "", endpointValue: String = "", keyValue: String = "", modelValue: String = "", providerValue: String = "", voiceValue: String = "alloy", realtimeValue: String = "none", realtimeUrl: String = "") {
+        modelEditorCategory = category
+        modelEditorOriginalName = name
+        modelEditorName = name.ifBlank { when (category) { "推理模型" -> "推理模型-${modelProfiles.size + 1}"; "ASR" -> "ASR-${asrProfiles.size + 1}"; "TTS" -> "TTS-${ttsProfiles.size + 1}"; else -> "视觉模型-${visionProfiles.size + 1}" } }
+        modelEditorProvider = providerValue.ifBlank { if (category == "推理模型") provider else "独立视觉模型" }
+        modelEditorEndpoint = endpointValue
+        modelEditorApiKey = keyValue
+        modelEditorModel = modelValue
+        modelEditorVoice = voiceValue
+        modelEditorRealtimeProtocol = realtimeValue
+        modelEditorRealtimeEndpoint = realtimeUrl
+    }
     var asrEndpoint by remember { mutableStateOf(modelPrefs.getString("asr_endpoint", "") ?: "") }
     var asrApiKey by remember { mutableStateOf(modelPrefs.getString("asr_api_key", "") ?: "") }
     var asrModel by remember { mutableStateOf(modelPrefs.getString("asr_model", "mimo-v2.5-asr") ?: "mimo-v2.5-asr") }
@@ -4186,170 +4212,150 @@ private fun SettingsPage(
                 }
                 Spacer(Modifier.height(2.dp))
                 if (modelSettingsTab == "推理模型") {
-                                    Text("服务类型", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Spacer(Modifier.height(8.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        listOf("本地模型", "OpenAI 兼容接口").forEach { item ->
-                                            FilterChip(selected = provider == item, onClick = { onProvider(item) }, label = { Text(item, fontSize = 12.sp) })
-                                        }
-                                    }
-                                    Spacer(Modifier.height(12.dp))
-                                    Text("已添加的推理模型 · ${modelProfiles.size}", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    if (modelProfiles.isEmpty()) Text("还没有推理模型，点击右侧＋添加。", color = Muted, fontSize = 10.sp)
-                                    modelProfiles.forEach { item ->
-                                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (model == item.model && endpoint == item.endpoint) Panel2 else Color.Transparent).clickable {
-                                            onSelectProfile(item)
-                                            profileName = item.name
-                                            profileRealtimeProtocol = item.realtimeProtocol
-                                            profileRealtimeEndpoint = item.realtimeEndpoint
-                                        }.padding(horizontal = 8.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f)) {
-                                                Text(item.name, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                                Text("${item.provider} · ${item.model}", color = Muted, fontSize = 10.sp)
-                                            }
-                                            if (model == item.model && endpoint == item.endpoint) Text("当前使用", color = Color(0xFF76E0B1), fontSize = 10.sp)
-                                            IconButton(onClick = { onDeleteProfile(item); if (profileName == item.name) profileName = "" }) {
-                                                Icon(Icons.Outlined.Delete, contentDescription = "删除推理模型", tint = Color(0xFFE07878))
-                                            }
-                                        }
-                                    }
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text("模型配置", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                        IconButton(onClick = { profileName = "推理模型-${modelProfiles.size + 1}"; onEndpoint(""); onModel(""); onApiKey(""); profileRealtimeProtocol = "none"; profileRealtimeEndpoint = "" }) {
-                                            Icon(Icons.Outlined.Add, contentDescription = "添加推理模型", tint = Cyan)
-                                        }
-                                    }
-                                    OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(32) }, label = { Text("列表显示名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                    ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 https://api.example.com/v1")
-                                    ConfigField("模型 ID", model, onModel, "例如 deepseek-chat / gpt-4.1")
-                                    ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
-                                    Spacer(Modifier.height(12.dp))
-                                    Text("实时通话（可选）", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("实时通话不需要单独建立模型分类：普通模式使用「听与说」中的语音识别和语音合成；若服务商支持原生实时语音，则在这里开启并填写 WebSocket 地址。", color = Muted, fontSize = 10.sp)
-                                    Spacer(Modifier.height(5.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                        FilterChip(selected = profileRealtimeProtocol == "none", onClick = { profileRealtimeProtocol = "none"; profileRealtimeEndpoint = "" }, label = { Text("标准语音链路") })
-                                        FilterChip(selected = profileRealtimeProtocol == "openai_realtime", onClick = { profileRealtimeProtocol = "openai_realtime" }, label = { Text("Realtime") })
-                                    }
-                                    if (profileRealtimeProtocol == "openai_realtime") ConfigField("Realtime WebSocket 地址", profileRealtimeEndpoint, { profileRealtimeEndpoint = it }, "wss://服务商提供的实时语音地址")
-                                    Button(onClick = {
-                                        if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank() && (profileRealtimeProtocol != "openai_realtime" || profileRealtimeEndpoint.startsWith("wss://"))) {
-                                            onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey, profileRealtimeProtocol, profileRealtimeEndpoint.trim()))
-                                        }
-                                    }, enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank() && (profileRealtimeProtocol != "openai_realtime" || profileRealtimeEndpoint.startsWith("wss://")), modifier = Modifier.fillMaxWidth()) {
-                                        Text("保存推理模型")
-                                    }
-                                    Spacer(Modifier.height(14.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("推理模型列表 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { openModelEditor("推理模型") }) { Icon(Icons.Outlined.Add, contentDescription = "新增推理模型", tint = Cyan) }
+                    }
+                    Text("点击条目编辑配置，右侧圆圈仅选择待启用模型。", color = Muted, fontSize = 10.sp)
+                    modelProfiles.forEach { item ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (pendingInferenceName == item.name) Panel2 else Color.Transparent).clickable { openModelEditor("推理模型", item.name, item.endpoint, item.apiKey, item.model, item.provider, realtimeValue = item.realtimeProtocol, realtimeUrl = item.realtimeEndpoint) }.padding(horizontal = 8.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(item.name, color = MainText, fontSize = 12.sp); Text("${item.provider} · ${item.model}", color = Muted, fontSize = 10.sp) }
+                            if (model == item.model && endpoint == item.endpoint) Text("使用中", color = Color(0xFF76E0B1), fontSize = 9.sp)
+                            RadioButton(selected = pendingInferenceName == item.name, onClick = { pendingInferenceName = item.name })
+                        }
+                    }
+                    if (modelProfiles.isEmpty()) Text("暂无推理模型，点击＋添加。", color = Muted, fontSize = 11.sp)
                 }
                 if (modelSettingsTab == "语音模型") {
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text("语音识别 ASR · ${asrProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                        IconButton(onClick = { asrProfileName = "ASR-${asrProfiles.size + 1}"; asrEndpoint = ""; asrApiKey = ""; asrModel = "mimo-v2.5-asr" }) { Icon(Icons.Outlined.Add, contentDescription = "添加 ASR 模型", tint = Cyan) }
-                                    }
-                                    asrProfiles.forEach { item ->
-                                        Row(Modifier.fillMaxWidth().clickable { asrProfileName = item.name; asrEndpoint = item.endpoint; asrApiKey = item.apiKey; asrModel = item.model; prefs.edit().putString("asr_endpoint", item.endpoint).putString("asr_api_key", item.apiKey).putString("asr_model", item.model).putString("asr_profile_name", item.name).apply() }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f)) { Text(item.name, color = MainText, fontSize = 12.sp); Text(item.model, color = Muted, fontSize = 10.sp) }
-                                            IconButton(onClick = { asrProfiles.remove(item); val arr = org.json.JSONArray(); asrProfiles.forEach { x -> arr.put(JSONObject().put("name", x.name).put("endpoint", x.endpoint).put("apiKey", x.apiKey).put("model", x.model)) }; prefs.edit().putString("asr_profiles", arr.toString()).apply() }) { Icon(Icons.Outlined.Delete, contentDescription = "删除 ASR 模型", tint = Color(0xFFE07878)) }
-                                        }
-                                    }
-                                    OutlinedTextField(value = asrProfileName, onValueChange = { asrProfileName = it.take(32) }, label = { Text("ASR 模型显示名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                    ConfigField("ASR API Base URL", asrEndpoint, { asrEndpoint = it; prefs.edit().putString("asr_endpoint", it).apply() }, "例如 https://api.xiaomimimo.com/v1")
-                                    ConfigField("ASR API Key", asrApiKey, { asrApiKey = it; prefs.edit().putString("asr_api_key", it).apply() }, "语音识别服务密钥", secret = true)
-                                    ConfigField("ASR 模型 ID", asrModel, { asrModel = it; prefs.edit().putString("asr_model", it).apply() }, "例如 mimo-v2.5-asr")
-                                    OutlinedButton(onClick = {
-                                        if (asrProfileName.isNotBlank() && asrEndpoint.isNotBlank() && asrModel.isNotBlank()) {
-                                            val item = ServiceModelProfile(asrProfileName.trim(), asrEndpoint.trim(), asrApiKey, asrModel.trim(), "ASR")
-                                            asrProfiles.removeAll { it.name == item.name }; asrProfiles.add(0, item)
-                                            val arr = org.json.JSONArray(); asrProfiles.forEach { x -> arr.put(JSONObject().put("name", x.name).put("endpoint", x.endpoint).put("apiKey", x.apiKey).put("model", x.model)) }
-                                            prefs.edit().putString("asr_profiles", arr.toString()).putString("asr_profile_name", item.name).apply()
-                                        }
-                                    }, enabled = asrProfileName.isNotBlank() && asrEndpoint.isNotBlank() && asrModel.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存 ASR 模型") }
-                                    Spacer(Modifier.height(14.dp))
-                                    Text("语音合成 TTS", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("把 AI 回复转换成语音；与 ASR 识别相互独立。", color = Muted, fontSize = 10.sp)
-                                    Text("选择系统语音，或从 TTS 模型列表选择已添加的云端语音服务。", color = Muted, fontSize = 10.sp)
-                                    Spacer(Modifier.height(7.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                        FilterChip(selected = ttsMode == "system", onClick = { onTtsMode("system") }, label = { Text("系统语音") })
-                                        FilterChip(selected = ttsMode == "cloud", onClick = { onTtsMode("cloud") }, label = { Text("云端模型 TTS") })
-                                    }
-                                    if (ttsMode == "cloud") {
-                                        Text("TTS 服务连接独立于推理模型配置。", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
-                                        ConfigField("TTS API Base URL", ttsEndpoint, onTtsEndpoint, "例如 https://api.xiaomimimo.com/v1")
-                                        ConfigField("TTS API Key", ttsApiKey, onTtsApiKey, "TTS 服务密钥", secret = true)
-                                        ttsProfiles.forEach { profile -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f).clickable { onSelectTtsProfile(profile) }.padding(7.dp)) { Text(profile.name, color = MainText, fontSize = 12.sp); Text(profile.endpoint, color = Muted, fontSize = 9.sp, maxLines = 1) }
-                                            RadioButton(selected = ttsProfileName == profile.name, onClick = { onSelectTtsProfile(profile) })
-                                            IconButton(onClick = { onDeleteTtsProfile(profile) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除 TTS 模型", tint = Color(0xFFE07878)) }
-                                        } }
-                                        OutlinedButton(onClick = { val n = "TTS-${ttsProfiles.size + 1}"; if (ttsEndpoint.isNotBlank()) onAddTtsProfile(TtsProfile(n, ttsEndpoint.trim(), ttsApiKey, ttsModel, ttsVoice)) }, enabled = ttsEndpoint.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存当前 TTS 配置") }
-                                        ConfigField("TTS 模型名称", ttsModel, onTtsModel, "例如 tts-1 或服务商提供的语音模型")
-                                        ConfigField("TTS 音色", ttsVoice, onTtsVoice, "例如 alloy、nova、shimmer")
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                                            Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
-                                            Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                                        }
-                                        Text("支持 OpenAI /v1/audio/speech；小米 MiMo-V2.5-TTS 自动使用 /v1/chat/completions，并解析 WAV Base64 音频。MiMo 音色可选 mimo_default、冰糖、茉莉、苏打、白桦、Mia、Chloe、Milo、Dean。", color = Muted, fontSize = 10.sp)
-                                    } else {
-                                        Text("朗读语言", color = Muted, fontSize = 11.sp)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                            listOf("zh-CN" to "中文普通话", "en-US" to "英语").forEach { (code, label) ->
-                                                FilterChip(selected = ttsLanguage == code, onClick = { onTtsLanguage(code) }, label = { Text(label, fontSize = 11.sp) })
-                                            }
-                                        }
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                                            Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
-                                            Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                                        }
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("音调", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                                            Slider(value = ttsPitch, onValueChange = onTtsPitch, valueRange = 0.7f..1.4f, modifier = Modifier.weight(1f))
-                                            Text(String.format(Locale.US, "%.1f", ttsPitch), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
-                                        }
-                                        Text("参数自动保存并用于回复朗读与 AI 通话播报。", color = Muted, fontSize = 10.sp)
-                                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("语音识别 ASR · ${asrProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { openModelEditor("ASR", modelValue = "mimo-v2.5-asr") }) { Icon(Icons.Outlined.Add, contentDescription = "新增 ASR 模型", tint = Cyan) }
+                    }
+                    asrProfiles.forEach { item ->
+                        Row(Modifier.fillMaxWidth().clickable { openModelEditor("ASR", item.name, item.endpoint, item.apiKey, item.model) }.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(item.name, color = MainText, fontSize = 12.sp); Text(item.model, color = Muted, fontSize = 10.sp) }
+                            RadioButton(selected = pendingAsrName == item.name, onClick = { pendingAsrName = item.name })
+                        }
+                    }
+                    if (asrProfiles.isEmpty()) Text("暂无 ASR 模型，点击＋添加。", color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("语音合成 TTS · ${ttsProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { openModelEditor("TTS", modelValue = ttsModel, voiceValue = ttsVoice) }) { Icon(Icons.Outlined.Add, contentDescription = "新增 TTS 模型", tint = Cyan) }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        FilterChip(selected = ttsMode == "system", onClick = { onTtsMode("system") }, label = { Text("系统语音") })
+                        FilterChip(selected = ttsMode == "cloud", onClick = { onTtsMode("cloud") }, label = { Text("云端模型 TTS") })
+                    }
+                    ttsProfiles.forEach { item ->
+                        Row(Modifier.fillMaxWidth().clickable { openModelEditor("TTS", item.name, item.endpoint, item.apiKey, item.model, voiceValue = item.voice) }.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(item.name, color = MainText, fontSize = 12.sp); Text("${item.model} · ${item.voice}", color = Muted, fontSize = 10.sp) }
+                            RadioButton(selected = pendingTtsName == item.name, onClick = { pendingTtsName = item.name })
+                        }
+                    }
+                    Text("系统语音无需配置模型；云端 TTS 参数在编辑弹窗中设置。", color = Muted, fontSize = 10.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("语速", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                        Slider(value = ttsRate, onValueChange = onTtsRate, valueRange = 0.6f..1.6f, modifier = Modifier.weight(1f))
+                        Text(String.format(Locale.US, "%.1fx", ttsRate), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("音调", color = MainText, fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                        Slider(value = ttsPitch, onValueChange = onTtsPitch, valueRange = 0.7f..1.4f, modifier = Modifier.weight(1f))
+                        Text(String.format(Locale.US, "%.1f", ttsPitch), color = Muted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                    }
                 }
                 if (modelSettingsTab == "视觉模型") {
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text("视觉模型 · ${visionProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                        IconButton(onClick = { visionProfileName = "视觉模型-${visionProfiles.size + 1}"; visionProvider = "独立视觉模型"; visionEndpoint = ""; visionApiKey = ""; visionModel = "" }) { Icon(Icons.Outlined.Add, contentDescription = "添加视觉模型", tint = Cyan) }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("视觉模型列表 · ${visionProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { openModelEditor("视觉模型") }) { Icon(Icons.Outlined.Add, contentDescription = "新增视觉模型", tint = Cyan) }
+                    }
+                    Text("负责理解图片和通话摄像头画面。", color = Muted, fontSize = 10.sp)
+                    visionProfiles.forEach { item ->
+                        Row(Modifier.fillMaxWidth().clickable { openModelEditor("视觉模型", item.name, item.endpoint, item.apiKey, item.model, item.provider) }.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text(item.name, color = MainText, fontSize = 12.sp); Text("${item.provider} · ${item.model}", color = Muted, fontSize = 10.sp) }
+                            RadioButton(selected = pendingVisionName == item.name, onClick = { pendingVisionName = item.name })
+                        }
+                    }
+                    if (visionProfiles.isEmpty()) Text("暂无视觉模型，点击＋添加。", color = Muted, fontSize = 11.sp)
+                    Text("只有你询问画面时才发送当前帧，不会持续上传视频。", color = Muted, fontSize = 10.sp)
+                }
+                Button(onClick = {
+                    onSave()
+                    modelProfiles.firstOrNull { it.name == pendingInferenceName }?.let { onSelectProfile(it) }
+                    asrProfiles.firstOrNull { it.name == pendingAsrName }?.let { item ->
+                        asrEndpoint = item.endpoint; asrApiKey = item.apiKey; asrModel = item.model
+                        prefs.edit().putString("asr_endpoint", item.endpoint).putString("asr_api_key", item.apiKey).putString("asr_model", item.model).putString("asr_profile_name", item.name).apply()
+                    }
+                    ttsProfiles.firstOrNull { it.name == pendingTtsName }?.let { item -> onSelectTtsProfile(item); onTtsMode("cloud") }
+                    visionProfiles.firstOrNull { it.name == pendingVisionName }?.let { item ->
+                        visionProvider = item.provider; visionEndpoint = item.endpoint; visionApiKey = item.apiKey; visionModel = item.model
+                        prefs.edit().putString("vision_provider", item.provider).putString("vision_endpoint", item.endpoint).putString("vision_api_key", item.apiKey).putString("vision_model", item.model).putString("vision_profile_name", item.name).apply()
+                    }
+                }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) { Text("保存并启用", fontWeight = FontWeight.Bold) }
+                if (saved) Text("配置已保存", color = Color(0xFF76E0B1), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                if (modelEditorCategory.isNotBlank()) {
+                    val inferenceEditor = modelEditorCategory == "推理模型"
+                    val ttsEditor = modelEditorCategory == "TTS"
+                    AlertDialog(
+                        onDismissRequest = { modelEditorCategory = "" },
+                        title = { Text(if (modelEditorOriginalName.isBlank()) "新增${modelEditorCategory}" else "编辑${modelEditorCategory}") },
+                        text = {
+                            Column(Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(value = modelEditorName, onValueChange = { modelEditorName = it.take(32) }, label = { Text("列表显示名称") }, singleLine = true, modifier = Modifier.fillMaxWidth(), readOnly = modelEditorOriginalName.isNotBlank())
+                                if (inferenceEditor) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf("本地模型", "OpenAI 兼容接口").forEach { v -> FilterChip(selected = modelEditorProvider == v, onClick = { modelEditorProvider = v }, label = { Text(v, fontSize = 10.sp) }) }
                                     }
-                                    Text("负责看懂你发送的图片和通话摄像头画面。识别结果会交给聊天模型整理成回答。", color = Muted, fontSize = 11.sp)
-                                    visionProfiles.forEach { item ->
-                                        Row(Modifier.fillMaxWidth().clickable { visionProfileName = item.name; visionProvider = item.provider; visionEndpoint = item.endpoint; visionApiKey = item.apiKey; visionModel = item.model; prefs.edit().putString("vision_provider", item.provider).putString("vision_endpoint", item.endpoint).putString("vision_api_key", item.apiKey).putString("vision_model", item.model).putString("vision_profile_name", item.name).apply() }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f)) { Text(item.name, color = MainText, fontSize = 12.sp); Text(item.model, color = Muted, fontSize = 10.sp) }
-                                            IconButton(onClick = { visionProfiles.remove(item); val arr = org.json.JSONArray(); visionProfiles.forEach { x -> arr.put(JSONObject().put("name", x.name).put("endpoint", x.endpoint).put("apiKey", x.apiKey).put("model", x.model).put("provider", x.provider)) }; prefs.edit().putString("vision_profiles", arr.toString()).apply() }) { Icon(Icons.Outlined.Delete, contentDescription = "删除视觉模型", tint = Color(0xFFE07878)) }
+                                }
+                                if (modelEditorCategory == "视觉模型") {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf("复用推理模型", "独立视觉模型").forEach { v -> FilterChip(selected = modelEditorProvider == v, onClick = { modelEditorProvider = v }, label = { Text(v, fontSize = 10.sp) }) }
+                                    }
+                                }
+                                if (!(modelEditorCategory == "视觉模型" && modelEditorProvider == "复用推理模型")) {
+                                    OutlinedTextField(value = modelEditorEndpoint, onValueChange = { modelEditorEndpoint = it }, label = { Text("API / 服务地址") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    OutlinedTextField(value = modelEditorApiKey, onValueChange = { modelEditorApiKey = it }, label = { Text("API Key") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                                    OutlinedTextField(value = modelEditorModel, onValueChange = { modelEditorModel = it }, label = { Text("模型 ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                }
+                                if (ttsEditor) OutlinedTextField(value = modelEditorVoice, onValueChange = { modelEditorVoice = it }, label = { Text("TTS 音色") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                if (inferenceEditor) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        FilterChip(selected = modelEditorRealtimeProtocol == "none", onClick = { modelEditorRealtimeProtocol = "none"; modelEditorRealtimeEndpoint = "" }, label = { Text("标准语音链路") })
+                                        FilterChip(selected = modelEditorRealtimeProtocol == "openai_realtime", onClick = { modelEditorRealtimeProtocol = "openai_realtime" }, label = { Text("Realtime") })
+                                    }
+                                    if (modelEditorRealtimeProtocol == "openai_realtime") OutlinedTextField(value = modelEditorRealtimeEndpoint, onValueChange = { modelEditorRealtimeEndpoint = it }, label = { Text("Realtime WebSocket 地址") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                val reuseVision = modelEditorCategory == "视觉模型" && modelEditorProvider == "复用推理模型"
+                                if (modelEditorName.isNotBlank() && (reuseVision || modelEditorEndpoint.isNotBlank() && modelEditorModel.isNotBlank()) && (modelEditorRealtimeProtocol != "openai_realtime" || modelEditorRealtimeEndpoint.startsWith("wss://"))) {
+                                    when (modelEditorCategory) {
+                                        "推理模型" -> onAddProfile(ModelProfile(modelEditorName.trim(), modelEditorProvider, modelEditorEndpoint.trim(), modelEditorModel.trim(), modelEditorApiKey, modelEditorRealtimeProtocol, modelEditorRealtimeEndpoint.trim()))
+                                        "ASR" -> {
+                                            val p = ServiceModelProfile(modelEditorName.trim(), modelEditorEndpoint.trim(), modelEditorApiKey, modelEditorModel.trim(), "ASR")
+                                            asrProfiles.removeAll { it.name == p.name }; asrProfiles.add(0, p)
+                                            val arr = org.json.JSONArray(); asrProfiles.forEach { x -> arr.put(JSONObject().put("name", x.name).put("endpoint", x.endpoint).put("apiKey", x.apiKey).put("model", x.model)) }
+                                            prefs.edit().putString("asr_profiles", arr.toString()).apply()
                                         }
-                                    }
-                                    OutlinedTextField(value = visionProfileName, onValueChange = { visionProfileName = it.take(32) }, label = { Text("视觉模型显示名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                        FilterChip(selected = visionProvider == "复用推理模型", onClick = { visionProvider = "复用推理模型"; prefs.edit().putString("vision_provider", visionProvider).apply() }, label = { Text("复用推理模型") })
-                                        FilterChip(selected = visionProvider == "独立视觉模型", onClick = { visionProvider = "独立视觉模型"; prefs.edit().putString("vision_provider", visionProvider).apply() }, label = { Text("独立视觉模型") })
-                                    }
-                                    if (visionProvider == "独立视觉模型") {
-                                        ConfigField("视觉 API Base URL", visionEndpoint, { visionEndpoint = it; prefs.edit().putString("vision_endpoint", it).apply() }, "例如 https://api.openai.com/v1")
-                                        ConfigField("视觉 API Key", visionApiKey, { visionApiKey = it; prefs.edit().putString("vision_api_key", it).apply() }, "视觉服务密钥", secret = true)
-                                        ConfigField("视觉模型名称", visionModel, { visionModel = it; prefs.edit().putString("vision_model", it).apply() }, "例如 gemini-2.5-flash 或支持视觉的模型")
-                                    } else {
-                                        Text("当前复用：$model", color = Cyan, fontSize = 12.sp)
-                                        Text("推理接口：$endpoint", color = Muted, fontSize = 10.sp, maxLines = 2)
-                                    }
-                                    Spacer(Modifier.height(8.dp))
-                                    Text("不会持续上传视频；只有你询问画面时才发送当前帧。想要更快响应，可优先选择服务商提供的 Flash / Fast 类视觉模型。", color = Muted, fontSize = 10.sp)
-                                    Button(onClick = {
-                                        prefs.edit().putString("vision_provider", visionProvider).putString("vision_endpoint", visionEndpoint.trim()).putString("vision_api_key", visionApiKey).putString("vision_model", visionModel.trim()).apply()
-                                        if (visionProfileName.isNotBlank() && visionEndpoint.isNotBlank() && visionModel.isNotBlank()) {
-                                            val item = ServiceModelProfile(visionProfileName.trim(), visionEndpoint.trim(), visionApiKey, visionModel.trim(), visionProvider)
-                                            visionProfiles.removeAll { it.name == item.name }; visionProfiles.add(0, item)
+                                        "TTS" -> onAddTtsProfile(TtsProfile(modelEditorName.trim(), modelEditorEndpoint.trim(), modelEditorApiKey, modelEditorModel.trim(), modelEditorVoice.trim()))
+                                        "视觉模型" -> {
+                                            val p = ServiceModelProfile(modelEditorName.trim(), modelEditorEndpoint.trim(), modelEditorApiKey, modelEditorModel.trim(), modelEditorProvider)
+                                            visionProfiles.removeAll { it.name == p.name }; visionProfiles.add(0, p)
                                             val arr = org.json.JSONArray(); visionProfiles.forEach { x -> arr.put(JSONObject().put("name", x.name).put("endpoint", x.endpoint).put("apiKey", x.apiKey).put("model", x.model).put("provider", x.provider)) }
-                                            prefs.edit().putString("vision_profiles", arr.toString()).putString("vision_profile_name", item.name).apply()
+                                            prefs.edit().putString("vision_profiles", arr.toString()).apply()
                                         }
-                                    }, enabled = visionProfileName.isNotBlank() && visionEndpoint.isNotBlank() && visionModel.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存看图配置") }
+                                    }
+                                    modelEditorCategory = ""
+                                }
+                            }) { Text("保存模型") }
+                        },
+                        dismissButton = { TextButton(onClick = { modelEditorCategory = "" }) { Text("取消") } }
+                    )
                 }
                 Text("密钥目前保存在应用私有配置中；模型推理请求与密钥加密存储仍需后续接入。", color = Muted, fontSize = 10.sp)
-                Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) { Text("保存模型配置", fontWeight = FontWeight.Bold) }
                 if (saved) Text("配置已保存", color = Color(0xFF76E0B1), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
