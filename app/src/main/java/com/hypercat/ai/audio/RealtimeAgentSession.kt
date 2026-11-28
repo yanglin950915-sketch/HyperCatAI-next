@@ -37,7 +37,7 @@ class RealtimeAgentSession(
 
     @Synchronized
     fun start() {
-        check(state == State.IDLE || state == State.CLOSED) { "Realtime session is already active" }
+        check(state == State.IDLE) { "Realtime session is already active" }
         closed.set(false)
         transition(State.CONNECTING)
         try {
@@ -45,6 +45,7 @@ class RealtimeAgentSession(
             audioLease = coordinator.acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true)
             coordinator.onFocusLost = { _ ->
                 if (!closed.get()) {
+                    playbackQueue.clear()
                     audio.interruptPlayback()
                     adapter.cancelResponse()
                     transition(State.INTERRUPTED)
