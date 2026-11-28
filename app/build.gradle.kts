@@ -18,62 +18,6 @@ val signingKeyPassword = providers.environmentVariable("HYPERCAT_KEY_PASSWORD").
     ?: error("Missing HYPERCAT_KEY_PASSWORD.")
 
 
-val builtInAvatarAssets = layout.buildDirectory.dir("generated/builtinAvatarAssets")
-val downloadBuiltInAvatar by tasks.registering {
-    val sampleCommit = "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd"
-    inputs.property("live2dSampleCommit", sampleCommit)
-    outputs.dir(builtInAvatarAssets)
-    doLast {
-        val outputRoot = builtInAvatarAssets.get().asFile
-        val sampleCommit = "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd"
-        val models = listOf("Haru", "Hiyori", "Mao", "Natori", "Rice")
-        val missing = models.filter { name ->
-            val folder = outputRoot.resolve("avatar/${name.lowercase()}")
-            !folder.resolve("$name.model3.json").isFile || !folder.resolve("$name.moc3").isFile
-        }
-        if (missing.isNotEmpty()) {
-            val archive = temporaryDir.resolve("cubism-web-samples.zip")
-            val archiveUrl = URL("https://codeload.github.com/Live2D/CubismWebSamples/zip/$sampleCommit")
-            archiveUrl.openConnection().apply {
-                connectTimeout = 30_000
-                readTimeout = 120_000
-            }.getInputStream().use { input ->
-                archive.outputStream().buffered().use { output -> input.copyTo(output) }
-            }
-            ZipFile(archive).use { zip ->
-                for (name in missing) {
-                    val avatarDir = outputRoot.resolve("avatar/${name.lowercase()}")
-                    val prefix = "CubismWebSamples-$sampleCommit/Samples/Resources/$name/"
-                    val entries = zip.entries()
-                    while (entries.hasMoreElements()) {
-                        val entry = entries.nextElement()
-                        if (!entry.name.startsWith(prefix)) continue
-                        val relative = entry.name.removePrefix(prefix)
-                        if (relative.isBlank()) continue
-                        val target = avatarDir.resolve(relative)
-                        require(target.canonicalPath.startsWith(avatarDir.canonicalPath + File.separator)) {
-                            "Unsafe path in official Live2D sample archive: ${entry.name}"
-                        }
-                        if (entry.isDirectory) {
-                            target.mkdirs()
-                        } else {
-                            target.parentFile?.mkdirs()
-                            zip.getInputStream(entry).use { input ->
-                                target.outputStream().buffered().use { output -> input.copyTo(output) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        for (name in models) {
-            val avatarDir = outputRoot.resolve("avatar/${name.lowercase()}")
-            check(avatarDir.resolve("$name.model3.json").isFile && avatarDir.resolve("$name.moc3").isFile) {
-                "Official Live2D $name model download is incomplete"
-            }
-        }
-    }
-}
 
 android {
     namespace = "com.hypercat.ai"
@@ -82,8 +26,8 @@ android {
         applicationId = "com.hypercat.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 169
-        versionName = "0.9.150"
+        versionCode = 170
+        versionName = "0.9.151"
     }
     signingConfigs {
         create("stable") {
@@ -104,10 +48,8 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     sourceSets.getByName("main").assets.srcDir("../rearscreen")
-    sourceSets.getByName("main").assets.srcDir(builtInAvatarAssets)
     buildFeatures { compose = true; aidl = true }
 }
-tasks.named("preBuild").configure { dependsOn(downloadBuiltInAvatar) }
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
