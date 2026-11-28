@@ -40,6 +40,10 @@ class OpenAiRealtimeAudioAdapter(
         fun onTranscriptDelta(text: String)
         fun onAssistantTextDelta(text: String)
         fun onAssistantAudio(pcm16: ByteArray)
+        /** Complete user transcription, emitted once per finalized input turn. */
+        fun onTranscriptCompleted(text: String) {}
+        /** Emitted only when the server confirms the assistant response is complete. */
+        fun onAssistantTurnFinished() {}
         fun onError(message: String)
     }
 
@@ -100,7 +104,7 @@ class OpenAiRealtimeAudioAdapter(
         socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 if (closed.get()) { webSocket.close(1000, "closed"); return }
-                webSocket.send(JSONObject()
+                val configured = webSocket.send(JSONObject()
                     .put("type", "session.update")
                     .put("session", JSONObject()
                         .put("modalities", org.json.JSONArray().put("text").put("audio"))
@@ -114,6 +118,10 @@ class OpenAiRealtimeAudioAdapter(
                             .put("threshold", 0.55)
                             .put("prefix_padding_ms", 300)
                             .put("silence_duration_ms", 500))).toString())
+                if (!configured) {
+                    fail("Realtime 会话配置发送失败")
+                    return
+                }
                 try {
                     engine.start()
                     listener.onState(State.LISTENING)
@@ -180,6 +188,10 @@ class OpenAiRealtimeAudioAdapter(
             "input_audio_buffer.committed" -> listener.onState(State.RESPONDING)
             "conversation.item.input_audio_transcription.delta" ->
                 listener.onTranscriptDelta(event.optString("delta"))
+            "conversation.item.input_audio_transcription.completed" -> {
+                val transcript = event.optString("transcript").trim()
+                if (transcript.isNotEmpty()) listener.onTranscriptCompleted(transcript)
+            }
             "response.text.delta", "response.output_text.delta" -> {
                 listener.onState(State.RESPONDING)
                 listener.onAssistantTextDelta(event.optString("delta"))
@@ -190,10 +202,16 @@ class OpenAiRealtimeAudioAdapter(
                 }.getOrNull() ?: return
                 speaking.set(true)
                 if (playbackQueue.trySend(audio).isFailure && !closed.get()) fail("音频播放队列已关闭")
+                listener.onAssistantAudio(audio)
                 listener.onState(State.RESPONDING)
             }
-            "response.audio.done", "response.done" -> {
+            "response.audio.done" -> {
                 speaking.set(false)
+                listener.onState(State.LISTENING)
+            }
+            "response.done" -> {
+                speaking.set(false)
+                listener.onAssistantTurnFinished()
                 listener.onState(State.LISTENING)
             }
             "error" -> fail(event.optJSONObject("error")?.optString("message") ?: "Realtime 模型返回错误")
