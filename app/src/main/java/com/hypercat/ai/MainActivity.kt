@@ -2191,7 +2191,10 @@ private fun ChatPage(
             return true
         }
         callActive = true; micEnabled = true; videoEnabled = false
-        showCallInfo = true; lastCallSpokenText = ""; realtimeAssistantDraft = ""
+        showCallInfo = true
+        // Snapshot the last historical reply before call startup so call TTS cannot replay chat history.
+        lastCallSpokenText = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
+        realtimeAssistantDraft = ""
         isListening = false; isSpeaking = false
         speechStatus = "正在连接 Realtime 语音服务…"
         var greetingSent = false
@@ -2347,7 +2350,8 @@ private fun ChatPage(
             micEnabled = true
             videoEnabled = false
             showCallInfo = true
-            lastCallSpokenText = ""
+            // Do not replay the last normal-chat reply when the call dialog opens.
+            lastCallSpokenText = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
             isListening = true
             isSpeaking = false
             speechStatus = "麦克风已启动，正在实时采集 PCM；检测到语句后自动发送给 AI"
@@ -2531,7 +2535,7 @@ private fun ChatPage(
     }
     var lastAutoReadKey by remember { mutableStateOf("") }
     var autoReadPendingReply by remember { mutableStateOf(false) }
-    LaunchedEffect(autoReadReplies, callActive, messages.size, isThinking, drawerSection, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate) {
+    LaunchedEffect(autoReadReplies, callActive, messages.size, isThinking, drawerSection, currentSessionTitle, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate) {
         // Do not replay a historical reply just because the avatar/settings page opens.
         // Keep auto-read enabled for a fresh avatar touch interaction (isThinking sets the pending flag).
         if (drawerSection == "settings" ||
