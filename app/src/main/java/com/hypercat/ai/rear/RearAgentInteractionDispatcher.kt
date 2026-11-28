@@ -20,6 +20,15 @@ object RearAgentInteractionDispatcher {
         val normalizedAction = if (action.startsWith("pet_")) "avatar_" + action.removePrefix("pet_") else action
         if (normalizedAction !in supportedActions) return false
         if (normalizedAction == "avatar_voice" && userText.isBlank()) return false
+        // A single physical gesture may arrive through both the card bridge and native receiver.
+        // Debounce identical repeats so one touch creates only one Agent turn.
+        val dedupePrefs = context.getSharedPreferences("hypercat_avatar", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val fingerprint = "$normalizedAction|${userText.trim()}"
+        val previousFingerprint = dedupePrefs.getString("last_interaction_fingerprint", null)
+        val previousAt = dedupePrefs.getLong("last_interaction_at", 0L)
+        if (previousFingerprint == fingerprint && now - previousAt in 0L..1800L) return false
+        dedupePrefs.edit().putString("last_interaction_fingerprint", fingerprint).putLong("last_interaction_at", now).commit()
         val current = AvatarStateStore.read(context)
         val immediateMood = when (normalizedAction) {
             "avatar_thinking" -> "thinking"
