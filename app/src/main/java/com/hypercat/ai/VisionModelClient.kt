@@ -43,7 +43,7 @@ internal object VisionModelClient {
             .put("model", model)
             .put("messages", messages)
             .put("stream", false)
-            .put("max_tokens", 320)
+            .put("max_tokens", 192)
 
         val connection = URL(apiUrl).openConnection() as HttpURLConnection
         try {
