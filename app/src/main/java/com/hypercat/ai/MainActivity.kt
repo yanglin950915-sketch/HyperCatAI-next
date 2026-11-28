@@ -293,11 +293,32 @@ private enum class Page { CHAT, SETTINGS }
 
 private data class ModelReply(val text: String, val reasoning: String = "")
 
+/** Decide whether a user request benefits from a short, user-facing method summary. */
+private fun shouldShowReasoning(history: List<ChatLine>): Boolean {
+    val prompt = history.lastOrNull { it.fromUser }?.text?.trim().orEmpty()
+    if (prompt.isBlank()) return false
+
+    val greetingOrSmallTalk = Regex("^(你好|您好|嗨|哈喽|早上好|中午好|下午好|晚上好|晚安|谢谢|感谢|再见|拜拜|在吗)[！!。,.，？?\\s]*$")
+    if (greetingOrSmallTalk.matches(prompt)) return false
+
+    val taskSignals = listOf(
+        Regex("(写|编写|撰写|生成|创作|设计|开发|实现|重构|修复|排查|调试|优化|整理|制定|规划|安排|比较|对比|评估|分析|总结|处理|解决|制作|起草).{0,18}(代码|程序|脚本|文档|报告|方案|计划|项目|邮件|简历|论文|内容|流程|问题|任务)?"),
+        Regex("(代码|程序|脚本|文档|报告|方案|计划|项目|邮件|简历|论文|创作|开发|多步骤|分步骤|工作流)"),
+        Regex("(工作|职场|生活|职业|家庭|人际|关系|学习|决策|选择).{0,24}(怎么办|如何|怎么|该不该|是否|帮我|分析|建议|解决|规划|处理)")
+    )
+    val isWeatherOrGreeting = Regex("(天气|气温|温度|天气预报)").containsMatchIn(prompt) &&
+        taskSignals.none { it.containsMatchIn(prompt) }
+    if (isWeatherOrGreeting) return false
+
+    if (taskSignals.any { it.containsMatchIn(prompt) }) return true
+    return prompt.length >= 60 && Regex("(怎么办|如何|怎么做|为什么|分析|建议|规划|解决|处理|比较|选择)").containsMatchIn(prompt)
+}
+
 private fun requestModelReply(context: Context, endpoint: String, model: String, apiKey: String, history: List<ChatLine>, memories: List<String> = emptyList()): ModelReply {
     val base = endpoint.trim().trimEnd('/')
     val apiUrl = when { base.endsWith("/chat/completions") -> base; base.endsWith("/v1") -> "$base/chat/completions"; else -> "$base/v1/chat/completions" }
     val requestMessages = org.json.JSONArray()
-    val baseSystemPrompt = "请根据问题复杂度组织答复：简单问题（如问候、常识、简单事实或直接操作指引）直接给出简洁结论，不要输出思路说明、分析过程或推理过程；只有复杂问题确有必要时，才在最终答复前提供2-4条简短、可核验的方法或依据，不输出隐式思维链、私人内心独白或冗长逐字推理。语音朗读只朗读最终答复内容，不朗读思路说明或分析内容。代码请使用标准 Markdown 三反引号代码块，并标注语言。"
+    val baseSystemPrompt = "请根据问题复杂度组织答复。简单问候、天气、常识、简单事实和直接指引：只给简洁结论，不输出思路说明。复杂任务（工作或生活问题分析、方案比较、决策规划、代码开发、文档撰写、创作、优化修复及多步骤事务）：在最终答复前用<思路说明>...</思路说明>标签给出2-4条简短、可理解、可核验的方法摘要或关键依据，帮助用户了解处理路径；这必须是结论性摘要，不是隐式思维链、私人内心独白或逐字推理。不要把 reasoning_content、analysis 等内部推理字段直接展示给用户。语音朗读只朗读最终答复，不朗读思路摘要。代码请使用标准 Markdown 三反引号代码块，并标注语言。"
     val memoryContext = memories.filter { it.isNotBlank() }.take(40).joinToString("\n") { "- ${it.take(500)}" }
     val systemPrompt = if (memoryContext.isBlank()) baseSystemPrompt else "$baseSystemPrompt\n\n以下是用户明确保存的长期记忆，仅在与当前问题相关时参考；若用户当前指令与记忆冲突，以当前指令为准：\n$memoryContext"
     requestMessages.put(JSONObject().put("role", "system").put("content", systemPrompt))
@@ -343,10 +364,12 @@ private fun requestModelReply(context: Context, endpoint: String, model: String,
             is org.json.JSONArray -> (0 until value.length()).mapNotNull { value.optJSONObject(it)?.optString("text") }.filter { it.isNotBlank() }.joinToString("\n")
             else -> "模型已返回，但没有可显示的文字内容。"
         }.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
-        var reasoning = listOf("reasoning_content", "reasoning", "analysis")
-            .firstNotNullOfOrNull { key -> message.optString(key).takeIf { it.isNotBlank() && it != "null" } }.orEmpty()
+        // Only display an explicit, user-facing summary embedded in the final answer.
+        // Never surface provider-private reasoning_content / analysis fields.
         val tagged = Regex("(?s)<思路说明>(.*?)</思路说明>").find(answer)
-        if (reasoning.isBlank() && tagged != null) reasoning = tagged.groupValues[1].trim()
+        val reasoning = tagged?.groupValues?.get(1)?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "方法摘要：$it" }.orEmpty()
         if (tagged != null) answer = answer.removeRange(tagged.range).trim()
         return ModelReply(answer, reasoning)
     } finally { connection.disconnect() }
@@ -1095,7 +1118,7 @@ private fun HyperCatApp() {
                                         isThinking = true
                                         try {
                                             val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                            appendAgentReply(context, messages, reply.text, reply.reasoning)
+                                            appendAgentReply(context, messages, reply.text, reply.reasoning.takeIf { shouldShowReasoning(requestHistory) }.orEmpty())
                                             avatarReply = reply.text
                                             avatarMood = inferMood(reply.text)
                                         } catch (error: Exception) {
@@ -1116,7 +1139,7 @@ private fun HyperCatApp() {
                                 isThinking = true
                                 try {
                                     val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
-                                    appendAgentReply(context, messages, reply.text, reply.reasoning)
+                                    appendAgentReply(context, messages, reply.text, reply.reasoning.takeIf { shouldShowReasoning(requestHistory) }.orEmpty())
                                     avatarReply = reply.text
                                     avatarMood = inferMood(reply.text)
                                 } catch (error: Exception) {
@@ -2032,7 +2055,7 @@ private fun ChatPage(
                     if (selectedMessageIndices.isNotEmpty()) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
                     Surface(modifier = (if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices) Cyan else GlassBorder), shape = RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
-                            if (line.reasoning.isNotBlank() && !line.fromUser) {
+                            if (line.reasoning.startsWith("方法摘要：") && !line.fromUser && shouldShowReasoning(messages.take(messageIndex))) {
                                 var reasoningExpanded by remember(line) { mutableStateOf(true) }
                                 Surface(color = if (appDarkState) Color(0xFF24231F) else Color(0xFFFFF7E8), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                                     Column(Modifier.padding(10.dp)) {
@@ -2041,7 +2064,7 @@ private fun ChatPage(
                                             Text(if (reasoningExpanded) "收起⌃" else "展开⌄", color = Muted, fontSize = 10.sp)
                                         }
                                         AnimatedVisibility(visible = reasoningExpanded) {
-                                            Text(line.reasoning, color = if (appDarkState) Color(0xFFD8D1C3) else Color(0xFF5C503D), fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
+                                            Text(line.reasoning.removePrefix("方法摘要："), color = if (appDarkState) Color(0xFFD8D1C3) else Color(0xFF5C503D), fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
                                         }
                                     }
                                 }
