@@ -181,7 +181,14 @@ class RealtimeAudioEngine(
     private fun captureLoop(input: AudioRecord, frameBytes: Int) {
         val frame = ByteArray(frameBytes)
         while (running.get()) {
-            val count = input.read(frame, 0, frame.size, AudioRecord.READ_BLOCKING)
+            val count = try {
+                input.read(frame, 0, frame.size, AudioRecord.READ_BLOCKING)
+            } catch (error: Throwable) {
+                if (running.compareAndSet(true, false)) {
+                    listener.onError("Microphone capture crashed", error)
+                }
+                break
+            }
             if (count > 0) {
                 try {
                     val consumer = frameConsumer
@@ -190,7 +197,11 @@ class RealtimeAudioEngine(
                     listener.onError("Audio frame consumer failed", error)
                 }
             } else if (count < 0) {
-                if (running.get()) listener.onError("Microphone read failed: $count")
+                // Mark the engine stopped before notifying the session. The
+                // failure callback may synchronously close this engine.
+                if (running.compareAndSet(true, false)) {
+                    listener.onError("Microphone read failed: $count")
+                }
                 break
             }
         }
