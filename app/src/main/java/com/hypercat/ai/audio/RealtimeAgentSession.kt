@@ -36,13 +36,17 @@ class RealtimeAgentSession(
     @Volatile private var microphoneEnabled = true
     private val localVad = PcmVoiceActivityDetector()
     @Volatile private var localSpeechInterruptActive = false
+    @Volatile private var userSpeechActive = false
 
     fun currentState(): State = state
+    fun isUserSpeaking(): Boolean = userSpeechActive
+    fun supportsImageInput(): Boolean = adapter.supportsImageInput
 
     private fun handleMicrophoneFrame(pcm: ByteArray, length: Int) {
         if (closed.get() || !microphoneEnabled) return
         when (localVad.process(pcm, length)) {
             PcmVoiceActivityDetector.Event.SPEECH_STARTED -> {
+                userSpeechActive = true
                 if (state == State.RESPONDING && !localSpeechInterruptActive) {
                     localSpeechInterruptActive = true
                     playbackQueue.clear()
@@ -51,7 +55,7 @@ class RealtimeAgentSession(
                     transition(State.INTERRUPTED)
                 }
             }
-            PcmVoiceActivityDetector.Event.SPEECH_ENDED -> localSpeechInterruptActive = false
+            PcmVoiceActivityDetector.Event.SPEECH_ENDED -> { localSpeechInterruptActive = false; userSpeechActive = false }
             else -> Unit
         }
         adapter.sendAudioFrame(pcm, length)
@@ -158,7 +162,7 @@ class RealtimeAgentSession(
     fun setMicrophoneEnabled(enabled: Boolean) {
         if (closed.get()) return
         microphoneEnabled = enabled
-        if (!enabled) { localVad.reset(); localSpeechInterruptActive = false }
+        if (!enabled) { localVad.reset(); localSpeechInterruptActive = false; userSpeechActive = false }
         audio.setFrameConsumer(if (enabled) ({ pcm, length -> handleMicrophoneFrame(pcm, length) }) else null)
     }
 
@@ -203,6 +207,7 @@ class RealtimeAgentSession(
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         transition(State.CLOSING)
+        userSpeechActive = false
         audio.setFrameConsumer(null)
         playbackQueue.clear()
         playbackThread?.interrupt()
