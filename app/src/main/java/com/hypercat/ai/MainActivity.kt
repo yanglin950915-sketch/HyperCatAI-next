@@ -4249,6 +4249,8 @@ private fun SettingsPage(
     autoReadReplies: Boolean, onAutoReadReplies: (Boolean) -> Unit,
     onCheckUpdates: () -> Unit, openUrl: (String) -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var showPetNameDialog by remember { mutableStateOf(false) }
     var avatarNameDraft by remember(avatarName) { mutableStateOf(avatarName) }
     var showPluginDialog by remember { mutableStateOf(false) }
