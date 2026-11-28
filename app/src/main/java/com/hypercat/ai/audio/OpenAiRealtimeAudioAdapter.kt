@@ -64,7 +64,7 @@ class OpenAiRealtimeAudioAdapter(
                     .put("type", "session.update")
                     .put("session", JSONObject()
                         .put("modalities", org.json.JSONArray().put("text").put("audio"))
-                        .put("instructions", if (supportsImageInput) "你是 HyperCat AI 的中文语音伙伴。自然、简洁地回答。用户开启摄像头时，你会收到实时画面截图；用户询问画面时，请结合最近收到的图像如实描述，不要声称看不到已收到的画面。若没有收到图像，不要猜测画面内容。" else "你是 HyperCat AI 的中文语音伙伴。自然、简洁地回答。当前模型未启用实时图像输入，不要声称能够看到摄像头画面。")
+                        .put("instructions", "你是 HyperCat AI 的中文实时语音伙伴。请自然、简洁地用中文交流。视频通话期间，独立视觉模型可能会把摄像头画面的客观观察摘要同步到当前对话；收到摘要时，请结合它理解用户指向的物品、环境和动作，不要声称自己直接接收了原始视频。没有收到视觉摘要时，不要猜测摄像头画面。视觉摘要是上下文信息，不需要主动逐条播报，除非用户的问题或明显重要的场景变化值得回应。")
                         .put("voice", "alloy")
                         .put("input_audio_format", "pcm16")
                         .put("output_audio_format", "pcm16")
