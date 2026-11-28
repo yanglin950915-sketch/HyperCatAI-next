@@ -4002,14 +4002,15 @@ private fun SettingsPage(
     var profileName by remember { mutableStateOf("") }
     var profileRealtimeEndpoint by remember { mutableStateOf(context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).getString("active_realtime_endpoint", "") ?: "") }
     var profileRealtimeProtocol by remember { mutableStateOf(context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).getString("active_realtime_protocol", "none") ?: "none") }
+    val modelPrefs = remember { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     var modelSettingsTab by remember { mutableStateOf("推理模型") }
-    var asrEndpoint by remember { mutableStateOf(prefs.getString("asr_endpoint", "") ?: "") }
-    var asrApiKey by remember { mutableStateOf(prefs.getString("asr_api_key", "") ?: "") }
-    var asrModel by remember { mutableStateOf(prefs.getString("asr_model", "mimo-v2.5-asr") ?: "mimo-v2.5-asr") }
-    var visionProvider by remember { mutableStateOf(prefs.getString("vision_provider", "复用推理模型") ?: "复用推理模型") }
-    var visionEndpoint by remember { mutableStateOf(prefs.getString("vision_endpoint", "") ?: "") }
-    var visionApiKey by remember { mutableStateOf(prefs.getString("vision_api_key", "") ?: "") }
-    var visionModel by remember { mutableStateOf(prefs.getString("vision_model", "") ?: "") }
+    var asrEndpoint by remember { mutableStateOf(modelPrefs.getString("asr_endpoint", "") ?: "") }
+    var asrApiKey by remember { mutableStateOf(modelPrefs.getString("asr_api_key", "") ?: "") }
+    var asrModel by remember { mutableStateOf(modelPrefs.getString("asr_model", "mimo-v2.5-asr") ?: "mimo-v2.5-asr") }
+    var visionProvider by remember { mutableStateOf(modelPrefs.getString("vision_provider", "复用推理模型") ?: "复用推理模型") }
+    var visionEndpoint by remember { mutableStateOf(modelPrefs.getString("vision_endpoint", "") ?: "") }
+    var visionApiKey by remember { mutableStateOf(modelPrefs.getString("vision_api_key", "") ?: "") }
+    var visionModel by remember { mutableStateOf(modelPrefs.getString("vision_model", "") ?: "") }
     var pluginEnabled by remember { mutableStateOf(false) }
     var pluginName by remember { mutableStateOf("") }
     var pluginDescription by remember { mutableStateOf("") }
