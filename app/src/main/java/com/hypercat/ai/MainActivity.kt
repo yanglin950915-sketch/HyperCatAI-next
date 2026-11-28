@@ -1097,6 +1097,8 @@ private fun HyperCatApp() {
     }
     // Voice-call turns are intentionally isolated from the normal Agent conversation until hangup.
     val callMessages = remember { mutableStateListOf<ChatLine>() }
+    // A dialog can report dismissal after the hangup action; commit call history only once.
+    var callHistoryCommitted by remember { mutableStateOf(false) }
     var callThinking by remember { mutableStateOf(false) }
     var callReplyGeneration by remember { mutableLongStateOf(0L) }
     var callReplyJob by remember { mutableStateOf<Job?>(null) }
@@ -1287,6 +1289,7 @@ private fun HyperCatApp() {
                     agentAutoReadTargetIndex = agentAutoReadTargetIndex,
                     onAgentAutoReadConsumed = { agentAutoReadPending = false; agentAutoReadTargetIndex = -1 },
                     onCallStart = {
+                        callHistoryCommitted = false
                         callReplyJob?.cancel()
                         callReplyGeneration++
                         callMessages.clear()
@@ -1298,17 +1301,21 @@ private fun HyperCatApp() {
                         callReplyJob?.cancel()
                         callReplyGeneration++
                         callThinking = false
-                        val completedCall = callMessages.filter { it.fromUser || it.text.isNotBlank() }
-                        if (currentSessionTitle.isBlank()) {
-                            currentSessionTitle = completedCall.firstOrNull { it.fromUser }?.text
-                                ?.trim()?.take(42)?.ifBlank { "AI通话" } ?: "AI通话"
-                            recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
-                            chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
+                        if (!callHistoryCommitted) {
+                            callHistoryCommitted = true
+                            val completedCall = callMessages.filter { it.fromUser || it.text.isNotBlank() }
+                            if (currentSessionTitle.isBlank()) {
+                                currentSessionTitle = completedCall.firstOrNull { it.fromUser }?.text
+                                    ?.trim()?.take(42)?.ifBlank { "AI通话" } ?: "AI通话"
+                                recentPrompts = (listOf(currentSessionTitle) + recentPrompts).distinct().take(100)
+                                chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).apply()
+                            }
+                            if (completedCall.isNotEmpty()) messages.addAll(completedCall)
+                            // This is a UI/system event, not a user prompt: it is never sent to the model.
+                            messages.add(ChatLine("你已挂断 AI 电话", fromUser = true, isSystemEvent = true))
+                            callMessages.clear()
                         }
-                        if (completedCall.isNotEmpty()) messages.addAll(completedCall)
-                        // This is a UI/system event, not a user prompt: it is never sent to the model.
-                        messages.add(ChatLine("你已挂断 AI 电话", fromUser = true, isSystemEvent = true))
-                        callMessages.clear()
+                        // Call replies are not ordinary Agent replies and must never enter the auto-read queue.
                         agentAutoReadPending = false
                         agentAutoReadTargetIndex = -1
                     },
@@ -1854,6 +1861,21 @@ private fun ChatPage(
 ) {
     val context: Context = LocalContext.current
     val realtimePrefs = remember(context) { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
+    val skillPromptOptions = remember {
+        listOf(
+            "查资料" to "请帮我查找这个主题的可靠资料，并整理关键结论：",
+            "深度分析" to "请从背景、原因、影响和可行方案几个方面深入分析：",
+            "写作助手" to "请根据以下要求写一份结构清晰、自然易读的内容：",
+            "代码排查" to "请检查下面的代码，定位问题并给出可直接应用的修复：",
+            "制定计划" to "请把这个目标拆解成可执行步骤，并安排优先级：",
+            "总结提炼" to "请提炼以下内容的核心观点、重要细节和行动项：",
+            "创意灵感" to "围绕这个主题提供几个有差异、有创意的思路：",
+            "解释概念" to "请用通俗易懂的方式解释这个概念，并举例说明：",
+            "翻译润色" to "请准确翻译并润色下面的内容，保持原意和语气："
+        )
+    }
+    var skillPromptShuffle by remember { mutableIntStateOf(0) }
+    val visibleSkillPrompts = remember(skillPromptShuffle) { skillPromptOptions.shuffled().take(3) }
     val latestCameraFrame = remember { AtomicReference<ByteArray?>(null) }
     var cameraVisionStatus by remember { mutableStateOf("") }
     val live2dModel by Live2DModelStore.state.collectAsState()
@@ -2802,7 +2824,19 @@ private fun ChatPage(
             lastAvatarAutoReadId = avatarInteractionReplyId
             return@LaunchedEffect
         }
-        if (callActive || avatarInteractionReply.isBlank() || !canSpeak) return@LaunchedEffect
+        if (callActive) {
+            // Consume avatar-state updates produced by live-call replies while the call is active.
+            lastAvatarAutoReadId = avatarInteractionReplyId
+            return@LaunchedEffect
+        }
+        if (avatarInteractionReply.isBlank() || !canSpeak) return@LaunchedEffect
+        // A call reply is copied into the chat transcript on hangup. Do not replay it as
+        // a separate avatar interaction if its state-store update arrives just after hangup.
+        val latestChatReply = messages.lastOrNull { !it.fromUser && !it.isSystemEvent }?.text.orEmpty()
+        if (latestChatReply == avatarInteractionReply) {
+            lastAvatarAutoReadId = avatarInteractionReplyId
+            return@LaunchedEffect
+        }
         lastAvatarAutoReadId = avatarInteractionReplyId
         val spokenText = speechText(avatarInteractionReply)
         if (spokenText.isBlank()) return@LaunchedEffect
@@ -2936,6 +2970,22 @@ private fun ChatPage(
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Delete, contentDescription = "清理当前对话", tint = MainText, modifier = Modifier.size(20.dp)) }
             }
         }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("✦ Skill", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(7.dp))
+            visibleSkillPrompts.forEach { (label, prompt) ->
+                Surface(
+                    modifier = Modifier.padding(end = 6.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
+                    color = Panel, shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+                ) {
+                    Text(label, color = MainText, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
+                }
+            }
+            TextButton(onClick = { skillPromptShuffle++ }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                Text("换一组", color = Cyan, fontSize = 10.sp)
+            }
+        }
         Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("长期记忆 ${savedNotes.size} 条", color = Muted, fontSize = 10.sp)
             Spacer(Modifier.weight(1f))
@@ -2962,30 +3012,7 @@ private fun ChatPage(
         }
         if (messages.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
             Text("有什么可以帮你？", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text("选择常用任务，或直接输入想法。", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 1.dp, bottom = 4.dp))
-            val suggestions = listOf(
-                "总结内容" to "请帮我总结以下内容，提炼重点：",
-                "翻译文本" to "请将下面内容准确翻译成中文：",
-                "润色写作" to "请帮我润色下面这段文字，保持原意：",
-                "代码助手" to "请分析下面的代码并给出修复建议："
-            )
-            suggestions.chunked(2).forEach { rowItems ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    rowItems.forEach { (label, prompt) ->
-                        Surface(
-                            modifier = Modifier.weight(1f).padding(bottom = 4.dp).clickable { onDraft(if (draft.isBlank()) prompt else "$prompt\n$draft") },
-                            color = Panel, shape = RoundedCornerShape(15.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-                        ) {
-                            Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                Text("✦", color = Cyan, fontSize = 9.sp)
-                                Spacer(Modifier.height(2.dp))
-                                Text(label, color = MainText, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                    }
-                }
-            }
+            Text("点击上方随机 Skill 提示词快速开始，也可以直接输入想法。", color = Muted, fontSize = 9.sp, modifier = Modifier.padding(top = 1.dp, bottom = 4.dp))
         }
         if (selectedMessageIndices.isNotEmpty()) {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
