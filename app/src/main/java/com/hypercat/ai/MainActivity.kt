@@ -3027,7 +3027,7 @@ private fun ChatPage(
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 18.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("‹", color = Color.White, fontSize = 28.sp, modifier = Modifier.clickable {
-                        callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+                        callActive = false; callGeneration += 1L; micEnabled = false; videoEnabled = false; isListening = false
                         recognitionStartJob?.cancel(); recognitionStartJob = null
                         recognitionSessionActive = false; recognitionStartCommandSent = false
                         callPcmCaptureController?.close(); callPcmCaptureController = null
@@ -3095,7 +3095,7 @@ private fun ChatPage(
                     CallControl(if (videoEnabled) "关闭视频" else "开启视频", if (videoEnabled) "📹" else "📷") { toggleVideo() }
                     if (videoEnabled) CallControl("翻转摄像头", "🔄") { useFrontCamera = !useFrontCamera }
                     CallControl("挂断", "☎", danger = true) {
-                        callActive = false; micEnabled = false; videoEnabled = false; isListening = false
+                        callActive = false; callGeneration += 1L; micEnabled = false; videoEnabled = false; isListening = false
                         recognitionStartJob?.cancel()
                         recognitionSessionActive = false
                         callPcmCaptureController?.close(); callPcmCaptureController = null
