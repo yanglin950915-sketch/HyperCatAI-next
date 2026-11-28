@@ -32,6 +32,7 @@ class CallPcmCaptureController(
 ) : Closeable {
     private val appContext = context.applicationContext
     private val coordinator = AudioSessionCoordinator.get(appContext)
+    private val lifecycleLock = Any()
     private val lock = Any()
     private val disposed = AtomicBoolean(false)
     @Volatile private var enabled = false
@@ -74,7 +75,7 @@ class CallPcmCaptureController(
         }
     }
 
-    private fun startCapture() = synchronized(lock) {
+    private fun startCapture() = synchronized(lifecycleLock) { synchronized(lock) {
         if (running || disposed.get() || !enabled) return
         check(ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             "麦克风录音权限已失效，请重新授权"
@@ -117,7 +118,7 @@ class CallPcmCaptureController(
             acquired.close()
             throw error
         }
-    }
+    } }
 
     private fun captureLoop(input: AudioRecord) {
         val vad = PcmVoiceActivityDetector(threshold = 0.008, onsetFrames = 2, releaseFrames = 30)
@@ -252,20 +253,30 @@ class CallPcmCaptureController(
     }
 
     private fun stopCapture(releaseLease: Boolean) {
-        synchronized(lock) {
-            if (!running && recorder == null) {
-                if (releaseLease) { lease?.close(); lease = null }
-                return
+        // Serialize start/stop operations without holding the worker cleanup lock
+        // while joining. A finishing reader can therefore clean itself promptly.
+        synchronized(lifecycleLock) {
+            val (thread, shouldClean) = synchronized(lock) {
+                if (!running && recorder == null) {
+                    if (releaseLease) { lease?.close(); lease = null }
+                    null to false
+                } else {
+                    running = false
+                    runCatching { recorder?.stop() }
+                    captureThread to true
+                }
             }
-            running = false
-            runCatching { recorder?.stop() }
-            val thread = captureThread
-            if (thread != null && thread !== Thread.currentThread()) runCatching { thread.join(700) }
-            captureThread = null
-            releaseAudioEffects()
-            runCatching { recorder?.release() }
-            recorder = null
-            if (releaseLease) { lease?.close(); lease = null }
+            if (!shouldClean) return@synchronized
+            if (thread != null && thread !== Thread.currentThread()) {
+                runCatching { thread.join(700) }
+            }
+            synchronized(lock) {
+                if (captureThread === thread) captureThread = null
+                releaseAudioEffects()
+                runCatching { recorder?.release() }
+                recorder = null
+                if (releaseLease) { lease?.close(); lease = null }
+            }
         }
     }
 
