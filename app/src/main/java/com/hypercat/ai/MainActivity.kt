@@ -1821,22 +1821,35 @@ private fun ChatPage(
                 speechEngine.setSpeechRate(ttsRate.coerceIn(0.6f, 1.6f))
                 speechEngine.setPitch(ttsPitch.coerceIn(0.7f, 1.4f))
                 speechEngine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) { isSpeaking = true; agentPlaybackUntilMs = Long.MAX_VALUE }
+                    override fun onStart(utteranceId: String?) {
+                        isSpeaking = true
+                        agentPlaybackUntilMs = Long.MAX_VALUE
+                        if (callActive && realtimeCallSession == null) {
+                            callPcmCaptureController?.setEnabled(false)
+                            isListening = false
+                        }
+                    }
                     override fun onDone(utteranceId: String?) {
                         if (utteranceId?.endsWith("-last") == true) {
                             isSpeaking = false
                             agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 2200L
+                            if (callActive && micEnabled && realtimeCallSession == null) {
+                                callPcmCaptureController?.setEnabled(true)
+                                isListening = true
+                            }
                         }
                     }
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
                         isSpeaking = false
                         agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 1200L
+                        if (callActive && micEnabled && realtimeCallSession == null) callPcmCaptureController?.setEnabled(true)
                         speechStatus = "朗读失败，请检查系统语音引擎或语音数据"
                     }
                     override fun onError(utteranceId: String?, errorCode: Int) {
                         isSpeaking = false
                         agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 1200L
+                        if (callActive && micEnabled && realtimeCallSession == null) callPcmCaptureController?.setEnabled(true)
                         speechStatus = "朗读失败（错误码 $errorCode），请检查系统语音引擎"
                     }
                 })
@@ -2458,6 +2471,10 @@ private fun ChatPage(
                             cloudSpeechJob?.cancel()
                             cloudSpeechJob = speechScope.launch {
                                 isSpeaking = true
+                                if (callActive && realtimeCallSession == null) {
+                                    callPcmCaptureController?.setEnabled(false)
+                                    isListening = false
+                                }
                                 speechStatus = "正在请求云端语音…"
                                 try {
                                     speakWithCloudTts(context, profile, ttsModel, ttsVoice, spokenText, ttsRate, AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -2471,6 +2488,10 @@ private fun ChatPage(
                                 } finally {
                                     isSpeaking = false
                                     agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 900L
+                                    if (callActive && micEnabled && realtimeCallSession == null) {
+                                        callPcmCaptureController?.setEnabled(true)
+                                        isListening = true
+                                    }
                                 }
                             }
                         }
