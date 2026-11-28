@@ -55,6 +55,8 @@ class OpenAiRealtimeAudioAdapter(
     private val closed = AtomicBoolean(false)
     private val speaking = AtomicBoolean(false)
     private val engine = RealtimeAudioEngine(this, sampleRate = 24_000)
+    private val audioSessions = AudioSessionCoordinator(appContext)
+    @Volatile private var audioLease: AudioSessionCoordinator.Lease? = null
     private val playbackQueue = Channel<ByteArray>(Channel.UNLIMITED)
     @Volatile private var socket: WebSocket? = null
     @Volatile private var speechOnsetAt = 0L
@@ -74,6 +76,18 @@ class OpenAiRealtimeAudioAdapter(
         require(model.isNotBlank()) { "Realtime model name is required" }
         require(apiKey.isNotBlank()) { "Realtime API key is required" }
         listener.onState(State.CONNECTING)
+        try {
+            audioLease = audioSessions.acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true)
+        } catch (error: Exception) {
+            fail(error.message ?: "无法取得音频设备")
+            return
+        }
+        audioSessions.onFocusLost = {
+            speaking.set(false)
+            engine.interruptPlayback()
+            socket?.send(JSONObject().put("type", "response.cancel").toString())
+            listener.onState(State.INTERRUPTED)
+        }
         val parsedEndpoint = endpoint.toHttpUrl()
         val realtimeUrl = if (parsedEndpoint.queryParameter("model") == null) {
             parsedEndpoint.newBuilder().addQueryParameter("model", model).build()
