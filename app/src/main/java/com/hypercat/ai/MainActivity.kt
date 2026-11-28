@@ -1,6 +1,7 @@
 package com.hypercat.ai
 
 import com.hypercat.ai.audio.OpenAiCompatibleStreamClient
+import com.hypercat.ai.audio.AudioSessionCoordinator
 
 import android.content.Context
 import android.app.DownloadManager
@@ -1604,6 +1605,8 @@ private fun ChatPage(
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
     var callActive by remember { mutableStateOf(false) }
+    val audioSessionCoordinator = remember(context) { AudioSessionCoordinator(context) }
+    var speechAudioLease by remember { mutableStateOf<AudioSessionCoordinator.Lease?>(null) }
     var micEnabled by remember { mutableStateOf(true) }
     var videoEnabled by remember { mutableStateOf(false) }
     var useFrontCamera by remember { mutableStateOf(true) }
@@ -1822,6 +1825,14 @@ private fun ChatPage(
             speechStatus = "设备未安装可用的语音识别服务，请安装/启用系统语音识别服务后重试"
             Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
             return
+        }
+        if (speechAudioLease == null) {
+            speechAudioLease = runCatching {
+                audioSessionCoordinator.acquire(AudioSessionCoordinator.Owner.LEGACY_RECOGNIZER, speakerphone = callActive)
+            }.getOrElse {
+                speechStatus = it.message ?: "无法获取麦克风音频焦点"
+                return
+            }
         }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
