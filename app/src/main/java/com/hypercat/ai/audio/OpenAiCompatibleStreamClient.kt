@@ -56,9 +56,11 @@ object OpenAiCompatibleStreamClient {
                     val data = line.removePrefix("data:").trim()
                     if (data.isEmpty()) continue
                     if (data == "[DONE]") break
-                    val event = runCatching { JSONObject(data) }.getOrElse {
-                        // Ignore non-JSON SSE comments/keepalives, but surface malformed content events.
-                        return@use
+                    val event = try {
+                        JSONObject(data)
+                    } catch (_: Exception) {
+                        // Ignore non-JSON SSE comments and keepalives.
+                        continue
                     }
                     val error = event.optJSONObject("error")
                     if (error != null) throw IllegalStateException(error.optString("message", "模型流式响应出错"))

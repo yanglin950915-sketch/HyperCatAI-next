@@ -1186,7 +1186,9 @@ private fun HyperCatApp() {
                                     avatarMood = inferMood(finalText)
                                 } catch (error: Exception) {
                                     val failure = "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}"
-                                    appendAgentReply(context, messages, failure)
+                                    if (messages.lastOrNull()?.let { !it.fromUser && it.text.isBlank() } == true) {
+                                        messages[messages.lastIndex] = messages.last().copy(text = failure)
+                                    } else appendAgentReply(context, messages, failure)
                                     avatarReply = failure
                                     avatarMood = "sad"
                                 } finally { isThinking = false }
