@@ -101,11 +101,13 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -218,13 +220,21 @@ private fun applyPlatformNightMode(context: Context, mode: String) {
     }
 }
 
-private val Bg get() = if (appDarkState) Color(0xFF000000) else Color(0xFFFFFFFF)
-private val Panel get() = if (appDarkState) Color(0xFF0D0D0D) else Color(0xFFFFFFFF)
-private val Panel2 get() = if (appDarkState) Color(0xFF191919) else Color(0xFFF4F4F4)
-private val Cyan get() = if (appDarkState) Color(0xFFF2F2F2) else Color(0xFF171717)
-private val Muted get() = if (appDarkState) Color(0xFF9A9A9A) else Color(0xFF777777)
-private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .14f) else Color(0xFFE6E6E6)
-private val MainText get() = if (appDarkState) Color(0xFFF5F5F5) else Color(0xFF171717)
+private object HyperCatMotion {
+    const val PAGE_ENTER_MS = 230
+    const val PAGE_EXIT_MS = 170
+    const val DRAWER_ENTER_MS = 240
+    const val DRAWER_EXIT_MS = 190
+    const val CONTENT_MS = 180
+}
+
+private val Bg get() = if (appDarkState) Color(0xFF0C0D12) else Color(0xFFF7F6FA)
+private val Panel get() = if (appDarkState) Color(0xFF15171E) else Color(0xFFFFFFFF)
+private val Panel2 get() = if (appDarkState) Color(0xFF1E212A) else Color(0xFFF0EEF5)
+private val Cyan get() = if (appDarkState) Color(0xFFC9B8FF) else Color(0xFF65518F)
+private val Muted get() = if (appDarkState) Color(0xFFA3A0AE) else Color(0xFF777381)
+private val GlassBorder get() = if (appDarkState) Color.White.copy(alpha = .10f) else Color(0xFFE6E2EC)
+private val MainText get() = if (appDarkState) Color(0xFFF4F1FA) else Color(0xFF1D1B24)
 
 class MainActivity : ComponentActivity() {
 
@@ -1291,23 +1301,29 @@ private fun HyperCatApp() {
 
     val appTypography = Typography()
     val appShapes = Shapes(
-        extraSmall = RoundedCornerShape(6.dp),
-        small = RoundedCornerShape(10.dp),
-        medium = RoundedCornerShape(12.dp),
-        large = RoundedCornerShape(16.dp),
-        extraLarge = RoundedCornerShape(20.dp)
+        extraSmall = RoundedCornerShape(8.dp),
+        small = RoundedCornerShape(12.dp),
+        medium = RoundedCornerShape(16.dp),
+        large = RoundedCornerShape(20.dp),
+        extraLarge = RoundedCornerShape(28.dp)
     )
     MaterialTheme(
         colorScheme = if (darkNow) darkColorScheme(
-            primary = Color(0xFFF2F2F2), secondary = Color(0xFFBDBDBD), background = Bg, surface = Panel,
-            onPrimary = Color(0xFF111111), onSurface = Color(0xFFF5F5F5),
-            surfaceVariant = Color(0xFF191919), onSurfaceVariant = Color(0xFFB0B0B0),
-            outline = Color(0xFF333333)
+            primary = Cyan, onPrimary = Color(0xFF211A30),
+            secondary = Muted, onSecondary = Color(0xFF211A30),
+            background = Bg, onBackground = MainText,
+            surface = Panel, onSurface = MainText,
+            surfaceVariant = Panel2, onSurfaceVariant = Muted,
+            primaryContainer = Panel2, onPrimaryContainer = MainText,
+            outline = GlassBorder, outlineVariant = GlassBorder
         ) else lightColorScheme(
-            primary = Color(0xFF171717), secondary = Color(0xFF666666), background = Bg, surface = Panel,
-            onPrimary = Color.White, onSurface = Color(0xFF171717),
-            surfaceVariant = Color(0xFFF4F4F4), onSurfaceVariant = Color(0xFF666666),
-            outline = Color(0xFFE2E2E2)
+            primary = Cyan, onPrimary = Color.White,
+            secondary = Muted, onSecondary = Color.White,
+            background = Bg, onBackground = MainText,
+            surface = Panel, onSurface = MainText,
+            surfaceVariant = Panel2, onSurfaceVariant = Muted,
+            primaryContainer = Panel2, onPrimaryContainer = MainText,
+            outline = GlassBorder, outlineVariant = GlassBorder
         ),
         typography = appTypography,
         shapes = appShapes
@@ -1321,7 +1337,18 @@ private fun HyperCatApp() {
                 })
             }
         ) { padding ->
-            when (page) {
+            AnimatedContent(
+                targetState = page,
+                transitionSpec = {
+                    val movingForward = targetState == Page.SETTINGS
+                    (fadeIn(animationSpec = tween(HyperCatMotion.PAGE_ENTER_MS)) +
+                        slideInHorizontally(animationSpec = tween(HyperCatMotion.PAGE_ENTER_MS)) { width -> if (movingForward) width / 16 else -width / 16 }) togetherWith
+                        (fadeOut(animationSpec = tween(HyperCatMotion.PAGE_EXIT_MS)) +
+                            slideOutHorizontally(animationSpec = tween(HyperCatMotion.PAGE_EXIT_MS)) { width -> if (movingForward) -width / 24 else width / 24 })
+                },
+                label = "hypercat-page-transition"
+            ) { targetPage ->
+            when (targetPage) {
                 Page.CHAT -> ChatPage(
                     modifier = Modifier,
                     contentPadding = padding,
@@ -1802,6 +1829,7 @@ private fun HyperCatApp() {
                     },
                     openUrl = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } }
                 )
+            }
             }
         }
         if (showUpdatePrompt && latestRelease != null) {
@@ -3111,9 +3139,9 @@ private fun ChatPage(
         }
         if (!configured) {
             Spacer(Modifier.height(12.dp))
-            Surface(Modifier.fillMaxWidth().clickable(onClick = openSettings), color = Color(0xFF2B2A22), shape = RoundedCornerShape(14.dp)) {
+            Surface(Modifier.fillMaxWidth().clickable(onClick = openSettings), color = Panel2, shape = MaterialTheme.shapes.medium, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                 Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("尚未配置模型 · 点击前往设置", color = Color(0xFFFFD58B), fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Text("尚未配置模型 · 点击前往设置", color = MainText, fontSize = 12.sp, modifier = Modifier.weight(1f))
                     Text("设置  ›", color = Cyan, fontSize = 12.sp)
                 }
             }
@@ -3139,18 +3167,18 @@ private fun ChatPage(
                 val line = messages[messageIndex]
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.isSystemEvent) Arrangement.Center else if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
                     if (selectedMessageIndices.isNotEmpty() && !line.isSystemEvent) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
-                    Surface(modifier = (if (line.isSystemEvent) Modifier else if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (!line.isSystemEvent && selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { if (!line.isSystemEvent) selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.isSystemEvent) Panel2 else if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices && !line.isSystemEvent) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices && !line.isSystemEvent) Cyan else GlassBorder), shape = if (line.isSystemEvent) RoundedCornerShape(50) else RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
+                    Surface(modifier = (if (line.isSystemEvent) Modifier else if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (!line.isSystemEvent && selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { if (!line.isSystemEvent) selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.isSystemEvent) Panel2 else if (line.fromUser) Cyan else Panel, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices && !line.isSystemEvent) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices && !line.isSystemEvent) Cyan else GlassBorder), shape = if (line.isSystemEvent) RoundedCornerShape(50) else RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
                             if (line.reasoning.startsWith("方法摘要：") && !line.fromUser && shouldShowReasoning(messages.take(messageIndex))) {
                                 var reasoningExpanded by remember(line) { mutableStateOf(true) }
-                                Surface(color = if (appDarkState) Color(0xFF24231F) else Color(0xFFFFF7E8), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                                Surface(color = Panel2, shape = MaterialTheme.shapes.small, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), modifier = Modifier.fillMaxWidth()) {
                                     Column(Modifier.padding(10.dp)) {
                                         Row(Modifier.fillMaxWidth().clickable { reasoningExpanded = !reasoningExpanded }, verticalAlignment = Alignment.CenterVertically) {
-                                            Text("✧ 思路说明", color = if (appDarkState) Color(0xFFE5C98D) else Color(0xFF8A6425), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                            Text("✧ 思路说明", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                             Text(if (reasoningExpanded) "收起⌃" else "展开⌄", color = Muted, fontSize = 10.sp)
                                         }
                                         AnimatedVisibility(visible = reasoningExpanded) {
-                                            Text(line.reasoning.removePrefix("方法摘要："), color = if (appDarkState) Color(0xFFD8D1C3) else Color(0xFF5C503D), fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
+                                            Text(line.reasoning.removePrefix("方法摘要："), color = MainText, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
                                         }
                                     }
                                 }
@@ -3160,7 +3188,7 @@ private fun ChatPage(
                                 Text(line.text, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                             } else if (line.text.isNotBlank()) {
                                 SelectionContainer {
-                                    MarkdownMessage(line.text, if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), clipboardManager)
+                                    MarkdownMessage(line.text, if (line.fromUser) MaterialTheme.colorScheme.onPrimary else MainText, clipboardManager)
                                 }
                                 if (!line.fromUser) {
                                     val downloadableLinks = remember(line.text) { extractGeneratedDownloadLinks(line.text) }
@@ -3177,7 +3205,7 @@ private fun ChatPage(
                                     }
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                                    val actionTint = if (line.fromUser) Color.White.copy(alpha=.82f) else Cyan
+                                    val actionTint = if (line.fromUser) MaterialTheme.colorScheme.onPrimary.copy(alpha=.82f) else Cyan
                                     TextButton(onClick = { clipboardManager.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
                                         Icon(Icons.Outlined.ContentCopy, contentDescription = "复制消息", modifier = Modifier.size(13.dp), tint = actionTint)
                                         Spacer(Modifier.width(3.dp)); Text("复制", color = actionTint, fontSize = 10.sp)
@@ -3413,7 +3441,8 @@ private fun ChatPage(
         }
     }
         AnimatedVisibility(visible = drawerState.isOpen, modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(), exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()) {
+            enter = slideInHorizontally(animationSpec = tween(HyperCatMotion.DRAWER_ENTER_MS), initialOffsetX = { it }) + fadeIn(animationSpec = tween(HyperCatMotion.DRAWER_ENTER_MS)),
+            exit = slideOutHorizontally(animationSpec = tween(HyperCatMotion.DRAWER_EXIT_MS), targetOffsetX = { it }) + fadeOut(animationSpec = tween(HyperCatMotion.DRAWER_EXIT_MS))) {
             Surface(modifier = Modifier.fillMaxSize(), color = Panel) {
                 if (drawerSection == "avatar_settings") {
                     Column(Modifier.fillMaxSize()) {
@@ -4893,7 +4922,7 @@ private fun SettingsAction(icon: String, title: String, subtitle: String, onClic
             keyboardController?.hide()
             onClick()
         },
-        color = Panel, shape = RoundedCornerShape(15.dp),
+        color = Panel, shape = MaterialTheme.shapes.large,
         border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
     ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -4914,7 +4943,7 @@ private fun SettingsAction(icon: String, title: String, subtitle: String, onClic
 private fun ConfigField(label: String, value: String, onValue: (String) -> Unit, hint: String, secret: Boolean = false) {
     Text(label, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     Spacer(Modifier.height(7.dp))
-    Surface(color = Panel, shape = RoundedCornerShape(14.dp)) {
+    Surface(color = Panel, shape = MaterialTheme.shapes.medium, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp)) {
             if (secret) {
                 BasicTextField(value, onValue, modifier = Modifier.fillMaxWidth(), textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp),
