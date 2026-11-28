@@ -131,6 +131,10 @@ class RealtimeAgentSession(
         audio.setFrameConsumer(if (enabled) ({ pcm, length -> adapter.sendAudioFrame(pcm, length) }) else null)
     }
 
+    fun reportAudioFailure(message: String, cause: Throwable? = null) {
+        fail(message, cause)
+    }
+
 
     private fun startPlaybackWorker() {
         if (playbackThread?.isAlive == true) return
