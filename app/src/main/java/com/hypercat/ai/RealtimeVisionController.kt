@@ -34,6 +34,8 @@ internal class RealtimeVisionController(
     @Volatile private var lastSuccessAt = 0L
     @Volatile private var lastErrorAt = 0L
     @Volatile private var lastProactiveEventAt = 0L
+    @Volatile private var lastContextAt = 0L
+    @Volatile private var lastContextSummary = ""
 
     fun offerFrame(jpeg: ByteArray) {
         if (closed.get() || jpeg.isEmpty() || inFlight.get()) return
@@ -62,7 +64,16 @@ internal class RealtimeVisionController(
                     lastHash = hash
                     val observedAt = SystemClock.elapsedRealtime()
                     lastSuccessAt = observedAt
-                    onContext("摄像头画面观察（自动更新，仅作为当前通话上下文，不需要单独回复）：${observation.summary}")
+                    // Avoid appending near-duplicate camera summaries on every small frame change.
+                    val summary = observation.summary.trim().take(180)
+                    val contextChanged = summary.isNotBlank() &&
+                        summary != lastContextSummary &&
+                        observedAt - lastContextAt >= CONTEXT_UPDATE_INTERVAL_MS
+                    if (contextChanged) {
+                        lastContextSummary = summary
+                        lastContextAt = observedAt
+                        onContext("当前摄像头画面观察（仅作为通话上下文，不需要单独回复）：$summary")
+                    }
                     val event = observation.notableEvent
                     if (!event.isNullOrBlank() && observedAt - lastProactiveEventAt >= PROACTIVE_EVENT_COOLDOWN_MS) {
                         lastProactiveEventAt = observedAt
@@ -120,6 +131,7 @@ internal class RealtimeVisionController(
         private const val HASH_SIZE = 8
         private const val CHANGE_THRESHOLD_BITS = 7
         private const val MIN_ANALYSIS_INTERVAL_MS = 3_500L
+        private const val CONTEXT_UPDATE_INTERVAL_MS = 8_000L
         private const val FORCE_REFRESH_INTERVAL_MS = 12_000L
         private const val ERROR_REPORT_INTERVAL_MS = 30_000L
         private const val PROACTIVE_EVENT_COOLDOWN_MS = 45_000L

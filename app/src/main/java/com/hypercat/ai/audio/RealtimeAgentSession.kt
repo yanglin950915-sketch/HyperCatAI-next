@@ -31,7 +31,7 @@ class RealtimeAgentSession(
     private val failureReported = AtomicBoolean(false)
     @Volatile private var state = State.IDLE
     @Volatile private var audioLease: AudioSessionCoordinator.Lease? = null
-    private val playbackQueue = ArrayBlockingQueue<ByteArray>(48)
+    private val playbackQueue = ArrayBlockingQueue<ByteArray>(16)
     @Volatile private var playbackThread: Thread? = null
     @Volatile private var microphoneEnabled = true
     private val localVad = PcmVoiceActivityDetector()
@@ -109,7 +109,12 @@ class RealtimeAgentSession(
                     }
                     transition(State.RESPONDING)
                     val chunk = pcm16.copyOf(length)
-                    if (!playbackQueue.offer(chunk)) fail("实时语音播放缓冲区已满，请检查网络延迟", null)
+                    if (!playbackQueue.offer(chunk)) {
+                        // Keep playback close to the live edge under network jitter.
+                        // Discard the oldest queued audio instead of playing stale audio.
+                        playbackQueue.poll()
+                        playbackQueue.offer(chunk)
+                    }
                 }
 
                 override fun onAssistantTurnFinished() {

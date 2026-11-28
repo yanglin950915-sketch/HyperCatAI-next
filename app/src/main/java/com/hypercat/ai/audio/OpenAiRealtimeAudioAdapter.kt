@@ -71,9 +71,9 @@ class OpenAiRealtimeAudioAdapter(
                         .put("input_audio_transcription", JSONObject().put("model", "whisper-1"))
                         .put("turn_detection", JSONObject()
                             .put("type", "server_vad")
-                            .put("threshold", 0.55)
-                            .put("prefix_padding_ms", 300)
-                            .put("silence_duration_ms", 500))).toString())
+                            .put("threshold", 0.50)
+                            .put("prefix_padding_ms", 240)
+                            .put("silence_duration_ms", 350))).toString())
                 if (!configured) {
                     fail("Realtime 会话配置发送失败")
                 }
