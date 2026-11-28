@@ -2264,6 +2264,53 @@ private fun ChatPage(
             }
         }
     }
+    fun handleCallTranscript(text: String) {
+        val asksAboutScene = Regex("(看到|看见|画面|镜头|摄像头|眼前|面前|这里|这个东西|这是什么|描述一下|识别一下|读一下|数一数|有什么|发生了什么|帮我看看|看一下)").containsMatchIn(text)
+        if (!asksAboutScene) {
+            latestOnCallInitiative("请直接回应用户刚才说的话，保持自然、简洁的口语表达。")
+            return
+        }
+        // A native vision-capable Realtime model already receives camera frames directly.
+        if (realtimeCallSession?.supportsImageInput() == true) return
+        val frame = latestCameraFrame.get()
+        if (frame == null) {
+            cameraVisionStatus = "尚未取得摄像头画面，请开启摄像头后再询问画面内容"
+            latestOnCallInitiative("用户询问摄像头画面，但目前没有可用画面。请如实告知用户开启摄像头后再试。")
+            return
+        }
+        val prefs = realtimePrefs
+        val visionProvider = prefs.getString("vision_provider", "独立视觉模型") ?: "独立视觉模型"
+        val visionEndpoint = if (visionProvider == "独立视觉模型") prefs.getString("vision_endpoint", "https://ark.cn-beijing.volces.com/api/v3").orEmpty() else prefs.getString("endpoint", "").orEmpty()
+        val visionKey = if (visionProvider == "独立视觉模型") prefs.getString("vision_api_key", "").orEmpty() else prefs.getString("api_key", "").orEmpty()
+        val visionModel = if (visionProvider == "独立视觉模型") prefs.getString("vision_model", "doubao-seed-2-1-pro").orEmpty() else prefs.getString("model", "").orEmpty()
+        if (visionEndpoint.isBlank() || visionKey.isBlank() || visionModel.isBlank()) {
+            cameraVisionStatus = "视觉模型尚未配置完整，请到设置 → 视觉模型添加服务"
+            latestOnCallInitiative("用户询问摄像头画面，但视觉模型没有配置完整。请告知用户先配置视觉模型。")
+            return
+        }
+        cameraVisionStatus = "正在调用视觉模型分析画面…"
+        speechStatus = "正在分析摄像头画面…"
+        scope.launch(Dispatchers.IO) {
+            try {
+                val description = VisionModelClient.describeFrame(visionEndpoint, visionKey, visionModel, frame, text)
+                withContext(Dispatchers.Main) {
+                    if (callActive) {
+                        cameraVisionStatus = "画面识别完成 · 正在生成语音回答"
+                        latestOnCallInitiative("用户刚才问：$text。视觉模型 $visionModel 对当前摄像头画面的识别结果：$description。请依据识别结果直接回答，保持自然简洁；不要声称你直接接收了原始图像。")
+                    }
+                }
+            } catch (error: Throwable) {
+                withContext(Dispatchers.Main) {
+                    if (callActive) {
+                        val detail = (error.message ?: error.javaClass.simpleName).take(140)
+                        cameraVisionStatus = "视觉识别失败：$detail"
+                        speechStatus = "视觉识别失败，请检查视觉模型配置"
+                        Log.e("HyperCatVision", "Call vision fallback failed", error)
+                    }
+                }
+            }
+        }
+    }
     fun startRealtimeCallIfConfigured(): Boolean {
         val prefs = realtimePrefs
         if (prefs.getString("active_realtime_protocol", "none") != "openai_realtime") return false
@@ -2324,50 +2371,7 @@ private fun ChatPage(
                 Handler(Looper.getMainLooper()).post {
                     if (callActive && text.isNotBlank()) onRealtimeUserTranscript(text)
                 }
-                val asksAboutScene = Regex("(看到|看见|画面|镜头|摄像头|眼前|面前|这里|这个东西|这是什么|描述一下|识别一下|读一下|数一数|有什么|发生了什么|帮我看看|看一下)").containsMatchIn(text)
-                val frame = latestCameraFrame.get()
-                if (asksAboutScene && frame == null) {
-                    Handler(Looper.getMainLooper()).post {
-                        cameraVisionStatus = "还没有取得摄像头画面：请保持摄像头预览开启后再问一次"
-                    }
-                }
-                if (asksAboutScene && frame != null) {
-                    Handler(Looper.getMainLooper()).post {
-                        cameraVisionStatus = "正在将摄像头画面发送给豆包视觉模型…"
-                    }
-                    val provider = realtimePrefs.getString("vision_provider", "独立视觉模型") ?: "独立视觉模型"
-                    val endpoint = if (provider == "独立视觉模型") realtimePrefs.getString("vision_endpoint", "https://ark.cn-beijing.volces.com/api/v3").orEmpty() else realtimePrefs.getString("endpoint", "").orEmpty()
-                    val key = if (provider == "独立视觉模型") realtimePrefs.getString("vision_api_key", "").orEmpty() else realtimePrefs.getString("api_key", "").orEmpty()
-                    val model = if (provider == "独立视觉模型") realtimePrefs.getString("vision_model", "doubao-seed-2-1-pro").orEmpty() else realtimePrefs.getString("model", "").orEmpty()
-                    if (endpoint.isNotBlank() && model.isNotBlank() && key.isNotBlank()) {
-                        Thread({
-                            try {
-                                val visualDescription = VisionModelClient.describeFrame(endpoint, key, model, frame, text)
-                                Handler(Looper.getMainLooper()).post {
-                                    if (callActive) {
-                                        // Always route the visual result through the configured inference model
-                                        // (DeepSeek Flash), not only through an optional Realtime session.
-                                        realtimeCallSession?.interruptAssistant()
-                                        latestOnCallInitiative(
-                                            "用户刚才问：$text。摄像头视觉模型 $model 对当前画面的识别结果是：$visualDescription。请基于这份识别结果直接回答用户，结合问题给出自然、简洁的中文回复；不要声称你直接接收或看到了原始图像，也不要忽略识别结果。"
-                                        )
-                                        cameraVisionStatus = "豆包识别完成 · 已交给推理模型回答"
-                                    }
-                                }
-                            } catch (error: Throwable) {
-                                Handler(Looper.getMainLooper()).post {
-                                    val detail = (error.message ?: error.javaClass.simpleName).take(140)
-                                    cameraVisionStatus = "视觉识别失败：$detail"
-                                    Log.e("HyperCatVision", "Vision request failed", error)
-                                }
-                            }
-                        }, "HyperCat-VisionRequest").start()
-                    } else {
-                        Handler(Looper.getMainLooper()).post {
-                            cameraVisionStatus = "视觉模型未配置完整：请检查服务地址、API Key 和模型名称"
-                        }
-                    }
-                }
+                handleCallTranscript(text)
             }
             override fun onTextDelta(text: String) {
                 Handler(Looper.getMainLooper()).post {
@@ -2436,7 +2440,7 @@ private fun ChatPage(
                                 speechStatus = "已识别，正在发送给 AI…"
                                 // Persist the real recognized words; the instruction prompt stays internal.
                                 callMessages.add(ChatLine(transcript, true))
-                                latestOnCallInitiative("请直接回应用户刚才说的话，保持自然、简洁的口语表达。")
+                                handleCallTranscript(transcript)
                             }
                         }
                     } catch (error: Exception) {
@@ -2591,7 +2595,7 @@ private fun ChatPage(
     }
     var cameraError by remember { mutableStateOf<String?>(null) }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) { cameraError = null; videoEnabled = true; cameraVisionStatus = if (realtimeCallSession?.supportsImageInput() == true) "摄像头已就绪，正在持续发送画面，提问时 AI 可读取最近画面" else "当前通话模型不支持图像输入，画面仅本地预览"; speechStatus = "摄像头预览已启动" }
+        if (granted) { cameraError = null; videoEnabled = true; cameraVisionStatus = if (realtimeCallSession?.supportsImageInput() == true) "摄像头已就绪，正在持续发送画面，提问时 AI 可读取最近画面" else "摄像头已就绪：提问画面内容时将调用独立视觉模型分析，并交给推理模型回答"; speechStatus = "摄像头预览已启动" }
         else { videoEnabled = false; Toast.makeText(context, "未获得摄像头权限，语音通话仍可继续", Toast.LENGTH_SHORT).show() }
     }
     fun startUnifiedCall() {
@@ -3296,7 +3300,7 @@ private fun ChatPage(
                         audioManager.mode = previousAudioMode
                     }
                 }
-                Text(if (videoEnabled) "摄像头已开启：将持续向支持视觉输入的 Realtime 模型发送压缩画面，约每秒 1 帧；提问时模型可结合最近画面回答。" else "语音通话已启动。点击摄像头按钮可开启视频，点击麦克风按钮可静音。",
+                Text(if (videoEnabled) "摄像头已开启：支持图像输入的 Realtime 模型会直接接收画面；其他通话模式会在你询问画面时调用独立视觉模型分析。" else "语音通话已启动。点击摄像头按钮可开启视频，点击麦克风按钮可静音。",
                     color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
                 if (videoEnabled && cameraVisionStatus.isNotBlank()) Text(cameraVisionStatus, color = if (cameraVisionStatus.startsWith("AI 视觉")) Color(0xFF70D9A5) else Color(0xFFFFC078), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
                 if (speechStatus.isNotBlank()) Text(speechStatus, color = Color(0xFF8E9BAC), fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
