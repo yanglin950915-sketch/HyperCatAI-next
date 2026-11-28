@@ -80,6 +80,9 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.MicOff
+import androidx.compose.material.icons.outlined.Photo
+import androidx.compose.material.icons.outlined.OpenInFull
+import androidx.compose.material.icons.outlined.VolumeOff
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.FlipCameraAndroid
 import androidx.compose.material.icons.outlined.CallEnd
@@ -1078,6 +1081,8 @@ private fun HyperCatApp() {
     var callReplyGeneration by remember { mutableLongStateOf(0L) }
     var callReplyJob by remember { mutableStateOf<Job?>(null) }
     var isThinking by remember { mutableStateOf(false) }
+    var agentReplyJob by remember { mutableStateOf<Job?>(null) }
+    var agentRequestGeneration by remember { mutableLongStateOf(0L) }
     val weatherPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
         scope.launch {
             isThinking = true
@@ -1302,6 +1307,7 @@ private fun HyperCatApp() {
                         agentAutoReadTargetIndex = -1
                     },
                     isThinking = isThinking,
+                    onCancelThinking = { agentRequestGeneration++; agentReplyJob?.cancel(); agentReplyJob = null; isThinking = false; agentAutoReadPending = false; agentAutoReadTargetIndex = -1 },
                     recentPrompts = recentPrompts,
                     onDeleteRecentPrompt = { prompt -> recentPrompts = recentPrompts.filterNot { it == prompt }; chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).remove("chat_session_$prompt").apply() },
                     onOpenRecentSession = { prompt -> agentAutoReadPending = false; agentAutoReadTargetIndex = -1; messages.clear(); messages.addAll(loadChatHistory(context, prompt)); currentSessionTitle = prompt },
@@ -1831,7 +1837,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @Composable
 private fun ChatPage(
     modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: MutableList<ChatLine>, callThinking: Boolean, avatarInteractionReply: String, avatarInteractionReplyId: Long, agentAutoReadPending: Boolean, agentAutoReadTargetIndex: Int, onAgentAutoReadConsumed: () -> Unit, onCallStart: () -> Unit, onCallEnd: () -> Unit, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
-    onSend: (String, List<Uri>, List<Bitmap>, Boolean, String?, Long) -> Unit, onCallInitiative: (String) -> Unit,
+    onSend: (String, List<Uri>, List<Bitmap>, Boolean, String?, Long) -> Unit, onCancelThinking: () -> Unit, onCallInitiative: (String) -> Unit,
     onRealtimeUserTranscript: (String) -> Unit, onRealtimeAssistantReply: (String) -> Unit,
     openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
     avatarMood: String, ttsLanguage: String, ttsRate: Float, ttsPitch: Float,
@@ -1998,6 +2004,9 @@ private fun ChatPage(
     var recentSort by remember { mutableStateOf("最新") }
     var showModelPicker by remember { mutableStateOf(false) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> selectedFiles = (selectedFiles + uris).distinct() }
+    var showComposerActions by remember { mutableStateOf(false) }
+    var showFullScreenEditor by remember { mutableStateOf(false) }
     val latestOnSend by rememberUpdatedState(onSend)
     val latestOnDraft by rememberUpdatedState(onDraft)
     val latestDraft by rememberUpdatedState(draft)
@@ -2963,7 +2972,7 @@ private fun ChatPage(
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Delete, contentDescription = "清理当前对话", tint = MainText, modifier = Modifier.size(20.dp)) }
             }
         }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("✦ Skill", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.width(7.dp))
             visibleSkillPrompts.forEach { (label, prompt) ->
@@ -2979,20 +2988,10 @@ private fun ChatPage(
                 Text("换一组", color = Cyan, fontSize = 10.sp)
             }
         }
-        Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("长期记忆 ${savedNotes.size} 条", color = Muted, fontSize = 10.sp)
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { noteDraft = ""; showRemember = true }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("管理记忆", fontSize = 10.sp) }
-            Spacer(Modifier.width(6.dp))
-            Text("自动朗读", color = Muted, fontSize = 11.sp)
-            Switch(
-                checked = autoReadReplies,
-                onCheckedChange = onAutoReadReplies,
-                modifier = Modifier.graphicsLayer {
-                    scaleX = 0.78f
-                    scaleY = 0.78f
-                }
-            )
+        Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onAutoReadReplies(!autoReadReplies) }, modifier = Modifier.size(36.dp)) {
+                Icon(if (autoReadReplies) Icons.Outlined.VolumeUp else Icons.Outlined.VolumeOff, contentDescription = if (autoReadReplies) "关闭自动朗读" else "开启自动朗读", tint = if (autoReadReplies) Cyan else Muted)
+            }
         }
         if (!configured) {
             Spacer(Modifier.height(12.dp))
@@ -3178,34 +3177,43 @@ private fun ChatPage(
                 Text("清除", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable { selectedFiles = emptyList() })
             }
         }
-        Column(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
-                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
-                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 15.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(Modifier.requiredSize(34.dp).clickable { dismissKeyboard(); filePicker.launch(arrayOf("*/*")) }, color = Panel2, shape = CircleShape) {
-                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AttachFile, contentDescription = "添加附件", tint = Muted, modifier = Modifier.size(19.dp)) }
+        Column(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            if (showComposerActions) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    listOf("拍照", "照片", "附件", "打电话").forEachIndexed { index, label ->
+                        val icon = when (index) { 0 -> Icons.Outlined.PhotoCamera; 1 -> Icons.Outlined.Photo; 2 -> Icons.Outlined.AttachFile; else -> Icons.Outlined.Call }
+                        Column(Modifier.width(64.dp).clip(RoundedCornerShape(12.dp)).clickable {
+                            showComposerActions = false
+                            when (index) { 0 -> { dismissKeyboard(); cameraCapture.launch(null) }; 1 -> { dismissKeyboard(); photoPicker.launch("image/*") }; 2 -> { dismissKeyboard(); filePicker.launch(arrayOf("*/*")) }; else -> { dismissKeyboard(); startUnifiedCall() } }
+                        }.padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Surface(color = Panel2, shape = CircleShape, modifier = Modifier.size(38.dp)) { Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = label, tint = Cyan) } }
+                            Text(label, color = MainText, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+                        }
                     }
-                    BasicTextField(value = draft, onValueChange = onDraft,
-                        modifier = Modifier.weight(1f).heightIn(min = 42.dp, max = 132.dp).padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
-                        decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$avatarName…", color = Muted, fontSize = 14.sp); inner() })
-                    VoiceInputButton(isListening = isListening, onPressStart = { startInAppRecognition() }, onPressEnd = { stopInAppRecognition() })
                 }
             }
-            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                Surface(Modifier.requiredSize(40.dp).clickable { dismissKeyboard(); cameraCapture.launch(null) }, color = Panel2, shape = CircleShape) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PhotoCamera, contentDescription = "拍照", tint = Cyan, modifier = Modifier.size(20.dp)) } }
-                Surface(Modifier.requiredHeight(40.dp).defaultMinSize(minWidth = 72.dp).clickable { dismissKeyboard(); startUnifiedCall() }, color = Panel2, shape = RoundedCornerShape(14.dp)) {
-                    Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Call, contentDescription = "AI 通话", tint = Cyan, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(6.dp)); Text("通话", color = MainText, fontSize = 11.sp)
+            Surface(modifier = Modifier.fillMaxWidth(), color = if (appDarkState) Color.White.copy(alpha = .08f) else Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), shape = RoundedCornerShape(22.dp)) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(Modifier.requiredSize(36.dp).clickable { showComposerActions = !showComposerActions }, color = Panel2, shape = CircleShape) {
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Add, contentDescription = "更多操作", tint = Cyan, modifier = Modifier.size(21.dp)) }
                     }
-                }
-                Spacer(Modifier.weight(1f))
-                Surface(Modifier.requiredSize(42.dp).clickable(enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) {
-                    onSend(draft, selectedFiles, selectedPhotos, false, null, 0L); selectedFiles = emptyList(); selectedPhotos = emptyList()
-                }, color = if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.Send, contentDescription = "发送", tint = if (draft.isNotBlank() || selectedFiles.isNotEmpty()) Color(0xFF06202A) else Muted, modifier = Modifier.size(20.dp))
+                    Box(Modifier.weight(1f)) {
+                        BasicTextField(value = draft, onValueChange = onDraft,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp, max = 132.dp).padding(start = 10.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp, lineHeight = 20.sp),
+                            decorationBox = { inner -> if (draft.isEmpty()) Text("发送消息给$avatarName…", color = Muted, fontSize = 14.sp); inner() })
+                        if (draft.length > 80) IconButton(onClick = { showFullScreenEditor = true }, modifier = Modifier.align(Alignment.TopEnd).size(28.dp)) {
+                            Icon(Icons.Outlined.OpenInFull, contentDescription = "全屏编辑", tint = Muted, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    VoiceInputButton(isListening = isListening, onPressStart = { startInAppRecognition() }, onPressEnd = { stopInAppRecognition() })
+                    Spacer(Modifier.width(3.dp))
+                    Surface(Modifier.requiredSize(40.dp).clickable {
+                        if (isThinking) onCancelThinking()
+                        else if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) { onSend(draft, selectedFiles, selectedPhotos, false, null, 0L); selectedFiles = emptyList(); selectedPhotos = emptyList() }
+                    }, color = if (isThinking || draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) Cyan else Panel2, shape = CircleShape) {
+                        Box(contentAlignment = Alignment.Center) { Icon(if (isThinking) Icons.Outlined.Stop else Icons.Outlined.Send, contentDescription = if (isThinking) "停止回答" else "发送", tint = if (isThinking || draft.isNotBlank() || selectedFiles.isNotEmpty()) Color(0xFF06202A) else Muted, modifier = Modifier.size(19.dp)) }
                     }
                 }
             }
@@ -3274,7 +3282,10 @@ private fun ChatPage(
                                 Divider(color = GlassBorder.copy(alpha = .4f))
                             }
                         }
-
+                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("记忆管理 · ${savedNotes.size} 条", color = MainText, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { noteDraft = ""; showRemember = true }) { Text("打开") }
+                        }
                     }
                 }
             }
@@ -3298,6 +3309,15 @@ private fun ChatPage(
         },
         dismissButton = { TextButton(onClick = { ttsDiagnostic = null }) { Text("关闭") } }
     )
+    if (showFullScreenEditor) Dialog(onDismissRequest = { showFullScreenEditor = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(), color = Bg) {
+            Column(Modifier.fillMaxSize().padding(16.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("编辑消息", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)); TextButton(onClick = { showFullScreenEditor = false }) { Text("完成") } }
+                OutlinedTextField(value = draft, onValueChange = onDraft, modifier = Modifier.weight(1f).fillMaxWidth(), placeholder = { Text("输入消息…") })
+                Button(onClick = { showFullScreenEditor = false; if (draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty()) { onSend(draft, selectedFiles, selectedPhotos, false, null, 0L); selectedFiles = emptyList(); selectedPhotos = emptyList() } }, enabled = draft.isNotBlank() || selectedFiles.isNotEmpty() || selectedPhotos.isNotEmpty(), modifier = Modifier.align(Alignment.End).padding(top = 12.dp)) { Text("发送") }
+            }
+        }
+    }
     if (previewPhoto != null) AlertDialog(onDismissRequest = { previewPhoto = null }, title = { Text("照片预览") }, text = { Image(bitmap = previewPhoto!!.asImageBitmap(), contentDescription = "照片预览", modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) }, confirmButton = { TextButton(onClick = { previewPhoto = null }) { Text("完成") } })
     if (showPetNameDialog) AlertDialog(
         onDismissRequest = { showPetNameDialog = false },
