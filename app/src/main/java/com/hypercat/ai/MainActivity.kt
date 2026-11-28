@@ -164,6 +164,8 @@ import com.hypercat.ai.avatar.AvatarStatusBadges
 import com.hypercat.ai.avatar.Live2DModelStore
 import com.hypercat.ai.avatar.Live2DView
 import com.hypercat.ai.avatar.Live2DControllerHub
+import com.hypercat.ai.avatar.RealtimeAvatarPhase
+import com.hypercat.ai.avatar.RealtimeAvatarStateStore
 import kotlin.random.Random
 
 private var appDarkState by mutableStateOf(true)
@@ -1869,6 +1871,7 @@ private fun ChatPage(
         if (!callActive) {
             realtimeVisionController?.close()
             realtimeVisionController = null
+            RealtimeAvatarStateStore.set(RealtimeAvatarPhase.IDLE)
         }
     }
     var callPcmCaptureController by remember { mutableStateOf<CallPcmCaptureController?>(null) }
@@ -2353,6 +2356,7 @@ private fun ChatPage(
             return true
         }
         callActive = true; micEnabled = true; videoEnabled = false
+        RealtimeAvatarStateStore.set(RealtimeAvatarPhase.CONNECTING)
         showCallInfo = true
         // Snapshot the last historical reply before call startup so call TTS cannot replay chat history.
         lastCallSpokenText = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
@@ -2373,6 +2377,17 @@ private fun ChatPage(
         val session = RealtimeAgentSession(context, engine, adapter, object : RealtimeAgentSession.Listener {
             override fun onStateChanged(state: RealtimeAgentSession.State) {
                 Handler(Looper.getMainLooper()).post {
+                    RealtimeAvatarStateStore.set(
+                        when (state) {
+                            RealtimeAgentSession.State.CONNECTING -> RealtimeAvatarPhase.CONNECTING
+                            RealtimeAgentSession.State.LISTENING -> RealtimeAvatarPhase.LISTENING
+                            RealtimeAgentSession.State.RESPONDING -> RealtimeAvatarPhase.RESPONDING
+                            RealtimeAgentSession.State.INTERRUPTED -> RealtimeAvatarPhase.INTERRUPTED
+                            RealtimeAgentSession.State.FAILED -> RealtimeAvatarPhase.FAILED
+                            RealtimeAgentSession.State.CLOSING, RealtimeAgentSession.State.CLOSED,
+                            RealtimeAgentSession.State.IDLE -> RealtimeAvatarPhase.IDLE
+                        }
+                    )
                     when (state) {
                         RealtimeAgentSession.State.CONNECTING -> speechStatus = "正在连接 Realtime…"
                         RealtimeAgentSession.State.LISTENING -> {
@@ -3564,9 +3579,16 @@ private fun AvatarRenderer(
     onGesture: (String, String) -> Unit = { _, _ -> }
 ) {
     val deviceState by AvatarDeviceStateStore.state.collectAsState()
+    val realtimePhase by RealtimeAvatarStateStore.state.collectAsState()
+    val realtimeMood = when (realtimePhase) {
+        RealtimeAvatarPhase.CONNECTING -> "thinking"
+        RealtimeAvatarPhase.FAILED -> "sad"
+        else -> mood
+    }
+    val realtimeSpeaking = speaking || realtimePhase == RealtimeAvatarPhase.RESPONDING
     if (model != null) {
         Live2DView(
-            model = model, modifier = modifier, mood = mood, speaking = speaking, musicPlaying = deviceState.music, halfBody = halfBody,
+            model = model, modifier = modifier, mood = realtimeMood, speaking = realtimeSpeaking, musicPlaying = deviceState.music, halfBody = halfBody,
             showLyrics = showLyrics,
             onGesture = onGesture,
             onPortrait = { dataUrl ->
