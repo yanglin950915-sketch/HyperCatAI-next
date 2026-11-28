@@ -20,6 +20,7 @@ import android.os.SystemClock
 import android.graphics.Matrix
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.ByteArrayOutputStream
@@ -1898,9 +1899,8 @@ private fun ChatPage(
             Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
             return
         }
-        // SpeechRecognizer owns its input route/focus through the system RecognitionService.
-        // Do not preempt it with AudioSessionCoordinator or MODE_IN_COMMUNICATION:
-        // some OEM recognizers terminate the client with ERROR_CLIENT (5) in that state.
+        Log.i("HyperCatVoice", "start requested callActive=" + callActive + " micMuted=" + audioManager.isMicrophoneMute + " recognizerAvailable=" + SpeechRecognizer.isRecognitionAvailable(context))
+        // RecognitionService owns the input route; keep the app on the normal system audio route.
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
@@ -1927,6 +1927,7 @@ private fun ChatPage(
                 }
                 runCatching {
                     recognitionStartCommandSent = true
+                    Log.i("HyperCatVoice", "dispatch startListening callActive=true")
                     speechRecognizer.startListening(intent)
                 }.onFailure {
                     recognitionSessionActive = false
@@ -1937,6 +1938,7 @@ private fun ChatPage(
         } else {
             runCatching {
                 recognitionStartCommandSent = true
+                Log.i("HyperCatVoice", "dispatch startListening callActive=false")
                 speechRecognizer.startListening(intent)
             }.onFailure {
                 recognitionSessionActive = false
