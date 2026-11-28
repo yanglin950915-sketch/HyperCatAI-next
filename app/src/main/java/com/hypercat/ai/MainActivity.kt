@@ -2107,7 +2107,10 @@ private fun ChatPage(
             }
             return
         }
-        if (callActive && realtimeCallSession != null) return
+        if (callActive) {
+            if (realtimeCallSession == null) callPcmCaptureController?.setEnabled(true)
+            return
+        }
         if (recognitionSessionActive) return
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             speechStatus = "尚未获得麦克风录音权限，正在请求授权…"
