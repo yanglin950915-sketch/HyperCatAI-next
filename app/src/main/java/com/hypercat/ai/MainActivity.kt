@@ -4150,12 +4150,12 @@ private fun SettingsPage(
         Text("外观、扩展能力与应用信息", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(16.dp))
         Text("模型与服务", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-        Text("先选择服务类型，再配置连接信息与模型档案", color = Muted, fontSize = 11.sp)
+        Text("按用途管理模型。每类可添加多个服务，点击列表项查看和修改配置。", color = Muted, fontSize = 11.sp)
         Spacer(Modifier.height(10.dp))
         Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
             Column(Modifier.fillMaxWidth().padding(14.dp)) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    listOf("推理模型", "语音模型", "视觉模型", "实时语音", "模型档案").forEach { tab ->
+                    listOf("推理模型", "语音模型", "视觉模型", "实时语音").forEach { tab ->
                         FilterChip(
                             selected = modelSettingsTab == tab,
                             onClick = { modelSettingsTab = tab },
@@ -4173,9 +4173,49 @@ private fun SettingsPage(
                                         }
                                     }
                                     Spacer(Modifier.height(12.dp))
-                                    ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 http://127.0.0.1:1234/v1")
-                                    ConfigField("模型名称", model, onModel, "例如 qwen2.5 或 gpt-4o-mini")
+                                    Text("已添加的推理模型 · ${modelProfiles.size}", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    if (modelProfiles.isEmpty()) Text("还没有推理模型，点击右侧＋添加。", color = Muted, fontSize = 10.sp)
+                                    modelProfiles.forEach { item ->
+                                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (model == item.model && endpoint == item.endpoint) Panel2 else Color.Transparent).clickable {
+                                            onSelectProfile(item)
+                                            profileName = item.name
+                                            profileRealtimeProtocol = item.realtimeProtocol
+                                            profileRealtimeEndpoint = item.realtimeEndpoint
+                                        }.padding(horizontal = 8.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text(item.name, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                                Text("${item.provider} · ${item.model}", color = Muted, fontSize = 10.sp)
+                                            }
+                                            if (model == item.model && endpoint == item.endpoint) Text("当前使用", color = Color(0xFF76E0B1), fontSize = 10.sp)
+                                            IconButton(onClick = { onDeleteProfile(item); if (profileName == item.name) profileName = "" }) {
+                                                Icon(Icons.Outlined.Delete, contentDescription = "删除推理模型", tint = Color(0xFFE07878))
+                                            }
+                                        }
+                                    }
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Text("模型配置", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                        IconButton(onClick = { profileName = "推理模型-${modelProfiles.size + 1}"; onEndpoint(""); onModel(""); onApiKey(""); profileRealtimeProtocol = "none"; profileRealtimeEndpoint = "" }) {
+                                            Icon(Icons.Outlined.Add, contentDescription = "添加推理模型", tint = Cyan)
+                                        }
+                                    }
+                                    OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(32) }, label = { Text("列表显示名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    ConfigField("API / 服务地址", endpoint, onEndpoint, "例如 https://api.example.com/v1")
+                                    ConfigField("模型 ID", model, onModel, "例如 deepseek-chat / gpt-4.1")
                                     ConfigField("API Key（本地服务可留空）", apiKey, onApiKey, "输入密钥", secret = true)
+                                    Spacer(Modifier.height(12.dp))
+                                    Text("此模型的实时语音能力（可选）", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        FilterChip(selected = profileRealtimeProtocol == "none", onClick = { profileRealtimeProtocol = "none"; profileRealtimeEndpoint = "" }, label = { Text("标准语音链路") })
+                                        FilterChip(selected = profileRealtimeProtocol == "openai_realtime", onClick = { profileRealtimeProtocol = "openai_realtime" }, label = { Text("Realtime") })
+                                    }
+                                    if (profileRealtimeProtocol == "openai_realtime") ConfigField("Realtime WebSocket 地址", profileRealtimeEndpoint, { profileRealtimeEndpoint = it }, "wss://服务商提供的实时语音地址")
+                                    Button(onClick = {
+                                        if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank() && (profileRealtimeProtocol != "openai_realtime" || profileRealtimeEndpoint.startsWith("wss://"))) {
+                                            onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey, profileRealtimeProtocol, profileRealtimeEndpoint.trim()))
+                                        }
+                                    }, enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank() && (profileRealtimeProtocol != "openai_realtime" || profileRealtimeEndpoint.startsWith("wss://")), modifier = Modifier.fillMaxWidth()) {
+                                        Text("保存推理模型")
+                                    }
                                     Spacer(Modifier.height(14.dp))
                 }
                 if (modelSettingsTab == "语音模型") {
@@ -4256,32 +4296,6 @@ private fun SettingsPage(
                                     Text("在「模型档案」中选择 OpenAI Realtime 协议并填写 WebSocket 地址。若服务商不支持该协议，使用 ASR + 推理模型 + TTS 组合模式即可。", color = Muted, fontSize = 11.sp)
                                     Text("当前协议：${if (profileRealtimeProtocol == "openai_realtime") "OpenAI Realtime" else "组合语音模式"}", color = Cyan, fontSize = 12.sp)
                                     Text("Realtime 地址：${profileRealtimeEndpoint.ifBlank { "未配置" }}", color = Muted, fontSize = 10.sp, maxLines = 2)
-                }
-                if (modelSettingsTab == "模型档案") {
-                                    Text("模型档案 · ${modelProfiles.size}", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    if (modelProfiles.isEmpty()) Text("保存常用配置后，可在这里快速切换模型。", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
-                                    else modelProfiles.forEach { p ->
-                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f).clickable { onSelectProfile(p); profileRealtimeProtocol = p.realtimeProtocol; profileRealtimeEndpoint = p.realtimeEndpoint; context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE).edit().putString("active_realtime_protocol", p.realtimeProtocol).putString("active_realtime_endpoint", p.realtimeEndpoint).apply() }.padding(vertical = 9.dp, horizontal = 4.dp)) { Text(p.name, color = MainText, fontSize = 13.sp); Text("${p.provider} · ${p.model}", color = Muted, fontSize = 10.sp); Text(if (p.realtimeProtocol == "openai_realtime" && p.realtimeEndpoint.isNotBlank()) "Realtime 已配置" else "使用兼容语音模式", color = Muted, fontSize = 9.sp) }
-                                            Text("设为当前", color = Cyan, fontSize = 11.sp)
-                                            IconButton(onClick = { onDeleteProfile(p) }) { Icon(Icons.Outlined.Delete, contentDescription = "删除推理模型", tint = Color(0xFFE07878)) }
-                                        }
-                                    }
-                                    OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(24) }, label = { Text("档案名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                    Spacer(Modifier.height(8.dp))
-                                    Text("实时语音协议（可选）", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("仅当服务商明确兼容 OpenAI Realtime WebSocket 事件协议时启用；普通 /chat/completions 地址不能填写在这里。", color = Muted, fontSize = 10.sp)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                        FilterChip(selected = profileRealtimeProtocol == "none", onClick = { profileRealtimeProtocol = "none"; profileRealtimeEndpoint = "" }, label = { Text("兼容模式") })
-                                        FilterChip(selected = profileRealtimeProtocol == "openai_realtime", onClick = { profileRealtimeProtocol = "openai_realtime" }, label = { Text("OpenAI Realtime") })
-                                    }
-                                    if (profileRealtimeProtocol == "openai_realtime") {
-                                        ConfigField("Realtime WebSocket 地址", profileRealtimeEndpoint, { profileRealtimeEndpoint = it }, "wss://服务商提供的实时语音地址")
-                                        Text("需要独立的 Realtime 模型服务和 API Key。启用前请确认服务端支持 session.update、input_audio_buffer.append 和 response 音频事件。", color = Muted, fontSize = 10.sp)
-                                    }
-                                    Button(onClick = { if (profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank() && (profileRealtimeProtocol != "openai_realtime" || profileRealtimeEndpoint.startsWith("wss://"))) { onAddProfile(ModelProfile(profileName.trim(), provider, endpoint.trim(), model.trim(), apiKey, profileRealtimeProtocol, profileRealtimeEndpoint.trim())); profileName = "" } },
-                                        enabled = profileName.isNotBlank() && endpoint.isNotBlank() && model.isNotBlank() && (profileRealtimeProtocol != "openai_realtime" || profileRealtimeEndpoint.startsWith("wss://")), modifier = Modifier.fillMaxWidth()) { Text("保存为模型档案") }
-                                    Spacer(Modifier.height(8.dp))
                 }
                 Text("密钥目前保存在应用私有配置中；模型推理请求与密钥加密存储仍需后续接入。", color = Muted, fontSize = 10.sp)
                 Button(onClick = onSave, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(15.dp)) { Text("保存模型配置", fontWeight = FontWeight.Bold) }
