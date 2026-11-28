@@ -1877,6 +1877,8 @@ private fun ChatPage(
     avatarSettingsContent: @Composable (Modifier, Boolean) -> Unit
 ) {
     val context: Context = LocalContext.current
+    val drawerKeyboardController = LocalSoftwareKeyboardController.current
+    val drawerFocusManager = LocalFocusManager.current
     val realtimePrefs = remember(context) { context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE) }
     val skillPromptOptions = remember {
         listOf(
@@ -2970,7 +2972,11 @@ private fun ChatPage(
     Column(modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding(), bottom = if (WindowInsets.isImeVisible) 0.dp else contentPadding.calculateBottomPadding()).imePadding().padding(horizontal = 14.dp)) {
         Spacer(Modifier.height(3.dp))
         Row(Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable { drawerScope.launch { drawerState.open() } }) {
+            Surface(shape = CircleShape, color = Panel2, modifier = Modifier.size(40.dp).clickable {
+                drawerFocusManager.clearFocus(force = true)
+                drawerKeyboardController?.hide()
+                drawerScope.launch { drawerState.open() }
+            }) {
                 Box(contentAlignment = Alignment.Center) { Text("☰", color = MainText, fontSize = 18.sp) }
             }
             Spacer(Modifier.width(11.dp))
