@@ -2292,7 +2292,7 @@ private fun ChatPage(
         }
         cameraVisionStatus = "正在调用视觉模型分析画面…"
         speechStatus = "正在分析摄像头画面…"
-        scope.launch(Dispatchers.IO) {
+        speechScope.launch(Dispatchers.IO) {
             try {
                 val description = VisionModelClient.describeFrame(visionEndpoint, visionKey, visionModel, frame, text)
                 withContext(Dispatchers.Main) {
