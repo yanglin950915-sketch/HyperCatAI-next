@@ -1229,6 +1229,7 @@ private fun HyperCatApp() {
                         callReplyGeneration++
                         callMessages.clear()
                         callThinking = false
+                        agentAutoReadPending = false
                     },
                     onCallEnd = {
                         callReplyJob?.cancel()
@@ -2595,7 +2596,7 @@ private fun ChatPage(
         }
         // A pending read belongs to an explicit Agent send, not to avatar gestures or call state changes.
         // Keep it pending while a request is running, while the reply has not arrived, or while TTS initializes.
-        if (!agentAutoReadPending || callActive || drawerSection == "settings" || isThinking) return@LaunchedEffect
+        if (!agentAutoReadPending || callActive || drawerSection == "settings") return@LaunchedEffect
         val lastUserIndex = messages.indexOfLast { it.fromUser }
         val lastAssistantIndex = messages.indexOfLast { !it.fromUser }
         if (lastAssistantIndex <= lastUserIndex) return@LaunchedEffect
