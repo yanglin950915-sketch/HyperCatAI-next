@@ -1380,7 +1380,8 @@ private fun HyperCatApp() {
                                 }
                                 else {
                                     val requestHistory = messages.toList()
-                                    scope.launch {
+                                    agentReplyJob = scope.launch {
+                                        val requestGeneration = ++agentRequestGeneration
                                         isThinking = true
                                         val streamingIndex = if (isVoiceTurn) messages.size.also { messages.add(ChatLine("", false)) } else -1
                                         try {
@@ -1388,6 +1389,7 @@ private fun HyperCatApp() {
                                                 val payload = buildOpenAiStreamingPayload(model, requestHistory, savedNotes)
                                                 val streamed = OpenAiCompatibleStreamClient.stream(endpoint, apiKey, payload) { delta ->
                                                     withContext(Dispatchers.Main.immediate) {
+                                                        if (requestGeneration != agentRequestGeneration) return@withContext
                                                         if (streamingIndex in messages.indices) {
                                                             val previous = messages[streamingIndex]
                                                             messages[streamingIndex] = previous.copy(text = previous.text + delta)
@@ -1396,23 +1398,34 @@ private fun HyperCatApp() {
                                                         avatarMood = inferMood(avatarReply)
                                                     }
                                                 }
+                                                if (requestGeneration != agentRequestGeneration) return@launch
                                                 val finalText = streamed.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
                                                 if (streamingIndex in messages.indices) messages[streamingIndex] = messages[streamingIndex].copy(text = finalText)
                                                 avatarReply = finalText
                                                 avatarMood = inferMood(finalText)
                                             } else {
                                                 val reply = withContext(Dispatchers.IO) { requestModelReply(context, endpoint, model, apiKey, requestHistory, savedNotes) }
+                                                if (requestGeneration != agentRequestGeneration) return@launch
                                                 appendAgentReply(context, messages, reply.text, reply.reasoning.takeIf { shouldShowReasoning(requestHistory) }.orEmpty())
                                                 avatarReply = reply.text
                                                 avatarMood = inferMood(reply.text)
                                             }
+                                        } catch (cancelled: CancellationException) {
+                                            if (requestGeneration == agentRequestGeneration && streamingIndex in messages.indices && messages[streamingIndex].text.isBlank()) messages.removeAt(streamingIndex)
+                                            throw cancelled
                                         } catch (error: Exception) {
+                                            if (requestGeneration != agentRequestGeneration) return@launch
                                             val failure = if (isVoiceTurn) "通话模型请求未成功：${error.message ?: "网络或服务异常"}" else "模型请求未成功：${error.message ?: "网络或服务异常"}"
                                             if (streamingIndex in messages.indices) messages[streamingIndex] = messages[streamingIndex].copy(text = failure)
                                             else appendAgentReply(context, messages, failure)
                                             avatarReply = failure
                                             avatarMood = "sad"
-                                        } finally { isThinking = false }
+                                        } finally {
+                                            if (requestGeneration == agentRequestGeneration) {
+                                                isThinking = false
+                                                agentReplyJob = null
+                                            }
+                                        }
                                     }
                                 }
                             }
