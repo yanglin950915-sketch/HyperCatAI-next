@@ -1959,7 +1959,10 @@ private fun ChatPage(
             }
             override fun onFailure(message: String, cause: Throwable?) {
                 Handler(Looper.getMainLooper()).post {
+                    callActive = false; micEnabled = false
                     isListening = false; isSpeaking = false
+                    realtimeCallSession = null
+                    realtimeAssistantDraft = ""
                     speechStatus = "Realtime 通话失败：$message"
                     Toast.makeText(context, speechStatus, Toast.LENGTH_LONG).show()
                 }
