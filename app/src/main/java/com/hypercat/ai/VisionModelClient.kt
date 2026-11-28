@@ -20,8 +20,11 @@ internal object VisionModelClient {
         question: String
     ): String {
         require(endpoint.isNotBlank()) { "视觉服务地址为空" }
+        // API keys are opaque tokens; pasted values may contain line breaks or
+        // spaces (including a wrapped "Bearer" prefix). HTTP headers reject CR/LF.
         val normalizedApiKey = apiKey.trim()
-            .removePrefix("Bearer ").removePrefix("bearer ").trim()
+            .replace(Regex("(?i)^Bearer\\s+"), "")
+            .filterNot { it.isWhitespace() }
         require(normalizedApiKey.isNotBlank()) { "视觉 API Key 为空" }
         require(model.isNotBlank()) { "视觉模型名称为空" }
         require(jpeg.isNotEmpty()) { "没有可用的摄像头画面" }
