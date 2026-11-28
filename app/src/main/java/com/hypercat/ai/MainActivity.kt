@@ -1605,7 +1605,7 @@ private fun ChatPage(
     var showModelInfo by remember { mutableStateOf(false) }
     var showCallInfo by remember { mutableStateOf(false) }
     var callActive by remember { mutableStateOf(false) }
-    val audioSessionCoordinator = remember(context) { AudioSessionCoordinator(context) }
+    val audioSessionCoordinator = remember(context) { AudioSessionCoordinator.get(context) }
     var speechAudioLease by remember { mutableStateOf<AudioSessionCoordinator.Lease?>(null) }
     var micEnabled by remember { mutableStateOf(true) }
     var videoEnabled by remember { mutableStateOf(false) }
