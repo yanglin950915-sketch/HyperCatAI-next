@@ -15,6 +15,7 @@ object RearAgentInteractionDispatcher {
 
     fun enqueue(context: Context, action: String): Boolean = enqueue(context, action, "")
 
+    @Synchronized
     fun enqueue(context: Context, action: String, userText: String): Boolean {
         // Normalize historical MAML action names so already-deployed cards keep working.
         val normalizedAction = if (action.startsWith("pet_")) "avatar_" + action.removePrefix("pet_") else action
