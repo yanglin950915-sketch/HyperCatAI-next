@@ -1066,6 +1066,8 @@ private fun HyperCatApp() {
     // Voice-call turns are intentionally isolated from the normal Agent conversation.
     val callMessages = remember { mutableStateListOf<ChatLine>() }
     var callThinking by remember { mutableStateOf(false) }
+    var callReplyGeneration by remember { mutableLongStateOf(0L) }
+    var callReplyJob by remember { mutableStateOf<Job?>(null) }
     var isThinking by remember { mutableStateOf(false) }
     val weatherPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
         scope.launch {
@@ -1333,33 +1335,44 @@ private fun HyperCatApp() {
                         avatarMood = "happy"
                     },
                     onCallInitiative = { prompt ->
-                        if (saved && endpoint.isNotBlank() && model.isNotBlank() && !callThinking) {
-                            // Call greeting / follow-up turns belong to the call transcript, never the Agent chat.
+                        if (saved && endpoint.isNotBlank() && model.isNotBlank()) {
+                            // A new caller utterance supersedes an unfinished call reply; never block barge-in.
+                            callReplyJob?.cancel()
+                            callMessages.lastOrNull()?.let { if (!it.fromUser && it.text.isBlank()) callMessages.removeAt(callMessages.lastIndex) }
+                            val generation = ++callReplyGeneration
                             val requestHistory = callMessages.toList() + ChatLine(prompt, true)
                             callMessages.add(ChatLine(prompt, true))
                             callThinking = true
-                            scope.launch {
+                            callReplyJob = scope.launch {
                                 val placeholderIndex = callMessages.size
                                 callMessages.add(ChatLine("", false))
                                 try {
                                     val payload = buildOpenAiStreamingPayload(model, requestHistory, savedNotes)
                                     val streamed = OpenAiCompatibleStreamClient.stream(endpoint, apiKey, payload) { delta ->
                                         withContext(Dispatchers.Main.immediate) {
-                                            if (placeholderIndex in callMessages.indices) callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = callMessages[placeholderIndex].text + delta)
-                                            avatarReply = callMessages[placeholderIndex].text
-                                            avatarMood = inferMood(avatarReply)
+                                            if (generation == callReplyGeneration && placeholderIndex in callMessages.indices) {
+                                                callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = callMessages[placeholderIndex].text + delta)
+                                                avatarReply = callMessages[placeholderIndex].text
+                                                avatarMood = inferMood(avatarReply)
+                                            }
                                         }
                                     }
                                     val finalText = streamed.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
-                                    if (placeholderIndex in callMessages.indices) callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = finalText)
-                                    avatarReply = finalText
-                                    avatarMood = inferMood(finalText)
+                                    if (generation == callReplyGeneration && placeholderIndex in callMessages.indices) {
+                                        callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = finalText)
+                                        avatarReply = finalText
+                                        avatarMood = inferMood(finalText)
+                                    }
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
                                 } catch (error: Exception) {
-                                    val failure = "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}"
-                                    if (placeholderIndex in callMessages.indices) callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = failure)
-                                    avatarReply = failure
-                                    avatarMood = "sad"
-                                } finally { callThinking = false }
+                                    if (generation == callReplyGeneration) {
+                                        val failure = "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}"
+                                        if (placeholderIndex in callMessages.indices) callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = failure)
+                                        avatarReply = failure
+                                        avatarMood = "sad"
+                                    }
+                                } finally { if (generation == callReplyGeneration) callThinking = false }
                             }
                         }
                     },
@@ -2356,6 +2369,8 @@ private fun ChatPage(
             videoEnabled = false
             showCallInfo = true
             // Do not replay the last normal-chat reply when the call dialog opens.
+            callReplyJob?.cancel()
+            callReplyGeneration++
             callMessages.clear()
             callThinking = false
             lastCallSpokenText = callMessages.lastOrNull { !it.fromUser }?.text.orEmpty()
@@ -2466,6 +2481,8 @@ private fun ChatPage(
     fun startUnifiedCall() {
         if (!configured) { Toast.makeText(context, "请先配置大模型", Toast.LENGTH_SHORT).show(); return }
         // Every call starts with its own clean transcript, including OpenAI Realtime calls.
+        callReplyJob?.cancel()
+        callReplyGeneration++
         callMessages.clear()
         callThinking = false
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
