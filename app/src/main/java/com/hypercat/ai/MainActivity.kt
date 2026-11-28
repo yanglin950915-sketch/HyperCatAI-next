@@ -107,6 +107,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -3138,9 +3139,9 @@ private fun ChatPage(
         }
         if (!configured) {
             Spacer(Modifier.height(12.dp))
-            Surface(Modifier.fillMaxWidth().clickable(onClick = openSettings), color = Color(0xFF2B2A22), shape = RoundedCornerShape(14.dp)) {
+            Surface(Modifier.fillMaxWidth().clickable(onClick = openSettings), color = Panel2, shape = MaterialTheme.shapes.medium, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)) {
                 Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("尚未配置模型 · 点击前往设置", color = Color(0xFFFFD58B), fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Text("尚未配置模型 · 点击前往设置", color = MainText, fontSize = 12.sp, modifier = Modifier.weight(1f))
                     Text("设置  ›", color = Cyan, fontSize = 12.sp)
                 }
             }
@@ -3166,18 +3167,18 @@ private fun ChatPage(
                 val line = messages[messageIndex]
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.isSystemEvent) Arrangement.Center else if (line.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
                     if (selectedMessageIndices.isNotEmpty() && !line.isSystemEvent) Checkbox(checked = messageIndex in selectedMessageIndices, onCheckedChange = { checked -> selectedMessageIndices = if (checked) selectedMessageIndices + messageIndex else selectedMessageIndices - messageIndex }, modifier = Modifier.size(34.dp))
-                    Surface(modifier = (if (line.isSystemEvent) Modifier else if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (!line.isSystemEvent && selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { if (!line.isSystemEvent) selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.isSystemEvent) Panel2 else if (line.fromUser) (if (appDarkState) Color(0xFF303030) else Color(0xFF1689C2)) else if (appDarkState) Color(0xFF1B1B1B) else Color.White, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices && !line.isSystemEvent) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices && !line.isSystemEvent) Cyan else GlassBorder), shape = if (line.isSystemEvent) RoundedCornerShape(50) else RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
+                    Surface(modifier = (if (line.isSystemEvent) Modifier else if (line.fromUser) Modifier.widthIn(max = 276.dp) else Modifier.fillMaxWidth(0.96f)).combinedClickable(onClick = { if (!line.isSystemEvent && selectedMessageIndices.isNotEmpty()) selectedMessageIndices = if (messageIndex in selectedMessageIndices) selectedMessageIndices - messageIndex else selectedMessageIndices + messageIndex }, onLongClick = { if (!line.isSystemEvent) selectedMessageIndices = selectedMessageIndices + messageIndex }), color = if (line.isSystemEvent) Panel2 else if (line.fromUser) Cyan else Panel, border = androidx.compose.foundation.BorderStroke(if (messageIndex in selectedMessageIndices && !line.isSystemEvent) 2.dp else 1.dp, if (messageIndex in selectedMessageIndices && !line.isSystemEvent) Cyan else GlassBorder), shape = if (line.isSystemEvent) RoundedCornerShape(50) else RoundedCornerShape(topStart = if (line.fromUser) 18.dp else 5.dp, topEnd = if (line.fromUser) 5.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
                             if (line.reasoning.startsWith("方法摘要：") && !line.fromUser && shouldShowReasoning(messages.take(messageIndex))) {
                                 var reasoningExpanded by remember(line) { mutableStateOf(true) }
-                                Surface(color = if (appDarkState) Color(0xFF24231F) else Color(0xFFFFF7E8), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                                Surface(color = Panel2, shape = MaterialTheme.shapes.small, border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder), modifier = Modifier.fillMaxWidth()) {
                                     Column(Modifier.padding(10.dp)) {
                                         Row(Modifier.fillMaxWidth().clickable { reasoningExpanded = !reasoningExpanded }, verticalAlignment = Alignment.CenterVertically) {
-                                            Text("✧ 思路说明", color = if (appDarkState) Color(0xFFE5C98D) else Color(0xFF8A6425), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                            Text("✧ 思路说明", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                             Text(if (reasoningExpanded) "收起⌃" else "展开⌄", color = Muted, fontSize = 10.sp)
                                         }
                                         AnimatedVisibility(visible = reasoningExpanded) {
-                                            Text(line.reasoning.removePrefix("方法摘要："), color = if (appDarkState) Color(0xFFD8D1C3) else Color(0xFF5C503D), fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
+                                            Text(line.reasoning.removePrefix("方法摘要："), color = MainText, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
                                         }
                                     }
                                 }
@@ -3187,7 +3188,7 @@ private fun ChatPage(
                                 Text(line.text, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                             } else if (line.text.isNotBlank()) {
                                 SelectionContainer {
-                                    MarkdownMessage(line.text, if (line.fromUser || appDarkState) Color.White else Color(0xFF172638), clipboardManager)
+                                    MarkdownMessage(line.text, if (line.fromUser) MaterialTheme.colorScheme.onPrimary else MainText, clipboardManager)
                                 }
                                 if (!line.fromUser) {
                                     val downloadableLinks = remember(line.text) { extractGeneratedDownloadLinks(line.text) }
@@ -3204,7 +3205,7 @@ private fun ChatPage(
                                     }
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                                    val actionTint = if (line.fromUser) Color.White.copy(alpha=.82f) else Cyan
+                                    val actionTint = if (line.fromUser) MaterialTheme.colorScheme.onPrimary.copy(alpha=.82f) else Cyan
                                     TextButton(onClick = { clipboardManager.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
                                         Icon(Icons.Outlined.ContentCopy, contentDescription = "复制消息", modifier = Modifier.size(13.dp), tint = actionTint)
                                         Spacer(Modifier.width(3.dp)); Text("复制", color = actionTint, fontSize = 10.sp)
