@@ -1854,6 +1854,7 @@ private fun ChatPage(
     val latestDraft by rememberUpdatedState(draft)
     val latestCallActive by rememberUpdatedState(callActive)
     val latestMicEnabled by rememberUpdatedState(micEnabled)
+    val latestSpeechRecognizer by rememberUpdatedState(speechRecognizer)
     val latestOnCallInitiative by rememberUpdatedState(onCallInitiative)
     var pendingRecognitionStart by remember { mutableStateOf(false) }
     var pendingMicPermissionRequest by remember { mutableStateOf(false) }
@@ -1894,6 +1895,11 @@ private fun ChatPage(
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { isListening = false; if (latestCallActive) speechStatus = "检测到语音结束，正在识别…" }
             override fun onError(error: Int) {
+                if (latestSpeechRecognizer !== activeRecognizer) {
+                    Log.w("HyperCatVoice", "IGNORE_STALE_RECOGNIZER_ERROR code=$error")
+                    return
+                }
+                Log.e("HyperCatVoice", "SPEECH_RECOGNIZER_ERROR code=$error callActive=$latestCallActive micEnabled=$latestMicEnabled ready=$recognitionReadyForSpeech startSent=$recognitionStartCommandSent")
                 recognitionSessionActive = false
                 recognitionStartCommandSent = false
                 recognitionReadyForSpeech = false
@@ -1912,6 +1918,14 @@ private fun ChatPage(
                     SpeechRecognizer.ERROR_SERVER -> "语音识别服务器暂时不可用"
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有检测到语音，请再次说话"
                     else -> "语音识别异常（$error）"
+                }
+                if (latestCallActive && !latestMicEnabled && error == SpeechRecognizer.ERROR_CLIENT) {
+                    speechStatus = "麦克风已关闭"
+                    return
+                }
+                if (!latestCallActive && error == SpeechRecognizer.ERROR_CLIENT) {
+                    Log.i("HyperCatVoice", "Ignore ERROR_CLIENT after call/recognition session ended")
+                    return
                 }
                 speechStatus = reason
                 if (latestCallActive) {
@@ -1955,21 +1969,6 @@ private fun ChatPage(
                             }
                         }
                     }
-                } else if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_SERVER) {
-                    // Voice-message recording also shares this recognizer. Rebuild it after a
-                    // binder/client failure even though there is no continuous call to auto-restart.
-                    speechScope.launch {
-                        delay(500L)
-                        if (!latestCallActive && speechRecognizer === activeRecognizer) {
-                            runCatching {
-                                val replacement = createCallSpeechRecognizer(context)
-                                speechRecognizer = replacement
-                                speechStatus = "语音识别器已重新初始化，请重新按住麦克风测试"
-                            }.onFailure {
-                                speechStatus = "语音识别服务重建失败：${it.message ?: "请检查系统语音识别服务"}"
-                            }
-                        }
-                    }
                 }
             }
             override fun onResults(results: Bundle?) {
@@ -2005,7 +2004,15 @@ private fun ChatPage(
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
-        onDispose { runCatching { activeRecognizer.cancel() }; runCatching { activeRecognizer.destroy() } }
+        onDispose {
+            // Replacing a recognizer after ERROR_CLIENT means Android has already
+            // terminated that session. Calling cancel() again during disposal can
+            // generate a second ERROR_CLIENT and race the replacement instance.
+            if (latestSpeechRecognizer === activeRecognizer && recognitionSessionActive) {
+                runCatching { activeRecognizer.cancel() }
+            }
+            runCatching { activeRecognizer.destroy() }
+        }
     }
     val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
@@ -2302,7 +2309,6 @@ private fun ChatPage(
             }
             return
         }
-        if (!recognitionSessionActive) return
         if (!recognitionSessionActive) return
         if (!recognitionStartCommandSent) {
             recognitionStartJob?.cancel()
@@ -2951,10 +2957,29 @@ private fun ChatPage(
                         if (!micEnabled) {
                             isListening = false
                             if (realtimeCallSession != null) { realtimeCallSession?.setMicrophoneEnabled(false); speechStatus = "Realtime 麦克风已静音" }
-                            else { runCatching { speechRecognizer.cancel() }; speechStatus = "麦克风已关闭" }
+                            else {
+                                recognitionStartJob?.cancel(); recognitionStartJob = null
+                                recognitionSessionActive = false; recognitionStartCommandSent = false
+                                recognitionReadyForSpeech = false; recognitionStopPending = false
+                                runCatching { speechRecognizer.cancel() }
+                                speechStatus = "麦克风已关闭"
+                            }
                         } else if (callActive) {
                             if (realtimeCallSession != null) { realtimeCallSession?.setMicrophoneEnabled(true); isListening = true; speechStatus = "Realtime 麦克风已恢复" }
-                            else { speechStatus = "正在重新启动语音识别…"; startInAppRecognition() }
+                            else {
+                                speechStatus = "正在重新连接语音识别服务…"
+                                // Use a fresh service client after cancel() so late callbacks from
+                                // the muted session cannot terminate the resumed call session.
+                                recognitionSessionActive = false; recognitionStartCommandSent = false
+                                recognitionReadyForSpeech = false; recognitionStopPending = false
+                                runCatching { speechRecognizer.cancel() }
+                                runCatching { speechRecognizer = createCallSpeechRecognizer(context) }
+                                    .onFailure { speechStatus = "语音识别服务重建失败：${it.message ?: "请检查系统语音服务"}" }
+                                speechScope.launch {
+                                    delay(450L)
+                                    if (callActive && micEnabled && realtimeCallSession == null) startInAppRecognition()
+                                }
+                            }
                         }
                     }
                     CallControl(if (videoEnabled) "关闭视频" else "开启视频", if (videoEnabled) "📹" else "📷") { toggleVideo() }
