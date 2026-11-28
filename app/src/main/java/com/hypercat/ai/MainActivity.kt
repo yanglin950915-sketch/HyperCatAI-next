@@ -1063,6 +1063,9 @@ private fun HyperCatApp() {
         }
     }
     val messages = remember { mutableStateListOf<ChatLine>() }
+    // Voice-call turns are intentionally isolated from the normal Agent conversation.
+    val callMessages = remember { mutableStateListOf<ChatLine>() }
+    var callThinking by remember { mutableStateOf(false) }
     var isThinking by remember { mutableStateOf(false) }
     val weatherPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
         scope.launch {
@@ -1208,6 +1211,8 @@ private fun HyperCatApp() {
                     contentPadding = padding,
                     onDrawerVisibility = { chatDrawerExpanded = it },
                     messages = messages,
+                    callMessages = callMessages,
+                    callThinking = callThinking,
                     isThinking = isThinking,
                     recentPrompts = recentPrompts,
                     onDeleteRecentPrompt = { prompt -> recentPrompts = recentPrompts.filterNot { it == prompt }; chatPrefs.edit().putString("recent_chat_titles", recentPrompts.joinToString("||")).remove("chat_session_$prompt").apply() },
@@ -1318,43 +1323,43 @@ private fun HyperCatApp() {
                         }
                     },
                     onRealtimeUserTranscript = { text ->
-                        messages.add(ChatLine(text, true))
+                        callMessages.add(ChatLine(text, true))
                         avatarReply = text
                         avatarMood = "thinking"
                     },
                     onRealtimeAssistantReply = { text ->
-                        messages.add(ChatLine(text, false))
+                        callMessages.add(ChatLine(text, false))
                         avatarReply = text
                         avatarMood = "happy"
                     },
                     onCallInitiative = { prompt ->
-                        if (saved && endpoint.isNotBlank() && model.isNotBlank() && !isThinking) {
-                            val requestHistory = messages.toList() + ChatLine(prompt, true)
+                        if (saved && endpoint.isNotBlank() && model.isNotBlank() && !callThinking) {
+                            // Call greeting / follow-up turns belong to the call transcript, never the Agent chat.
+                            val requestHistory = callMessages.toList() + ChatLine(prompt, true)
+                            callMessages.add(ChatLine(prompt, true))
+                            callThinking = true
                             scope.launch {
-                                isThinking = true
+                                val placeholderIndex = callMessages.size
+                                callMessages.add(ChatLine("", false))
                                 try {
-                                    val placeholderIndex = messages.size
-                                    messages.add(ChatLine("", false))
                                     val payload = buildOpenAiStreamingPayload(model, requestHistory, savedNotes)
                                     val streamed = OpenAiCompatibleStreamClient.stream(endpoint, apiKey, payload) { delta ->
                                         withContext(Dispatchers.Main.immediate) {
-                                            if (placeholderIndex in messages.indices) messages[placeholderIndex] = messages[placeholderIndex].copy(text = messages[placeholderIndex].text + delta)
-                                            avatarReply += delta
+                                            if (placeholderIndex in callMessages.indices) callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = callMessages[placeholderIndex].text + delta)
+                                            avatarReply = callMessages[placeholderIndex].text
                                             avatarMood = inferMood(avatarReply)
                                         }
                                     }
                                     val finalText = streamed.ifBlank { "模型返回了空内容，请检查模型服务配置。" }
-                                    if (placeholderIndex in messages.indices) messages[placeholderIndex] = messages[placeholderIndex].copy(text = finalText)
+                                    if (placeholderIndex in callMessages.indices) callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = finalText)
                                     avatarReply = finalText
                                     avatarMood = inferMood(finalText)
                                 } catch (error: Exception) {
                                     val failure = "通话主动对话暂时不可用：${error.message ?: "网络或模型服务异常"}"
-                                    if (messages.lastOrNull()?.let { !it.fromUser && it.text.isBlank() } == true) {
-                                        messages[messages.lastIndex] = messages.last().copy(text = failure)
-                                    } else appendAgentReply(context, messages, failure)
+                                    if (placeholderIndex in callMessages.indices) callMessages[placeholderIndex] = callMessages[placeholderIndex].copy(text = failure)
                                     avatarReply = failure
                                     avatarMood = "sad"
-                                } finally { isThinking = false }
+                                } finally { callThinking = false }
                             }
                         }
                     },
@@ -1725,7 +1730,7 @@ private fun MarkdownMessage(text: String, textColor: Color, clipboardManager: an
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChatPage(
-    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
+    modifier: Modifier, contentPadding: PaddingValues, onDrawerVisibility: (Boolean) -> Unit, messages: List<ChatLine>, callMessages: List<ChatLine>, callThinking: Boolean, isThinking: Boolean, recentPrompts: List<String>, onDeleteRecentPrompt: (String) -> Unit, onOpenRecentSession: (String) -> Unit, onShareRecentSession: (String) -> Unit, onShareCurrentSession: () -> Unit, onClearCurrentSession: () -> Unit, currentSessionTitle: String, modelProfiles: List<ModelProfile>, ttsProfiles: List<TtsProfile>, activeModel: String, onSelectModel: (ModelProfile) -> Unit, savedNotes: List<String>, onSaveNote: (String) -> Unit, onDeleteNote: (String) -> Unit, draft: String, onDraft: (String) -> Unit,
     onSend: (String, List<Uri>, List<Bitmap>, Boolean, String?, Long) -> Unit, onCallInitiative: (String) -> Unit,
     onRealtimeUserTranscript: (String) -> Unit, onRealtimeAssistantReply: (String) -> Unit,
     openSettings: () -> Unit, configured: Boolean, avatarName: String, avatarId: String,
@@ -1999,7 +2004,7 @@ private fun ChatPage(
                         val playbackActive = isSpeaking || SystemClock.elapsedRealtime() <= agentPlaybackUntilMs
                         if (playbackActive && looksLikeAgentEcho(spoken, lastCallSpokenText)) {
                             speechStatus = "已识别并过滤 Agent 自己的播报回声，继续聆听…"
-                        } else latestOnSend(spoken, emptyList(), emptyList(), true, null, 0L)
+                        } else latestOnCallInitiative("用户在通话中说：$spoken。请直接回应用户这句话，保持自然、简洁的口语表达。")
                     } else if (!latestCallActive) {
                         latestOnDraft(if (latestDraft.isBlank()) spoken else "${latestDraft} ${spoken}")
                     }
@@ -2299,7 +2304,7 @@ private fun ChatPage(
                         withContext(Dispatchers.Main) {
                             if (callGeneration == thisCallGeneration && callActive && micEnabled && transcript.isNotBlank()) {
                                 speechStatus = "已识别，正在发送给 AI…"
-                                latestOnSend(transcript, emptyList(), emptyList(), true, null, 0L)
+                                latestOnCallInitiative("用户在通话中说：$transcript。请直接回应用户这句话，保持自然、简洁的口语表达。")
                             }
                         }
                     } catch (error: Exception) {
@@ -2351,7 +2356,9 @@ private fun ChatPage(
             videoEnabled = false
             showCallInfo = true
             // Do not replay the last normal-chat reply when the call dialog opens.
-            lastCallSpokenText = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
+            callMessages.clear()
+            callThinking = false
+            lastCallSpokenText = callMessages.lastOrNull { !it.fromUser }?.text.orEmpty()
             isListening = true
             isSpeaking = false
             speechStatus = "麦克风已启动，正在实时采集 PCM；检测到语句后自动发送给 AI"
@@ -2476,9 +2483,9 @@ private fun ChatPage(
         else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         else { cameraError = null; videoEnabled = true }
     }
-    LaunchedEffect(callActive, messages.size, isThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak, realtimeCallSession) {
-        if (callActive && realtimeCallSession == null && !isThinking) {
-            val reply = messages.lastOrNull { !it.fromUser }?.text.orEmpty()
+    LaunchedEffect(callActive, callMessages.size, callThinking, ttsMode, ttsProfileName, ttsModel, ttsVoice, ttsRate, canSpeak, realtimeCallSession) {
+        if (callActive && realtimeCallSession == null && !callThinking) {
+            val reply = callMessages.lastOrNull { !it.fromUser }?.text.orEmpty()
             if (reply.isNotBlank() && reply != lastCallSpokenText) {
                 lastCallSpokenText = reply
                 val spokenText = speechText(reply)
@@ -2513,17 +2520,17 @@ private fun ChatPage(
                     } else {
                         isSpeaking = true
                         agentPlaybackUntilMs = Long.MAX_VALUE
-                        val result = speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${messages.size}-last")
+                        val result = speechEngine.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "call-${callMessages.size}-last")
                         if (result == TextToSpeech.ERROR) { isSpeaking = false; agentPlaybackUntilMs = SystemClock.elapsedRealtime() + 1200L; speechStatus = "通话语音播报失败，请检查系统 TTS 语音数据" }
                     }
                 }
             }
         }
     }
-    LaunchedEffect(callActive, messages.size, isThinking, isSpeaking, isListening, realtimeCallSession) {
-        if (callActive && realtimeCallSession == null && !isThinking && !isSpeaking && !isListening) {
+    LaunchedEffect(callActive, callMessages.size, callThinking, isSpeaking, isListening, realtimeCallSession) {
+        if (callActive && realtimeCallSession == null && !callThinking && !isSpeaking && !isListening) {
             delay(Random.nextLong(22000L, 42000L))
-            if (callActive && !isThinking && !isSpeaking && !isListening) {
+            if (callActive && !callThinking && !isSpeaking && !isListening) {
                 val followUps = listOf(
                     "通话中用户暂时没有说话。请结合刚才的聊天内容，自然地问一个轻松、相关的问题，避免催促。",
                     "用户可能正在思考。请用一句简短、友好的话自然延续刚才的话题，不要重复之前的开场白。",
