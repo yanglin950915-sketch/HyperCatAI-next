@@ -1640,6 +1640,9 @@ private fun ChatPage(
     var recognitionSessionActive by remember { mutableStateOf(false) }
     // True only after startListening has actually been dispatched to Android.
     var recognitionStartCommandSent by remember { mutableStateOf(false) }
+    // Defer push-to-talk release until RecognitionService confirms readiness.
+    var recognitionReadyForSpeech by remember { mutableStateOf(false) }
+    var recognitionStopPending by remember { mutableStateOf(false) }
     var ttsReady by remember { mutableStateOf(false) }
     var isSpeaking by remember { mutableStateOf(false) }
     var cloudSpeechJob by remember { mutableStateOf<Job?>(null) }
@@ -1715,7 +1718,23 @@ private fun ChatPage(
     DisposableEffect(speechRecognizer) {
         val activeRecognizer = speechRecognizer
         activeRecognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) { recognitionSessionActive = true; isListening = true; speechStatus = "麦克风已启动，正在聆听…" }
+            override fun onReadyForSpeech(params: Bundle?) {
+                recognitionReadyForSpeech = true
+                recognitionSessionActive = true
+                isListening = true
+                speechStatus = "麦克风已启动，正在聆听…"
+                if (recognitionStopPending) {
+                    recognitionStopPending = false
+                    speechStatus = "正在完成本次语音识别…"
+                    runCatching { activeRecognizer.stopListening() }.onFailure {
+                        recognitionSessionActive = false
+                        recognitionStartCommandSent = false
+                        recognitionReadyForSpeech = false
+                        isListening = false
+                        speechStatus = "结束语音输入失败：" + (it.message ?: "系统语音服务异常")
+                    }
+                }
+            }
             override fun onBeginningOfSpeech() {
                 recognitionSessionActive = true
                 isListening = true
@@ -1734,6 +1753,8 @@ private fun ChatPage(
             override fun onError(error: Int) {
                 recognitionSessionActive = false
                 recognitionStartCommandSent = false
+                recognitionReadyForSpeech = false
+                recognitionStopPending = false
                 recognitionStartJob?.cancel()
                 recognitionStartJob = null
                 isListening = false
@@ -1811,6 +1832,8 @@ private fun ChatPage(
             override fun onResults(results: Bundle?) {
                 recognitionSessionActive = false
                 recognitionStartCommandSent = false
+                recognitionReadyForSpeech = false
+                recognitionStopPending = false
                 recognitionStartJob?.cancel()
                 recognitionStartJob = null
                 isListening = false
@@ -1891,6 +1914,8 @@ private fun ChatPage(
         isListening = false
         recognitionSessionActive = true
         recognitionStartCommandSent = false
+        recognitionReadyForSpeech = false
+        recognitionStopPending = false
         speechStatus = if (callActive) "正在启动语音识别，请开始说话…" else "正在启动语音识别…"
         if (callActive) {
             recognitionStartJob?.cancel()
@@ -2043,13 +2068,22 @@ private fun ChatPage(
             speechStatus = "已结束本次语音输入"
             return
         }
+        if (!recognitionStartCommandSent || !recognitionReadyForSpeech) {
+            // Calling stopListening before onReadyForSpeech can make some OEM
+            // RecognitionService implementations terminate with ERROR_CLIENT (5).
+            recognitionStopPending = true
+            speechStatus = "正在启动麦克风，等待系统就绪…"
+            return
+        }
+        recognitionStopPending = false
         speechStatus = "正在完成本次语音识别…"
         runCatching { speechRecognizer.stopListening() }
             .onFailure {
                 recognitionSessionActive = false
                 recognitionStartCommandSent = false
+                recognitionReadyForSpeech = false
                 isListening = false
-                speechStatus = "停止语音识别失败：${it.message ?: "系统语音服务异常"}"
+                speechStatus = "停止语音识别失败：" + (it.message ?: "系统语音服务异常")
             }
     }
     var cameraError by remember { mutableStateOf<String?>(null) }
