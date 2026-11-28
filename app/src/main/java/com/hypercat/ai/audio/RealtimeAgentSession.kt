@@ -16,6 +16,7 @@ class RealtimeAgentSession(
 ) : Closeable {
     interface Listener {
         fun onStateChanged(state: State)
+        fun onUserTranscript(text: String)
         fun onTextDelta(text: String)
         fun onAssistantTurnFinished()
         fun onFailure(message: String, cause: Throwable? = null)
@@ -48,6 +49,10 @@ class RealtimeAgentSession(
                     } catch (error: Throwable) {
                         fail("无法启动实时音频引擎", error)
                     }
+                }
+
+                override fun onUserTranscript(text: String) {
+                    if (!closed.get() && text.isNotEmpty()) listener.onUserTranscript(text)
                 }
 
                 override fun onTextDelta(text: String) {
@@ -128,7 +133,8 @@ class RealtimeAgentSession(
 interface RealtimeModelAdapter : Closeable {
     interface Events {
         fun onReady()
-        /** Text deltas from either finalized user transcription or assistant output. */
+        fun onUserTranscript(text: String)
+        /** Incremental assistant text output. */
         fun onTextDelta(text: String)
         fun onAudioDelta(pcm16: ByteArray, length: Int)
         fun onAssistantTurnFinished()
