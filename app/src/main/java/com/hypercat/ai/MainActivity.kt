@@ -1383,7 +1383,10 @@ private fun HyperCatApp() {
                     draft = draft,
                     onDraft = { draft = it },
                     onSend = { value, attachments, photos, isVoiceTurn, voiceAudioPath, voiceDurationMs ->
-                        if (value.isNotBlank() || attachments.isNotEmpty() || photos.isNotEmpty()) {
+                        if (isVoiceTurn && value == "__HYPERCAT_ASR_FAILED_VOICE__") {
+                            // Keep the captured audio visible/playable, but do not submit a fake prompt to the Agent.
+                            messages.add(ChatLine("语音消息（未识别，可点击播放）", true, voiceAudioPath = voiceAudioPath, voiceDurationMs = voiceDurationMs))
+                        } else if (value.isNotBlank() || attachments.isNotEmpty() || photos.isNotEmpty()) {
                             agentAutoReadPending = autoReadReplies
                             if (currentSessionTitle.isBlank() && value.isNotBlank()) currentSessionTitle = value.trim().take(42)
                             val userLine = ChatLine(value, true, attachments.map { it.lastPathSegment ?: "附件" }, photos, attachments.filter { (context.contentResolver.getType(it) ?: "").startsWith("image/") }, voiceAudioPath = voiceAudioPath, voiceDurationMs = voiceDurationMs)
@@ -2765,25 +2768,34 @@ private fun ChatPage(
                 val pcm = voiceCapturePcm ?: ByteArray(0)
                 voiceCapturePcm = null
                 if (pcm.size < 16_000) { speechStatus = "麦克风已启动，但有效录音不足 0.5 秒；请按住麦克风说完整句子"; return@launch }
+                // Persist the recording before contacting ASR so recognition failures never discard the user's audio.
+                val voiceFile = withContext(Dispatchers.IO) { saveCapturedPcmAsWav(context, pcm) }
+                val durationMs = (pcm.size * 1000L / (16_000L * 2L)).coerceAtLeast(1L)
+                fun keepUntranscribedVoice(reason: String) {
+                    latestOnSend("__HYPERCAT_ASR_FAILED_VOICE__", emptyList(), emptyList(), true, voiceFile.absolutePath, durationMs)
+                    speechStatus = "语音已保存到聊天，可点击播放；本次未能转写：$reason"
+                }
                 val voicePrefs = context.getSharedPreferences("hypercat_agent_config", Context.MODE_PRIVATE)
                 val asrEndpoint = voicePrefs.getString("asr_endpoint", "").orEmpty().ifBlank { voicePrefs.getString("tts_endpoint", "").orEmpty() }
                 val asrApiKey = voicePrefs.getString("asr_api_key", "").orEmpty().ifBlank { voicePrefs.getString("tts_api_key", "").orEmpty() }
                 val asrModel = voicePrefs.getString("asr_model", "mimo-v2.5-asr").orEmpty()
                 if (asrEndpoint.isBlank() || asrApiKey.isBlank()) {
-                    speechStatus = "录音已采集（${pcm.size} 字节），但当前没有可用的 ASR 语音识别服务或 API Key"
+                    keepUntranscribedVoice("未配置 ASR 服务地址或 API Key")
                     return@launch
                 }
                 try {
                     speechStatus = "PCM 已采集 ${pcm.size} 字节，正在使用 MiMo ASR 识别…"
                     val transcript = withContext(Dispatchers.IO) { transcribeCapturedPcm(asrEndpoint, asrApiKey, pcm, asrModel = asrModel) }
+                    if (transcript.isBlank()) {
+                        keepUntranscribedVoice("识别服务未返回文字")
+                        return@launch
+                    }
                     Log.i("HyperCatVoice", "AI_TRANSCRIPTION_SUCCESS chars=${transcript.length}")
                     speechStatus = "AI 识别成功"
-                    val voiceFile = withContext(Dispatchers.IO) { saveCapturedPcmAsWav(context, pcm) }
-                    val durationMs = (pcm.size * 1000L / (16_000L * 2L)).coerceAtLeast(1L)
                     latestOnSend(transcript, emptyList(), emptyList(), false, voiceFile.absolutePath, durationMs)
                 } catch (error: Exception) {
                     Log.e("HyperCatVoice", "AI_TRANSCRIPTION_FAILED pcmBytes=${pcm.size}", error)
-                    speechStatus = "录音已成功采集（${pcm.size} 字节），但 AI 识别失败：${error.message ?: "服务异常"}"
+                    keepUntranscribedVoice(error.message ?: "识别服务异常")
                 }
             }
             return
