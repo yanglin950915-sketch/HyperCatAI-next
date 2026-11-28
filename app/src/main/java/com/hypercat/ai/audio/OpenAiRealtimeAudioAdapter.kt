@@ -1,13 +1,6 @@
 package com.hypercat.ai.audio
 
-import android.content.Context
 import android.util.Base64
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.channels.Channel
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -18,86 +11,43 @@ import org.json.JSONObject
 import java.io.Closeable
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.sqrt
 
 /**
- * OpenAI Realtime-compatible WebSocket transport.
+ * Protocol-only OpenAI Realtime-compatible transport.
  *
- * This adapter is opt-in: callers must explicitly select a provider/model
- * that documents the Realtime API. A chat-completions URL is never upgraded
- * or guessed to be a realtime endpoint.
+ * Audio capture, playback, focus and lifecycle are owned by RealtimeAgentSession.
+ * This class deliberately does not create an AudioRecord/AudioTrack engine,
+ * preventing duplicate microphone capture when used by the Agent.
  */
 class OpenAiRealtimeAudioAdapter(
-    context: Context,
     private val endpoint: String,
     private val apiKey: String,
     private val model: String,
-    private val listener: Listener,
-) : Closeable, RealtimeAudioEngine.Listener {
+) : RealtimeModelAdapter {
 
-    interface Listener {
-        fun onState(state: State)
-        fun onTranscriptDelta(text: String)
-        fun onAssistantTextDelta(text: String)
-        fun onAssistantAudio(pcm16: ByteArray)
-        /** Complete user transcription, emitted once per finalized input turn. */
-        fun onTranscriptCompleted(text: String) {}
-        /** Emitted only when the server confirms the assistant response is complete. */
-        fun onAssistantTurnFinished() {}
-        fun onError(message: String)
-    }
-
-    enum class State { CONNECTING, LISTENING, RESPONDING, INTERRUPTED, CLOSED, FAILED }
-
-    private val appContext = context.applicationContext
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .pingInterval(20, TimeUnit.SECONDS)
         .build()
     private val closed = AtomicBoolean(false)
-    private val speaking = AtomicBoolean(false)
-    private val engine = RealtimeAudioEngine(this, sampleRate = 24_000)
-    private val audioSessions = AudioSessionCoordinator.get(appContext)
-    @Volatile private var audioLease: AudioSessionCoordinator.Lease? = null
-    private val playbackQueue = Channel<ByteArray>(Channel.UNLIMITED)
     @Volatile private var socket: WebSocket? = null
-    @Volatile private var speechOnsetAt = 0L
-    @Volatile private var lastSpeechAt = 0L
+    @Volatile private var events: RealtimeModelAdapter.Events? = null
 
-    fun connect() {
-        scope.launch {
-            for (chunk in playbackQueue) {
-                if (closed.get()) break
-                runCatching { engine.writePlayback(chunk) }
-                    .onFailure { if (!closed.get()) fail("音频播放失败：${it.message}") }
-            }
-        }
+    override fun connect(events: RealtimeModelAdapter.Events) {
         require(endpoint.startsWith("wss://", ignoreCase = true)) {
             "Realtime endpoint must be an explicit wss:// URL"
         }
         require(model.isNotBlank()) { "Realtime model name is required" }
         require(apiKey.isNotBlank()) { "Realtime API key is required" }
-        listener.onState(State.CONNECTING)
-        try {
-            audioLease = audioSessions.acquire(AudioSessionCoordinator.Owner.REALTIME_CALL, speakerphone = true)
-        } catch (error: Exception) {
-            fail(error.message ?: "无法取得音频设备")
-            return
-        }
-        audioSessions.onFocusLost = {
-            speaking.set(false)
-            engine.interruptPlayback()
-            socket?.send(JSONObject().put("type", "response.cancel").toString())
-            listener.onState(State.INTERRUPTED)
-        }
-        val parsedEndpoint = endpoint.toHttpUrl()
-        val realtimeUrl = if (parsedEndpoint.queryParameter("model") == null) {
-            parsedEndpoint.newBuilder().addQueryParameter("model", model).build()
-        } else parsedEndpoint
+        check(!closed.get()) { "Realtime adapter is closed" }
+        this.events = events
+        val parsed = endpoint.toHttpUrl()
+        val url = if (parsed.queryParameter("model") == null) {
+            parsed.newBuilder().addQueryParameter("model", model).build()
+        } else parsed
         val request = Request.Builder()
-            .url(realtimeUrl)
+            .url(url)
             .header("Authorization", "Bearer $apiKey")
             .header("OpenAI-Beta", "realtime=v1")
             .build()
@@ -120,13 +70,8 @@ class OpenAiRealtimeAudioAdapter(
                             .put("silence_duration_ms", 500))).toString())
                 if (!configured) {
                     fail("Realtime 会话配置发送失败")
-                    return
-                }
-                try {
-                    engine.start()
-                    listener.onState(State.LISTENING)
-                } catch (error: Exception) {
-                    fail("启动麦克风失败：${error.message ?: "设备不支持"}")
+                } else if (!closed.get()) {
+                    this@OpenAiRealtimeAudioAdapter.events?.onReady()
                 }
             }
 
@@ -139,118 +84,62 @@ class OpenAiRealtimeAudioAdapter(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                if (!closed.get()) listener.onState(State.CLOSED)
+                if (!closed.get()) fail("Realtime 连接已关闭：$reason")
             }
         })
     }
 
-    override fun onAudioFrame(pcm16: ByteArray, length: Int) {
-        val activeSocket = socket ?: return
-        if (closed.get()) return
-        val encoded = Base64.encodeToString(pcm16.copyOf(length), Base64.NO_WRAP)
-        activeSocket.send(JSONObject()
+    override fun sendAudioFrame(pcm16: ByteArray, length: Int) {
+        if (closed.get() || length <= 0) return
+        require(length <= pcm16.size && length % 2 == 0) { "PCM16 length must be even" }
+        val encoded = Base64.encodeToString(pcm16, 0, length, Base64.NO_WRAP)
+        val sent = socket?.send(JSONObject()
             .put("type", "input_audio_buffer.append")
-            .put("audio", encoded).toString())
-
-        // Local speech-onset detection provides immediate barge-in while the
-        // server VAD remains responsible for committing complete user turns.
-        val rms = pcmRms(pcm16, length)
-        val now = System.nanoTime() / 1_000_000L
-        if (rms >= 0.035) {
-            lastSpeechAt = now
-            if (now - speechOnsetAt > 450L) {
-                speechOnsetAt = now
-                if (speaking.getAndSet(false)) {
-                    engine.interruptPlayback()
-                    activeSocket.send(JSONObject().put("type", "response.cancel").toString())
-                    listener.onState(State.INTERRUPTED)
-                }
-            }
-        } else if (now - lastSpeechAt > 900L) {
-            speechOnsetAt = 0L
-        }
+            .put("audio", encoded).toString()) ?: false
+        if (!sent && !closed.get()) fail("Realtime 音频帧发送失败")
     }
 
-    override fun onError(message: String, cause: Throwable?) {
-        if (!closed.get()) fail(message)
+    /** Server VAD commits user turns; explicit commit is intentionally not sent. */
+    override fun endUserTurn() = Unit
+
+    override fun cancelResponse() {
+        if (!closed.get()) socket?.send(JSONObject().put("type", "response.cancel").toString())
     }
 
     private fun handleServerEvent(webSocket: WebSocket, raw: String) {
         val event = runCatching { JSONObject(raw) }.getOrNull() ?: return
+        val sink = events ?: return
         when (event.optString("type")) {
-            "input_audio_buffer.speech_started" -> {
-                if (speaking.getAndSet(false)) {
-                    engine.interruptPlayback()
-                    webSocket.send(JSONObject().put("type", "response.cancel").toString())
-                    listener.onState(State.INTERRUPTED)
-                }
-            }
-            "input_audio_buffer.committed" -> listener.onState(State.RESPONDING)
+            "input_audio_buffer.speech_started" -> sink.onInterrupted()
+            "input_audio_buffer.committed" -> Unit
             "conversation.item.input_audio_transcription.delta" ->
-                listener.onTranscriptDelta(event.optString("delta"))
+                event.optString("delta").takeIf { it.isNotEmpty() }?.let(sink::onTextDelta)
             "conversation.item.input_audio_transcription.completed" -> {
                 val transcript = event.optString("transcript").trim()
-                if (transcript.isNotEmpty()) listener.onTranscriptCompleted(transcript)
+                if (transcript.isNotEmpty()) sink.onTextDelta(transcript)
             }
-            "response.text.delta", "response.output_text.delta" -> {
-                listener.onState(State.RESPONDING)
-                listener.onAssistantTextDelta(event.optString("delta"))
-            }
+            "response.text.delta", "response.output_text.delta" ->
+                event.optString("delta").takeIf { it.isNotEmpty() }?.let(sink::onTextDelta)
             "response.audio.delta", "response.output_audio.delta" -> {
-                val audio = runCatching {
-                    Base64.decode(event.optString("delta"), Base64.DEFAULT)
-                }.getOrNull() ?: return
-                speaking.set(true)
-                if (playbackQueue.trySend(audio).isFailure && !closed.get()) fail("音频播放队列已关闭")
-                listener.onAssistantAudio(audio)
-                listener.onState(State.RESPONDING)
+                val audio = runCatching { Base64.decode(event.optString("delta"), Base64.DEFAULT) }.getOrNull()
+                    ?: return
+                if (audio.isNotEmpty()) sink.onAudioDelta(audio, audio.size)
             }
-            "response.audio.done" -> {
-                speaking.set(false)
-                listener.onState(State.LISTENING)
-            }
-            "response.done" -> {
-                speaking.set(false)
-                listener.onAssistantTurnFinished()
-                listener.onState(State.LISTENING)
-            }
+            "response.done" -> sink.onAssistantTurnFinished()
             "error" -> fail(event.optJSONObject("error")?.optString("message") ?: "Realtime 模型返回错误")
         }
     }
 
-    private fun pcmRms(bytes: ByteArray, length: Int): Double {
-        if (length < 2) return 0.0
-        var sum = 0.0
-        var count = 0
-        var i = 0
-        while (i + 1 < length) {
-            val sample = ((bytes[i + 1].toInt() shl 8) or (bytes[i].toInt() and 0xff)).toShort().toInt()
-            val normalized = sample / 32768.0
-            sum += normalized * normalized
-            count++
-            i += 2
-        }
-        return if (count == 0) 0.0 else sqrt(sum / count)
-    }
-
     private fun fail(message: String) {
-        if (closed.get()) return
-        listener.onState(State.FAILED)
-        listener.onError(message)
-        close()
+        if (!closed.get()) events?.onFailure(message, null)
     }
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        playbackQueue.close()
-        engine.stop()
-        audioSessions.onFocusLost = null
-        audioLease?.close()
-        audioLease = null
         socket?.close(1000, "HyperCat session closed")
         socket = null
-        scope.cancel()
+        events = null
         client.dispatcher.executorService.shutdown()
-        listener.onState(State.CLOSED)
+        client.connectionPool.evictAll()
     }
 }
