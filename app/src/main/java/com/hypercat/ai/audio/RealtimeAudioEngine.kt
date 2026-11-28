@@ -132,10 +132,10 @@ class RealtimeAudioEngine(
                 "Microphone did not enter recording state"
             }
             running.set(true)
-            captureThread = Thread({ captureLoop(input, frameBytes) }, "HyperCat-AudioCapture").apply {
-                priority = Process.THREAD_PRIORITY_AUDIO
-                start()
-            }
+            captureThread = Thread({
+                Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
+                captureLoop(input, frameBytes)
+            }, "HyperCat-AudioCapture").apply { start() }
         } catch (error: Throwable) {
             running.set(false)
             runCatching { input.release() }
