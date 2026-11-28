@@ -2281,6 +2281,17 @@ private fun ChatPage(
             latestOnCallInitiative("请直接回应用户刚才说的话，保持自然、简洁的口语表达。")
             return
         }
+        // Realtime already responds to the user's speech turn. The passive
+        // vision observer has been feeding recent scene summaries into that
+        // same conversation; do not start a competing second response here.
+        if (realtimeCallSession != null) {
+            cameraVisionStatus = if (realtimeVisionController != null) {
+                "正在结合最近的摄像头观察回答"
+            } else {
+                "实时视觉感知未配置：请到设置 → 视觉模型配置独立视觉模型"
+            }
+            return
+        }
         val frame = latestCameraFrame.get()
         if (frame == null) {
             cameraVisionStatus = "尚未取得摄像头画面，请开启摄像头后再询问画面内容"
